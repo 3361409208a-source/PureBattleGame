@@ -54,6 +54,7 @@ public class Monster
     public bool IsRanged { get; set; } = false;  // 远程型：保持距离
     public bool IsElite { get; set; } = false;   // 精英型：金边特效
     public int GoldReward { get; set; } = 50;    // 独立奖励
+    public int AttackerCount { get; set; } = 0;  // 当前有多少机器人在攻击本怪物
     
     public Monster(float x, float y, int wave = 1)
     {

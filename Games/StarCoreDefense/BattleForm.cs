@@ -302,11 +302,17 @@ public partial class BattleForm : Form
         }
 
         // 更新机器人
+        // 每帧重置怪物被攻击计数
+        foreach (var m in _monsters) m.AttackerCount = 0;
+
         foreach (var robot in _robots)
         {
             if (robot.IsActive && !robot.IsDead)
             {
                 robot.Update(this.ClientSize.Width, this.ClientSize.Height, _robots, _monsters);
+                // 统计攻击计数
+                if (robot.MonsterTarget != null && robot.MonsterTarget.IsActive)
+                    robot.MonsterTarget.AttackerCount++;
             }
         }
 
@@ -1783,16 +1789,16 @@ public partial class BattleForm : Form
 
     private void CreateControlPanel()
     {
-        int panelWidth = 495; // 增加宽度容纳基地升级
+        int panelWidth = 495;
         int btnWidth = 80;
-        int btnHeight = 30;
+        int btnHeight = 38; // 加高以显示兵种名+价格两行文字
         int spacing = 15;
 
         var panel = new FlickerFreePanel
         {
             Name = "ControlPanel",
-            Size = new Size(panelWidth, 70), // 高度降低
-            Location = new Point((this.ClientSize.Width - panelWidth) / 2, this.ClientSize.Height - 75), // 更贴近底部
+            Size = new Size(panelWidth, 80), // 加高面板
+            Location = new Point((this.ClientSize.Width - panelWidth) / 2, this.ClientSize.Height - 85),
             BackColor = Color.FromArgb(20, 20, 25),
             BorderStyle = BorderStyle.None,
             Anchor = AnchorStyles.Bottom
@@ -1806,11 +1812,11 @@ public partial class BattleForm : Form
                 Name = id,
                 Text = text,
                 Location = new Point(x, y),
-                Size = new Size(btnWidth, isUpgrade ? 20 : btnHeight), // 升级按钮更扁
+                Size = new Size(btnWidth, isUpgrade ? 22 : btnHeight),
                 FlatStyle = FlatStyle.Flat,
                 ForeColor = isUpgrade ? Color.Cyan : Color.White,
                 BackColor = Color.FromArgb(40, 40, 50),
-                Font = new Font("Microsoft YaHei", 7, FontStyle.Bold),
+                Font = new Font("Microsoft YaHei", isUpgrade ? 6.5f : 7f, FontStyle.Bold),
                 Cursor = Cursors.Hand,
                 TextAlign = ContentAlignment.MiddleCenter,
                 Margin = new Padding(0),

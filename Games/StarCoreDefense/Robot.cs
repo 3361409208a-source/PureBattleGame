@@ -345,20 +345,25 @@ public partial class Robot
             UpdateRandomMovement();
         }
 
-        // 4. 增加机器人之间的相互排斥力 (Separation)，防止挤成一坨
+        // 4. 机器人间排斥力：战斗中减弱，防止振荡；空闲时全力分散
+        bool isFighting = MonsterTarget != null;
         foreach (var other in allRobots)
         {
             if (other == this || !other.IsActive || other.IsDead || other.ClassType == RobotClass.Base) continue;
-            float dx = X - other.X;
-            float dy = Y - other.Y;
-            float distSq = dx * dx + dy * dy;
-            float safeRadius = (Size + other.Size) * 0.75f; 
+            float dxSep = X - other.X;
+            float dySep = Y - other.Y;
+            float distSq = dxSep * dxSep + dySep * dySep;
+            // 战斗中只防止真正重叠（50%半径），空闲时扩展分散半径
+            float safeRadius = isFighting
+                ? (Size + other.Size) * 0.5f   // 战斗中只防重叠
+                : (Size + other.Size) * 1.2f;  // 空闲时拉大距离分散
             if (distSq < safeRadius * safeRadius && distSq > 0.01f)
             {
                 float dist = (float)Math.Sqrt(distSq);
-                float force = (safeRadius - dist) / safeRadius * 0.3f;
-                Dx += (dx / dist) * force;
-                Dy += (dy / dist) * force;
+                float forceMag = isFighting ? 0.1f : 0.4f; // 战斗时弱推力
+                float force = (safeRadius - dist) / safeRadius * forceMag;
+                Dx += (dxSep / dist) * force;
+                Dy += (dySep / dist) * force;
             }
         }
 
@@ -446,9 +451,10 @@ public partial class Robot
             }
         }
 
-        // 每个机器人独立寻找离自己最近的怪物（而非全都扎堆到基地周围）
+        // 综合评分选目标：距离近 + 被攻击少 = 优先
+        // 这使机器人自然分散到不同目标，而非全挤在一起
         Monster? targetMonster = null;
-        float minSelfDist = float.MaxValue;
+        float bestScore = float.MaxValue;
 
         foreach (var monster in allMonsters)
         {
@@ -456,11 +462,16 @@ public partial class Robot
 
             float dx = monster.X - (X + Size / 2);
             float dy = monster.Y - (Y + Size / 2);
-            float dist = dx * dx + dy * dy;
+            float dist = (float)Math.Sqrt(dx * dx + dy * dy);
 
-            if (dist < minSelfDist)
+            // 每多一个攻击者，加惩罚分（相当于"拉远"500单位）
+            float attackerPenalty = monster.AttackerCount * 500f;
+
+            float score = dist + attackerPenalty;
+
+            if (score < bestScore)
             {
-                minSelfDist = dist;
+                bestScore = score;
                 targetMonster = monster;
             }
         }
