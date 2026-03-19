@@ -15,6 +15,7 @@ public class Monster
     // 速度
     public float Dx { get; set; }
     public float Dy { get; set; }
+    public string Type { get; set; } = "SLIME";
 
     // 大小
     public int Size { get; set; } = 35; // 58 * 0.6 ≈ 35
@@ -55,6 +56,9 @@ public class Monster
         Y = y;
         TargetX = x;
         TargetY = y;
+        
+        string[] types = { "SLIME", "SPIDER", "BAT", "WORM" };
+        Type = types[Rand.Next(types.Length)];
         HP = MaxHP;
     }
 
@@ -243,11 +247,11 @@ public class Monster
         IsDead = true;
         IsActive = false;
         
-        // 怪物死亡掉落金币
+        // 怪物死亡掉落金币 - 提高奖励
         if (BattleForm.Instance != null)
         {
-            // 大Boss掉落多，小怪掉落少
-            int goldReward = Size > 50 ? 100 : 15;
+            // 大Boss掉落更多，小怪也增加奖励
+            int goldReward = Size > 50 ? 800 : 50;
             BattleForm.Instance.Gold += goldReward;
         }
     }

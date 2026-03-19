@@ -38,8 +38,8 @@ public partial class BattleForm : Form
     private Random _rand = new Random();
 
     // 资源与波次系统
-    public int Gold { get; set; } = 100;
-    public int Minerals { get; set; } = 0;
+    public int Gold { get; set; } = 2000;
+    public int Minerals { get; set; } = 500;
     public int CurrentWave { get; set; } = 1;
     private int _waveTimer = 600; // 10秒后开始第一波
     private int _monstersToSpawnInWave = 0;
@@ -62,7 +62,7 @@ public partial class BattleForm : Form
     private int _shooterCost = 100;
     private int _guardianCost = 200;
 
-    // 摸鱼浏览器
+    // 办公浏览器
     private WebView2? _webView;
     private Panel? _browserPanel;
     private bool _isBrowserVisible = false;
@@ -117,7 +117,7 @@ public partial class BattleForm : Form
         this.DoubleBuffered = true;
         this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
         this.FormBorderStyle = FormBorderStyle.None; // 无边框模式
-        this.Opacity = 0.1; // 启动时默认最低透明度档位，方便摸鱼
+        this.Opacity = 0.1; // 启动时默认最低透明度档位，方便办公
 
         // 键盘快捷键
         this.KeyPreview = true;
@@ -201,7 +201,7 @@ public partial class BattleForm : Form
                 }
                 else if (e.KeyCode == Keys.Q)
                 {
-                    this.Close();
+                    ReturnToHome();
                     e.Handled = true;
                 }
             }
@@ -247,6 +247,34 @@ public partial class BattleForm : Form
 
         // 创建控制面板
         CreateControlPanel();
+        CreateHomeButton();
+    }
+
+    private void ReturnToHome()
+    {
+        this.Hide();
+        MoyuLauncher.Instance?.Show();
+    }
+
+    private void CreateHomeButton()
+    {
+        Button btnHome = new Button
+        {
+            Text = "🏠 主页",
+            Location = new Point(this.ClientSize.Width - 75, 5),
+            Size = new Size(70, 25),
+            FlatStyle = FlatStyle.Flat,
+            ForeColor = Color.White,
+            BackColor = Color.FromArgb(50, 50, 60),
+            Font = new Font("Microsoft YaHei", 8, FontStyle.Bold),
+            Cursor = Cursors.Hand,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+        btnHome.FlatAppearance.BorderSize = 1;
+        btnHome.FlatAppearance.BorderColor = Color.FromArgb(80, 80, 100);
+        btnHome.Click += (s, e) => ReturnToHome();
+        this.Controls.Add(btnHome);
+        btnHome.BringToFront();
     }
 
     public Robot? GetBaseRobot()
@@ -537,7 +565,7 @@ public partial class BattleForm : Form
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
-        // 只有在按下 Alt 键时才触发摸鱼快捷键，避免与浏览器内的正常输入冲突
+        // 只有在按下 Alt 键时才触发办公快捷键，避免与浏览器内的正常输入冲突
         if ((keyData & Keys.Alt) == Keys.Alt)
         {
             Keys baseKey = keyData & ~Keys.Alt;
@@ -594,7 +622,7 @@ public partial class BattleForm : Form
             // Alt + Q: 退出当前游戏，返回启动器
             else if (baseKey == Keys.Q)
             {
-                this.Close();
+                ReturnToHome();
                 return true;
             }
         }
@@ -918,22 +946,47 @@ public partial class BattleForm : Form
         if (baseRobot == null) return;
 
         _baseWaveTimer++;
-        if (_baseWaveTimer >= 360) // 6秒 (60帧 * 6)
+        
+        // 1. 蓄力视觉效果优化
+        if (_baseWaveTimer > 300) // 最后 1 秒蓄力
+        {
+            float baseX = baseRobot.X + baseRobot.Size / 2f;
+            float baseY = baseRobot.Y + baseRobot.Size / 2f;
+            
+            // 产生吸入粒子
+            if (_rand.Next(2) == 0)
+            {
+                float angle = (float)(_rand.NextDouble() * Math.PI * 2);
+                float dist = 120 - (_baseWaveTimer - 300) * 1.8f;
+                if (dist < 10) dist = 10;
+                float px = baseX + (float)Math.Cos(angle) * dist;
+                float py = baseY + (float)Math.Sin(angle) * dist;
+                AddExplosion(px, py, Color.FromArgb(200, Color.Cyan), 1, "SPARK");
+            }
+            
+            // 基地核心大幅脉动缩放
+            // 绘制逻辑在 DrawRobot 中利用 _baseWaveTimer 决定核心发光半径 (此处无需逻辑，DrawRobot 自动关联)
+        }
+
+        if (_baseWaveTimer >= 360) // 达到触发阈值
         {
             _baseWaveTimer = 0;
 
-            // 触发能量波
+            // 获取参数
             float waveRadius = 200f + (_baseLevel - 1) * 20f;
-            float pushForce = 30f + (_baseLevel - 1) * 5f;
-            int waveDamage = 30 + (_baseLevel - 1) * 15; // 基础伤害随等级提升
+            float pushForce = 35f + (_baseLevel - 1) * 5f;
+            int waveDamage = 35 + (_baseLevel - 1) * 15;
 
             float baseX = baseRobot.X + baseRobot.Size / 2f;
             float baseY = baseRobot.Y + baseRobot.Size / 2f;
 
-            // 视觉特效
-            AddExplosion(baseX, baseY, Color.Cyan, 20, "RING");
-            AddExplosion(baseX, baseY, Color.Blue, 15, "SPARK");
+            // 爆发视觉特效
+            AddExplosion(baseX, baseY, Color.White, 35, "RING"); // 增加白色闪光环
+            AddExplosion(baseX, baseY, Color.Cyan, 30, "SPARK");
+            AddExplosion(baseX, baseY, Color.Blue, 10, "SMOKE");
 
+            // 震动处理（如果有此功能）
+            
             // 影响范围内的怪物
             foreach (var monster in _monsters)
             {
@@ -946,10 +999,7 @@ public partial class BattleForm : Form
 
                 if (dist <= waveRadius)
                 {
-                    // 造成伤害
                     monster.TakeDamage(waveDamage);
-
-                    // 击退
                     if (dist < 1f) dist = 1f;
                     monster.Dx += (dx / dist) * pushForce;
                     monster.Dy += (dy / dist) * pushForce;
@@ -1043,8 +1093,8 @@ public partial class BattleForm : Form
         _winner = null;
         _robotIdCounter = 1;
 
-        Gold = 100;
-        Minerals = 0;
+        Gold = 2000;
+        Minerals = 500;
         CurrentWave = 1;
         _waveTimer = 600;
         _monstersToSpawnInWave = 0;
@@ -1619,25 +1669,62 @@ public partial class BattleForm : Form
             DrawAntennas(g, robot, centerX, centerY);
         }
 
-        // 血条
-        if (!robot.IsDead && robot.HP < robot.MaxHP)
+        // --- 血条优化显示 ---
+        if (!robot.IsDead)
         {
-            float barWidth = size * 0.8f;
-            float barHeight = 4;
-            float barX = x + (size - barWidth) / 2;
-            float barY = y - 5;
+            if (robot.ClassType == RobotClass.Base)
+            {
+                // 基地专用华丽血条 (始终显示)
+                float barWidth = 140; 
+                float barHeight = 12;
+                float barX = x + (size - barWidth) / 2;
+                float barY = y - 30;
 
-            using var bgBrush = new SolidBrush(Color.Gray);
-            g.FillRectangle(bgBrush, barX, barY, barWidth, barHeight);
+                // 背景（半透明底框）
+                using (var bgBrush = new SolidBrush(Color.FromArgb(180, 20, 20, 25)))
+                {
+                    g.FillRectangle(bgBrush, barX, barY, barWidth, barHeight);
+                }
 
-            float hpPercent = (float)robot.HP / robot.MaxHP;
-            hpPercent = Math.Clamp(hpPercent, 0, 1);
-            Color hpColor = hpPercent > 0.5 ? Color.Lime : (hpPercent > 0.2 ? Color.Yellow : Color.Red);
-            using var hpBrush = new SolidBrush(hpColor);
-            g.FillRectangle(hpBrush, barX, barY, barWidth * hpPercent, barHeight);
+                // 核心血量（能量绿色，危机红色）
+                float hpPercent = (float)robot.HP / robot.MaxHP;
+                Color hpColor = (hpPercent > 0.3f) ? Color.FromArgb(0, 255, 127) : Color.FromArgb(255, 60, 60);
+                using (var hpBrush = new SolidBrush(hpColor))
+                {
+                    g.FillRectangle(hpBrush, barX + 2, barY + 2, (barWidth - 4) * Math.Clamp(hpPercent, 0, 1), barHeight - 4);
+                }
 
-            using var borderPen = new Pen(Color.Black);
-            g.DrawRectangle(borderPen, barX, barY, barWidth, barHeight);
+                // 外部高对比边框
+                using (var borderPen = new Pen(Color.White, 2))
+                {
+                    g.DrawRectangle(borderPen, barX, barY, barWidth, barHeight);
+                }
+
+                // 数值文本 (带有阴影)
+                using (var font = new Font("Consolas", 9, FontStyle.Bold))
+                {
+                    string hpText = $"{robot.HP} / {robot.MaxHP}";
+                    var textSize = g.MeasureString(hpText, font);
+                    g.DrawString(hpText, font, Brushes.Black, barX + (barWidth - textSize.Width) / 2 + 1, barY - 14 + 1);
+                    g.DrawString(hpText, font, Brushes.White, barX + (barWidth - textSize.Width) / 2, barY - 14);
+                }
+            }
+            else if (robot.HP < robot.MaxHP)
+            {
+                // 普通机器人或小弟的精致血条 (受伤即显)
+                float barWidth = size * 0.9f;
+                float barHeight = 4;
+                float barX = x + (size - barWidth) / 2;
+                float barY = y - 8;
+
+                using var bgBrush = new SolidBrush(Color.FromArgb(150, 50, 50, 50));
+                g.FillRectangle(bgBrush, barX, barY, barWidth, barHeight);
+
+                float hpPercent = (float)robot.HP / robot.MaxHP;
+                Color hpColor = hpPercent > 0.5 ? Color.LimeGreen : (hpPercent > 0.2 ? Color.Gold : Color.Red);
+                using var hpBrush = new SolidBrush(hpColor);
+                g.FillRectangle(hpBrush, barX, barY, barWidth * Math.Clamp(hpPercent, 0, 1), barHeight);
+            }
         }
 
         // 名字
@@ -1780,60 +1867,111 @@ public static class MonsterRenderer
         if (!m.IsActive) return;
 
         int size = m.Size;
+        float cx = m.X + size / 2;
+        float cy = m.Y + size / 2;
 
-        // 身体
-        using var bodyBrush = new SolidBrush(Color.FromArgb(180, 50, 50));
-        g.FillEllipse(bodyBrush, m.X, m.Y, size, size);
-
-        // 眼睛
-        using var eyeBrush = new SolidBrush(Color.Yellow);
-        float eyeSize = size * 0.15f;
-        g.FillEllipse(eyeBrush, m.X + size * 0.2f, m.Y + size * 0.3f, eyeSize, eyeSize);
-        g.FillEllipse(eyeBrush, m.X + size * 0.6f, m.Y + size * 0.3f, eyeSize, eyeSize);
-
-        // 触手
-        using var tentacleBrush = new SolidBrush(Color.FromArgb(150, 30, 30));
-        for (int i = 0; i < 8; i++)
+        switch (m.Type)
         {
-            float angle = (float)(i * Math.PI / 4 + m.AnimationFrame * 0.1);
-            float tx = m.X + size / 2 + (float)Math.Cos(angle) * size * 0.5f;
-            float ty = m.Y + size / 2 + (float)Math.Sin(angle) * size * 0.5f;
-            g.FillEllipse(tentacleBrush, tx - 3, ty - 3, 6, 6);
+            case "SPIDER":
+                // 绘制蜘蛛风格
+                using (var spiderBrush = new SolidBrush(Color.FromArgb(40, 40, 40)))
+                {
+                    g.FillEllipse(spiderBrush, m.X + size * 0.1f, m.Y + size * 0.1f, size * 0.8f, size * 0.8f);
+                    // 蜘蛛腿
+                    using var legPen = new Pen(Color.FromArgb(60, 60, 60), 2);
+                    for (int i = 0; i < 8; i++)
+                    {
+                        float angle = (float)(i * Math.PI / 4 + Math.Sin(m.AnimationFrame * 0.5f) * 0.2f);
+                        float lx = cx + (float)Math.Cos(angle) * (size * 0.4f);
+                        float ly = cy + (float)Math.Sin(angle) * (size * 0.4f);
+                        float ex = cx + (float)Math.Cos(angle) * (size * 0.8f);
+                        float ey = cy + (float)Math.Sin(angle) * (size * 0.8f);
+                        g.DrawLine(legPen, lx, ly, ex, ey);
+                    }
+                }
+                break;
+            case "BAT":
+                // 绘制蝙蝠/飞行器风格
+                using (var batBrush = new SolidBrush(Color.FromArgb(80, 0, 120)))
+                {
+                    // 翅膀
+                    float wingWave = (float)Math.Sin(m.AnimationFrame * 1.0f) * 15;
+                    PointF[] points = {
+                        new PointF(cx, cy),
+                        new PointF(cx - size * 0.8f, cy - wingWave),
+                        new PointF(cx - size * 0.5f, cy + size * 0.2f),
+                        new PointF(cx + size * 0.5f, cy + size * 0.2f),
+                        new PointF(cx + size * 0.8f, cy - wingWave)
+                    };
+                    g.FillPolygon(batBrush, points);
+                    g.FillEllipse(batBrush, m.X + size * 0.25f, m.Y + size * 0.1f, size * 0.5f, size * 0.6f);
+                }
+                break;
+            case "WORM":
+                // 绘制蠕虫/机械虫风格
+                using (var wormBrush = new SolidBrush(Color.FromArgb(0, 100, 50)))
+                {
+                    for (int i = 0; i < 4; i++)
+                    {
+                        float offX = (float)Math.Sin(m.AnimationFrame * 0.3f + i) * 10;
+                        g.FillEllipse(wormBrush, m.X + offX + size * 0.2f, m.Y + i * (size * 0.2f), size * 0.6f, size * 0.3f);
+                    }
+                }
+                break;
+            default: // SLIME
+                // 原有的红色史莱姆风格
+                using (var bodyBrush = new SolidBrush(Color.FromArgb(180, 50, 50)))
+                {
+                    g.FillEllipse(bodyBrush, m.X, m.Y, size, size);
+                    // 触手
+                    using var tentacleBrush = new SolidBrush(Color.FromArgb(150, 30, 30));
+                    for (int i = 0; i < 8; i++)
+                    {
+                        float angle = (float)(i * Math.PI / 4 + m.AnimationFrame * 0.2);
+                        float tx = cx + (float)Math.Cos(angle) * size * 0.5f;
+                        float ty = cy + (float)Math.Sin(angle) * size * 0.5f;
+                        g.FillEllipse(tentacleBrush, tx - 3, ty - 3, 6, 6);
+                    }
+                }
+                break;
         }
 
-        // 血条
+        // 共通：眼睛
+        using (var eyeBrush = new SolidBrush(Color.Yellow))
+        {
+            float eyeSize = size * 0.15f;
+            g.FillEllipse(eyeBrush, m.X + size * 0.25f, m.Y + size * 0.3f, eyeSize, eyeSize);
+            g.FillEllipse(eyeBrush, m.X + size * 0.6f, m.Y + size * 0.3f, eyeSize, eyeSize);
+        }
+
+        // 血条 (共通)
         if (m.HP < m.MaxHP)
         {
             float barWidth = size * 0.8f;
             float barHeight = 5;
             float barX = m.X + (size - barWidth) / 2;
             float barY = m.Y - 10;
-
             using var bgBrush = new SolidBrush(Color.Gray);
             g.FillRectangle(bgBrush, barX, barY, barWidth, barHeight);
-
             float hpPercent = (float)m.HP / m.MaxHP;
             using var hpBrush = new SolidBrush(Color.Red);
             g.FillRectangle(hpBrush, barX, barY, barWidth * hpPercent, barHeight);
         }
 
-        // 受击闪烁
+        // 受击闪烁 (共通)
         if (m.HitFlashTimer > 0)
         {
             using var flashBrush = new SolidBrush(Color.FromArgb(150, Color.White));
             g.FillEllipse(flashBrush, m.X, m.Y, size, size);
         }
 
-        // 伤害文字
+        // 伤害文字 (共通)
         if (!string.IsNullOrEmpty(m.DamageText) && m.DamageTextTimer > 0)
         {
             using var font = new Font("Impact", 14, FontStyle.Bold);
             using var brush = new SolidBrush(Color.OrangeRed);
-            float floatOffset = (30 - m.DamageTextTimer) * 1f;
-            g.DrawString(m.DamageText, font, brush,
-                m.X + size / 2,
-                m.Y - 20 - floatOffset,
-                new StringFormat { Alignment = StringAlignment.Center });
+            float floatOffset = (30 - m.DamageTextTimer) * 1.5f;
+            g.DrawString(m.DamageText, font, brush, cx, m.Y - 20 - floatOffset, new StringFormat { Alignment = StringAlignment.Center });
         }
     }
 }

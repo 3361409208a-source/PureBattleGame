@@ -8,7 +8,7 @@ public class Mineral
     public float X { get; set; }
     public float Y { get; set; }
     public int Size { get; set; } = 15;
-    public int Value { get; set; } = 20; // 基础价值
+    public int Value { get; set; } = 100; // 基础价值
     public bool IsActive { get; set; } = true;
     public float Rotation { get; set; }
     public Color Color { get; set; } = Color.Cyan;

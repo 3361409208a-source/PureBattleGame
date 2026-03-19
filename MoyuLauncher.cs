@@ -6,14 +6,18 @@ namespace PureBattleGame;
 
 public partial class MoyuLauncher : Form
 {
+    public static MoyuLauncher? Instance { get; private set; }
+    private BattleForm? _gameInstance;
+
     public MoyuLauncher()
     {
+        Instance = this;
         InitializeComponent();
     }
 
     private void InitializeComponent()
     {
-        this.Text = "摸鱼神器 v1.0";
+        this.Text = "办公神器 v1.0";
         this.Size = new Size(400, 300);
         this.StartPosition = FormStartPosition.CenterScreen;
         this.FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -23,7 +27,7 @@ public partial class MoyuLauncher : Form
 
         Label title = new Label
         {
-            Text = "摸鱼神器合集",
+            Text = "办公神器合集",
             Font = new Font("Microsoft YaHei", 16, FontStyle.Bold),
             ForeColor = Color.White,
             AutoSize = true,
@@ -31,22 +35,26 @@ public partial class MoyuLauncher : Form
         };
         this.Controls.Add(title);
 
-        Button btnGame1 = CreateBtn("BtnGame1", "🎮 纯粹战斗 (挂机塔防)", 100, 100);
+        Button btnGame1 = CreateBtn("BtnGame1", "🎮 星核防线 (星际挂机塔防)", 100, 100);
         btnGame1.Click += (s, e) => {
-            var game = new BattleForm();
-            game.FormClosed += (sender, args) => { this.Show(); };
+            if (_gameInstance == null || _gameInstance.IsDisposed)
+            {
+                _gameInstance = new BattleForm();
+            }
             this.Hide();
-            game.Show();
+            _gameInstance.Show();
+            _gameInstance.BringToFront();
+            _gameInstance.Focus();
         };
         this.Controls.Add(btnGame1);
 
-        Button btnGame2 = CreateBtn("BtnGame2", "🔒 更多摸鱼功能开发中...", 100, 160);
+        Button btnGame2 = CreateBtn("BtnGame2", "🔒 更多办公功能开发中...", 100, 160);
         btnGame2.Enabled = false;
         this.Controls.Add(btnGame2);
         
         Label tip = new Label
         {
-            Text = "提示: 任何界面按 Alt+Space 一键隐藏\n在游戏中按 Alt+Q 可退出当前游戏",
+            Text = "提示: 任何界面按 Alt+Space 一键隐藏\n在游戏中按 Alt+Q 可返回主页",
             Font = new Font("Microsoft YaHei", 8),
             ForeColor = Color.Gray,
             AutoSize = true,
@@ -78,7 +86,7 @@ public partial class MoyuLauncher : Form
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
-        // 只有在按下 Alt 键时才触发摸鱼快捷键
+        // 只有在按下 Alt 键时才触发办公快捷键
         if ((keyData & Keys.Alt) == Keys.Alt)
         {
             Keys baseKey = keyData & ~Keys.Alt;
