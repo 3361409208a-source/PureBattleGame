@@ -309,7 +309,26 @@ public partial class Robot
             return;
         }
 
-        // 3. 自动寻找目标
+        // 3. 检查当前目标是否还在 Aggro 范围内（每帧检查，超出则放弃追击）
+        if (MonsterTarget != null && MonsterTarget.IsActive && !MonsterTarget.IsDead)
+        {
+            float aggroRange = ClassType switch
+            {
+                RobotClass.Guardian => 350f,
+                RobotClass.Healer   => 250f,
+                _                   => 400f,
+            };
+            // 还在范围内：保持目标；超出范围（多给50单位缓冲防止频繁切换）→ 放弃
+            float dxCheck = MonsterTarget.X - (X + Size / 2);
+            float dyCheck = MonsterTarget.Y - (Y + Size / 2);
+            float distCheck = (float)Math.Sqrt(dxCheck * dxCheck + dyCheck * dyCheck);
+            if (distCheck > aggroRange + 50f)
+            {
+                MonsterTarget = null; // 脱离范围，回巡逻
+            }
+        }
+
+        // 没有目标时，寻找 Aggro 范围内的新目标
         if (ChasingTarget == null && DuelTarget == null && MonsterTarget == null && TargetMineral == null)
         {
             FindAndAssignTarget(allRobots, allMonsters);
@@ -419,11 +438,12 @@ public partial class Robot
     }
 
     /// <summary>
-    /// 自动寻找并分配目标
+    /// 自动寻找并分配目标（Aggro Range 版本）
+    /// 只对进入检测半径的怪物发动攻击，超出范围的怪物不追
     /// </summary>
     private void FindAndAssignTarget(List<Robot> allRobots, List<Monster> allMonsters)
     {
-        // 采集型机器人优先寻找矿物
+        // 采集型机器人优先寻找矿物，不参与战斗
         if (ClassType == RobotClass.Worker)
         {
             var minerals = BattleForm.Instance?.GetMinerals();
@@ -449,10 +469,18 @@ public partial class Robot
                     return;
                 }
             }
+            return; // 采集工没矿就回巡逻，不打怪
         }
 
-        // 综合评分选目标：距离近 + 被攻击少 = 优先
-        // 这使机器人自然分散到不同目标，而非全挤在一起
+        // ── Aggro Range 核心逻辑 ──────────────────────────────────
+        // 每种兵种有自己的仇恨半径，超出范围的怪物完全忽视
+        float aggroRange = ClassType switch
+        {
+            RobotClass.Guardian => 350f,  // 守卫者近身防御
+            RobotClass.Healer   => 250f,  // 治疗者近距支援
+            _                   => 400f,  // 射手默认中远程侦测
+        };
+
         Monster? targetMonster = null;
         float bestScore = float.MaxValue;
 
@@ -464,9 +492,11 @@ public partial class Robot
             float dy = monster.Y - (Y + Size / 2);
             float dist = (float)Math.Sqrt(dx * dx + dy * dy);
 
-            // 每多一个攻击者，加惩罚分（相当于"拉远"500单位）
-            float attackerPenalty = monster.AttackerCount * 500f;
+            // 超出 Aggro Range → 完全忽视，不追
+            if (dist > aggroRange) continue;
 
+            // 范围内：综合评分（距离 + 已被攻击人数惩罚）
+            float attackerPenalty = monster.AttackerCount * 300f;
             float score = dist + attackerPenalty;
 
             if (score < bestScore)
@@ -482,7 +512,7 @@ public partial class Robot
             return;
         }
 
-        // 没有怪物，原地待命
+        // 范围内没有怪物 → 清除目标，回到巡逻（UpdateRandomMovement）
         MonsterTarget = null;
         ChasingTarget = null;
         DuelTarget = null;
