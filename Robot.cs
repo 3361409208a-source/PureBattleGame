@@ -952,22 +952,77 @@ public partial class Robot
 
     private void UpdateRandomMovement()
     {
-        // 机器人闲置时，稍微缓慢巡逻
-        float maxSpeed = 1.0f * SpeedMultiplier;
-
-        Dx += (float)(Rand.NextDouble() - 0.5) * 0.2f;
-        Dy += (float)(Rand.NextDouble() - 0.5) * 0.2f;
-
-        float currentSpeed = (float)Math.Sqrt(Dx * Dx + Dy * Dy);
-        if (currentSpeed > maxSpeed)
+        // 尝试向基地靠拢并在周围环绕
+        var baseRobot = BattleForm.Instance?.GetBaseRobot();
+        if (baseRobot != null && ClassType != RobotClass.Worker) // 采集工不受此限制
         {
-            Dx = (Dx / currentSpeed) * maxSpeed;
-            Dy = (Dy / currentSpeed) * maxSpeed;
+            float dx = (baseRobot.X + baseRobot.Size / 2) - (X + Size / 2);
+            float dy = (baseRobot.Y + baseRobot.Size / 2) - (Y + Size / 2);
+            float dist = (float)Math.Sqrt(dx * dx + dy * dy);
+
+            // 根据不同的兵种，设定不同的理想环绕半径
+            float idealRadius = 80;
+            if (ClassType == RobotClass.Guardian) idealRadius = 150; // 守卫者在最外圈
+            else if (ClassType == RobotClass.Shooter) idealRadius = 100 + (Id % 3) * 20; // 射手在中圈错开
+            else if (ClassType == RobotClass.Healer) idealRadius = 60; // 治疗者紧贴基地
+
+            float maxSpeed = 2.0f * SpeedMultiplier;
+
+            if (dist > idealRadius + 20)
+            {
+                // 距离太远，向基地靠拢
+                Dx = Dx * 0.9f + (dx / dist) * maxSpeed * 0.2f;
+                Dy = Dy * 0.9f + (dy / dist) * maxSpeed * 0.2f;
+            }
+            else if (dist < idealRadius - 20)
+            {
+                // 距离太近，向外散开
+                Dx -= (dx / dist) * 0.2f;
+                Dy -= (dy / dist) * 0.2f;
+            }
+            else
+            {
+                // 在理想半径内，缓慢环绕或停留
+                if (Rand.Next(100) < 10)
+                {
+                    // 产生一个切向力，使其环绕
+                    float tangentDx = -dy / dist * maxSpeed * 0.5f;
+                    float tangentDy = dx / dist * maxSpeed * 0.5f;
+                    // 一半顺时针，一半逆时针
+                    if (Id % 2 == 0)
+                    {
+                        tangentDx = -tangentDx;
+                        tangentDy = -tangentDy;
+                    }
+                    Dx = Dx * 0.8f + tangentDx * 0.2f;
+                    Dy = Dy * 0.8f + tangentDy * 0.2f;
+                }
+                else
+                {
+                    // 逐渐停下
+                    Dx *= 0.9f;
+                    Dy *= 0.9f;
+                }
+            }
+
+            // 限制最大速度
+            float currentSpeed = (float)Math.Sqrt(Dx * Dx + Dy * Dy);
+            if (currentSpeed > maxSpeed)
+            {
+                Dx = (Dx / currentSpeed) * maxSpeed;
+                Dy = (Dy / currentSpeed) * maxSpeed;
+            }
+            return;
         }
 
-        // 避免聚在一起
-        Dx *= 0.95f;
-        Dy *= 0.95f;
+        // 如果没有基地，则退回原本的随机游走
+        if (Rand.Next(100) < 5)
+        {
+            double angle = Rand.NextDouble() * Math.PI * 2;
+            float speed = (float)Rand.NextDouble() * 2.0f;
+            Dx += (float)Math.Cos(angle) * speed;
+            Dy += (float)Math.Sin(angle) * speed;
+        }
     }
 
     private void ApplyMovement(int screenWidth, int screenHeight)

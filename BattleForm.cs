@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
+using Microsoft.Web.WebView2.WinForms;
+using Microsoft.Web.WebView2.Core;
 
 namespace PureBattleGame;
 
@@ -59,6 +61,11 @@ public partial class BattleForm : Form
     private int _defenderCost = 150;
     private int _shooterCost = 100;
     private int _guardianCost = 200;
+
+    // 摸鱼浏览器
+    private WebView2? _webView;
+    private Panel? _browserPanel;
+    private bool _isBrowserVisible = false;
 
     // 渲染
     private Bitmap? _backBuffer;
@@ -120,6 +127,82 @@ public partial class BattleForm : Form
         this.MouseDown += BattleForm_MouseDown;
         this.MouseMove += BattleForm_MouseMove;
         this.MouseUp += BattleForm_MouseUp;
+
+        InitializeBrowser();
+    }
+
+    private async void InitializeBrowser()
+    {
+        _browserPanel = new Panel
+        {
+            Size = new Size(this.ClientSize.Width - 40, this.ClientSize.Height - 120),
+            Location = new Point(20, 20),
+            BackColor = Color.White,
+            Visible = false,
+            BorderStyle = BorderStyle.FixedSingle
+        };
+
+        _webView = new WebView2
+        {
+            Dock = DockStyle.Fill
+        };
+
+        _browserPanel.Controls.Add(_webView);
+        this.Controls.Add(_browserPanel);
+
+        // 初始化 WebView2
+        await _webView.EnsureCoreWebView2Async(null);
+
+        // 阻止新窗口弹出，强制在当前 WebView 内打开链接
+        _webView.CoreWebView2.NewWindowRequested += (sender, e) =>
+        {
+            e.Handled = true; // 拦截新窗口
+            _webView.CoreWebView2.Navigate(e.Uri); // 在当前窗口加载新链接
+        };
+
+        // 监听浏览器内的键盘事件，将快捷键传递回主窗体
+        _webView.KeyDown += (sender, e) =>
+        {
+            if (e.Alt)
+            {
+                if (e.KeyCode == Keys.Up)
+                {
+                    if (this.Opacity < 1.0) this.Opacity += 0.1;
+                    if (this.Opacity > 1.0) this.Opacity = 1.0;
+                    e.Handled = true;
+                }
+                else if (e.KeyCode == Keys.Down)
+                {
+                    if (this.Opacity > 0.1) this.Opacity -= 0.1;
+                    if (this.Opacity < 0.1) this.Opacity = 0.1;
+                    e.Handled = true;
+                }
+                else if (e.KeyCode == Keys.Space)
+                {
+                    if (this.Opacity > 0.0)
+                    {
+                        this.Tag = this.Opacity;
+                        this.Opacity = 0.0;
+                        this.ShowInTaskbar = false;
+                    }
+                    else
+                    {
+                        this.Opacity = (this.Tag is double op) ? op : 1.0;
+                        this.ShowInTaskbar = true;
+                    }
+                    e.Handled = true;
+                }
+                else if (e.KeyCode == Keys.B)
+                {
+                    _isBrowserVisible = false;
+                    _browserPanel!.Visible = false;
+                    this.Focus();
+                    e.Handled = true;
+                }
+            }
+        };
+
+        _webView.CoreWebView2.Navigate("https://bing.com"); // 默认打开 Bing
     }
 
     private void SetupGame()
@@ -447,6 +530,67 @@ public partial class BattleForm : Form
         }
     }
 
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        // 只有在按下 Alt 键时才触发摸鱼快捷键，避免与浏览器内的正常输入冲突
+        if ((keyData & Keys.Alt) == Keys.Alt)
+        {
+            Keys baseKey = keyData & ~Keys.Alt;
+
+            // Alt + Up: 增加透明度
+            if (baseKey == Keys.Up)
+            {
+                if (this.Opacity < 1.0) this.Opacity += 0.1;
+                if (this.Opacity > 1.0) this.Opacity = 1.0;
+                return true;
+            }
+            // Alt + Down: 减少透明度
+            else if (baseKey == Keys.Down)
+            {
+                if (this.Opacity > 0.1) this.Opacity -= 0.1;
+                if (this.Opacity < 0.1) this.Opacity = 0.1;
+                return true;
+            }
+            // Alt + Space: 老板键
+            else if (baseKey == Keys.Space)
+            {
+                if (this.Opacity > 0.0)
+                {
+                    this.Tag = this.Opacity;
+                    this.Opacity = 0.0;
+                    this.ShowInTaskbar = false;
+                }
+                else
+                {
+                    this.Opacity = (this.Tag is double op) ? op : 1.0;
+                    this.ShowInTaskbar = true;
+                }
+                return true;
+            }
+            // Alt + B: 切换浏览器
+            else if (baseKey == Keys.B)
+            {
+                if (_browserPanel != null)
+                {
+                    _isBrowserVisible = !_isBrowserVisible;
+                    _browserPanel.Visible = _isBrowserVisible;
+                    if (_isBrowserVisible)
+                    {
+                        _browserPanel.BringToFront();
+                        _webView?.Focus();
+                    }
+                    else
+                    {
+                        this.Focus();
+                    }
+                }
+                return true;
+            }
+        }
+
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
+
     private void BattleForm_KeyDown(object? sender, KeyEventArgs e)
     {
         // Ctrl + N: 添加新机器人
@@ -469,32 +613,6 @@ public partial class BattleForm : Form
         else if (e.Control && e.KeyCode == Keys.R)
         {
             ResetGame();
-        }
-        // 调节透明度 (摸鱼模式)
-        else if (e.KeyCode == Keys.Up)
-        {
-            if (this.Opacity < 1.0) this.Opacity += 0.1;
-            if (this.Opacity > 1.0) this.Opacity = 1.0;
-        }
-        else if (e.KeyCode == Keys.Down)
-        {
-            if (this.Opacity > 0.1) this.Opacity -= 0.1;
-            if (this.Opacity < 0.1) this.Opacity = 0.1;
-        }
-        // 快速隐藏/显示 (老板键)
-        else if (e.KeyCode == Keys.Space)
-        {
-            if (this.Opacity > 0.0)
-            {
-                this.Tag = this.Opacity; // 保存当前透明度
-                this.Opacity = 0.0;
-                this.ShowInTaskbar = false;
-            }
-            else
-            {
-                this.Opacity = (this.Tag is double op) ? op : 1.0;
-                this.ShowInTaskbar = true;
-            }
         }
         // Escape: 取消怪物放置
         else if (e.KeyCode == Keys.Escape)
