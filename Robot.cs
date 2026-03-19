@@ -406,28 +406,52 @@ public partial class Robot
             }
         }
 
-        // 优先攻击怪物，找到最近的怪物
-        Monster? nearestMonster = null;
-        float nearestDist = float.MaxValue;
+        // 优先攻击距离基地最近的怪物
+        Monster? targetMonster = null;
+        float minBaseDist = float.MaxValue;
 
-        foreach (var monster in allMonsters)
+        var baseRobot = BattleForm.Instance?.GetBaseRobot();
+
+        if (baseRobot != null)
         {
-            if (monster.IsActive && !monster.IsDead)
+            foreach (var monster in allMonsters)
             {
-                float dx = monster.X - X;
-                float dy = monster.Y - Y;
-                float dist = dx * dx + dy * dy;
-                if (dist < nearestDist)
+                if (monster.IsActive && !monster.IsDead)
                 {
-                    nearestDist = dist;
-                    nearestMonster = monster;
+                    float dx = monster.X - baseRobot.X;
+                    float dy = monster.Y - baseRobot.Y;
+                    float dist = dx * dx + dy * dy;
+                    if (dist < minBaseDist)
+                    {
+                        minBaseDist = dist;
+                        targetMonster = monster;
+                    }
+                }
+            }
+        }
+        else
+        {
+            // 如果没有基地，则退回到寻找距离自己最近的怪物
+            float nearestDist = float.MaxValue;
+            foreach (var monster in allMonsters)
+            {
+                if (monster.IsActive && !monster.IsDead)
+                {
+                    float dx = monster.X - X;
+                    float dy = monster.Y - Y;
+                    float dist = dx * dx + dy * dy;
+                    if (dist < nearestDist)
+                    {
+                        nearestDist = dist;
+                        targetMonster = monster;
+                    }
                 }
             }
         }
 
-        if (nearestMonster != null)
+        if (targetMonster != null)
         {
-            MonsterTarget = nearestMonster;
+            MonsterTarget = targetMonster;
             return;
         }
 
