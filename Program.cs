@@ -17,7 +17,7 @@ static class Program
 
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
-        Application.Run(new BattleForm());
+        Application.Run(new MoyuLauncher());
     }
 
     static void LogException(Exception? ex)

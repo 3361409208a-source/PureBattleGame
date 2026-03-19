@@ -199,6 +199,11 @@ public partial class BattleForm : Form
                     this.Focus();
                     e.Handled = true;
                 }
+                else if (e.KeyCode == Keys.Q)
+                {
+                    this.Close();
+                    e.Handled = true;
+                }
             }
         };
 
@@ -584,6 +589,12 @@ public partial class BattleForm : Form
                         this.Focus();
                     }
                 }
+                return true;
+            }
+            // Alt + Q: 退出当前游戏，返回启动器
+            else if (baseKey == Keys.Q)
+            {
+                this.Close();
                 return true;
             }
         }
