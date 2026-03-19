@@ -16,7 +16,8 @@ public class Projectile
     public float TargetX { get; set; }
     public float TargetY { get; set; }
     public Robot? Owner { get; set; }
-    public Robot? TrackingTarget { get; set; } // 锁定目标
+    public Robot? TrackingTarget { get; set; } // 锁定机器人目标
+    public Monster? TrackingMonster { get; set; } // 锁定怪物目标 (新增)
     public Color ProjectileColor { get; set; }
     public bool IsActive { get; set; } = true;
     public string Type { get; set; } = "BULLET"; // BULLET, ROCKET, PLASMA, CANNON, LIGHTNING, SPIT, INK
@@ -92,14 +93,27 @@ public class Projectile
         if (Trail.Count > 10) Trail.RemoveAt(0);
         Trail.Add(new PointF(X, Y));
 
-        // 追踪逻辑
+        // 追踪逻辑 (机器人或怪物)
         float lifePercent = LifeTime / (float)GetInitialLifeTime(Type);
-        if (TrackingTarget != null && TrackingTarget.IsActive && !TrackingTarget.IsDead && lifePercent > 0.2f)
+        bool hasTarget = (TrackingTarget != null && TrackingTarget.IsActive && !TrackingTarget.IsDead) ||
+                         (TrackingMonster != null && TrackingMonster.IsActive && !TrackingMonster.IsDead);
+
+        if (hasTarget && lifePercent > 0.2f)
         {
-            float tx = TrackingTarget.X + TrackingTarget.Size / 2;
-            float ty = TrackingTarget.Y + TrackingTarget.Size / 2;
-            float curDx = tx - X;
-            float curDy = ty - Y;
+            float targetX, targetY;
+            if (TrackingTarget != null)
+            {
+                targetX = TrackingTarget.X + TrackingTarget.Size / 2;
+                targetY = TrackingTarget.Y + TrackingTarget.Size / 2;
+            }
+            else
+            {
+                targetX = TrackingMonster!.X + TrackingMonster.Size / 2;
+                targetY = TrackingMonster.Y + TrackingMonster.Size / 2;
+            }
+
+            float curDx = targetX - X;
+            float curDy = targetY - Y;
             float dist = Math.Max(1, (float)Math.Sqrt(curDx * curDx + curDy * curDy));
 
             float targetDx = (curDx / dist) * GetBaseSpeed(Type);
@@ -119,6 +133,7 @@ public class Projectile
         else
         {
             TrackingTarget = null;
+            TrackingMonster = null;
         }
 
         // 移动

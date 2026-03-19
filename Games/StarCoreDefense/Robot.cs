@@ -821,44 +821,43 @@ public partial class Robot
 
         int shooterLevel = BattleForm.Instance?._shooterLevel ?? 1;
         
-        // 降低普通攻击冷却，等级越高，冷却越短
-        ShootCooldown = Math.Max(15, 40 - shooterLevel * 3);
+        // 降低普通攻击冷却，等级越高，射速越快 (Lv.1: 37, Lv.4: 28, Lv.8: 16)
+        ShootCooldown = Math.Max(12, 40 - shooterLevel * 3);
 
-        // 引入更多攻击方式：30%概率使用激光 (等级3以上解锁)
-        if (shooterLevel >= 3 && Rand.Next(100) < 30)
+        // 引入更多攻击方式：激光判定及高频率射击
+        if (shooterLevel >= 3 && Rand.Next(100) < 35)
         {
             IsFiringLaser = true;
             LaserTargetX = targetX;
             LaserTargetY = targetY;
-            _delayedAttackTimer = 25;
+            _delayedAttackTimer = 25; 
             return;
         }
 
         IsFiringLaser = false;
 
-        // 根据射手等级决定弹药池
-        List<string> ammoTypes = new List<string> { "BULLET" };
-        if (shooterLevel >= 2) ammoTypes.Add("ROCKET");
-        if (shooterLevel >= 4) ammoTypes.Add("PLASMA");
-        if (shooterLevel >= 5) ammoTypes.Add("CANNON");
-        if (shooterLevel >= 6) ammoTypes.Add("LIGHTNING");
-
-        string type = ammoTypes[Rand.Next(ammoTypes.Count)];
+        // 根据等级选择最强大的武器类型 (100% 概率使用当前解锁的最高级武器)
+        string type = "BULLET";
+        if (shooterLevel >= 10) type = "METEOR";
+        else if (shooterLevel >= 8) type = "LIGHTNING";
+        else if (shooterLevel >= 6) type = "CANNON";
+        else if (shooterLevel >= 4) type = "PLASMA";
+        else if (shooterLevel >= 2) type = "ROCKET";
         
-        // 每次发射数量也随等级提升 (每2级多发一枚子弹，最多3发)
-        int projectileCount = 1 + (shooterLevel - 1) / 2;
-        if (projectileCount > 3) projectileCount = 3;
+        // 连发机制：每3级多发一枚子弹，最多5发
+        int projectileCount = 1 + (shooterLevel - 1) / 3;
+        if (projectileCount > 5) projectileCount = 5;
 
         for (int i = 0; i < projectileCount; i++)
         {
-            // 散射角度
-            float spread = (projectileCount > 1) ? (float)((i - (projectileCount - 1) / 2.0f) * 0.2f) : 0;
-            
-            // 简单模拟角度偏移（这只是在目标点上加上随机偏移，为了简化）
-            float pTargetX = targetX + (float)((Rand.NextDouble() - 0.5) * 40);
-            float pTargetY = targetY + (float)((Rand.NextDouble() - 0.5) * 40);
+            // 散射与偏移
+            float pTargetX = targetX + (float)((Rand.NextDouble() - 0.5) * 60);
+            float pTargetY = targetY + (float)((Rand.NextDouble() - 0.5) * 60);
             
             var p = new Projectile(this, centerX, centerY, pTargetX, pTargetY, type);
+            // 追踪能力：Lv.5 以上自动追踪
+            if (shooterLevel >= 5) p.TrackingMonster = monster;
+            
             BattleForm.Instance?.AddProjectile(p);
         }
     }
@@ -896,6 +895,7 @@ public partial class Robot
                 // 死光：直接连接目标的激光
                 var ray = new Projectile(this, startX, startY, targetX, targetY, "DEATH_RAY");
                 if (target is Robot r) ray.TrackingTarget = r;
+                else if (target is Monster m) ray.TrackingMonster = m;
                 BattleForm.Instance?.AddProjectile(ray);
                 break;
         }
@@ -932,10 +932,12 @@ public partial class Robot
             {
                 IsFiringLaser = false;
 
-                // 处理对怪物的激光伤害
+                // 处理对怪物的激光伤害 - 伤害随射手等级增加
                 if (MonsterTarget != null && MonsterTarget.IsActive && !MonsterTarget.IsDead)
                 {
-                    MonsterTarget.TakeDamage(10); // 激光对怪物造成10点伤害
+                    int shooterLevel = BattleForm.Instance?._shooterLevel ?? 1;
+                    int laserDmg = 15 + (shooterLevel - 1) * 8;
+                    MonsterTarget.TakeDamage(laserDmg); 
                 }
             }
         }
@@ -1221,8 +1223,11 @@ public partial class Robot
             };
         }
 
-        // 基础伤害 + 等级加成(每级+20%)
-        return (int)(baseDamage * (1 + levelBonus * 0.2f));
+        // 基础伤害 + 等级提升 (等级3以上每级+25%，Lv.1为100%伤害)
+        float factor = 1.0f + levelBonus * 0.25f;
+        
+        // 针对不同类型的子弹微调其成长曲线 (如有需要可以在此扩展)
+        return (int)(baseDamage * factor);
     }
 
     /// <summary>

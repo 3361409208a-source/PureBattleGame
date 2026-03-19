@@ -72,6 +72,13 @@ public partial class BattleForm : Form
     private Robot? _selectedRobot = null;
     private Monster? _selectedMonster = null;
     private bool _isSpawningMonster = false;
+    private float _worldViewFactor = 1.0f; 
+    private float _panX = 0;
+    private float _panY = 0;
+    private bool _isDragging = false;
+    private bool _isDraggingMinimap = false;
+    private bool _isSpaceDown = false;
+    private Point _lastDragPoint;
     private ToolTip _upgradeToolTip = new ToolTip { InitialDelay = 200, AutoPopDelay = 10000 };
     private Point _monsterSpawnPoint;
 
@@ -109,8 +116,9 @@ public partial class BattleForm : Form
         this.StartPosition = FormStartPosition.CenterScreen;
         this.DoubleBuffered = true;
         this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
-        this.FormBorderStyle = FormBorderStyle.None; // 无边框模式
-        this.Opacity = 0.1; // 启动时默认最低透明度档位，方便办公
+        this.FormBorderStyle = FormBorderStyle.Sizable; // 改为可调整大小
+        this.Opacity = 0.1; 
+        this.MinimumSize = new Size(600, 450);
 
         // 键盘快捷键
         this.KeyPreview = true;
@@ -120,8 +128,17 @@ public partial class BattleForm : Form
         this.MouseDown += BattleForm_MouseDown;
         this.MouseMove += BattleForm_MouseMove;
         this.MouseUp += BattleForm_MouseUp;
+        this.MouseWheel += BattleForm_MouseWheel;
+        this.KeyUp += BattleForm_KeyUp;
 
+        SetupZoomButtons();
         InitializeBrowser();
+    }
+
+    private void SetupZoomButtons()
+    {
+        // 缩放按钮可以用 GDI+ 直接画在界面上，也可以用 Button。
+        // 为了风格统一，我们在 Render 中绘制。
     }
 
     private async void InitializeBrowser()
@@ -441,8 +458,22 @@ public partial class BattleForm : Form
 
     private void Render(Graphics g)
     {
-        // 绘制网格背景
-        DrawGrid(g);
+        var baseBot = GetBaseRobot();
+        float baseX = baseBot?.X + baseBot?.Size / 2 ?? this.ClientSize.Width / 2f;
+        float baseY = baseBot?.Y + baseBot?.Size / 2 ?? this.ClientSize.Height / 2f;
+
+        float scale = 1.0f / _worldViewFactor;
+
+        // 保存状态绘制 UI
+        var oldTransform = g.Transform;
+
+        // 应用地图缩放与平移变换 (以基地为中心配合平移)
+        g.TranslateTransform(this.ClientSize.Width / 2f + _panX, this.ClientSize.Height / 2f + _panY);
+        g.ScaleTransform(scale, scale);
+        g.TranslateTransform(-baseX, -baseY);
+
+        // 绘制网格背景 (扩大范围以覆盖缩放后的视野)
+        DrawWorldGrid(g, baseX, baseY);
 
         // 绘制粒子 (底层)
         foreach (var p in _particles)
@@ -503,61 +534,61 @@ public partial class BattleForm : Form
             if (robot.IsVisible)
             {
                 DrawRobot(g, robot);
+                if (robot == _selectedRobot) DrawSelectionRing(g, robot);
             }
         }
 
-        // 绘制粒子 (顶层)
-        foreach (var p in _particles)
-        {
-            if (p.IsActive && p.Type != "SMOKE" && p.Type != "RING")
-            {
-                DrawParticle(g, p);
-            }
-        }
-
-        // 绘制浮动文字
         foreach (var ft in _floatingTexts)
         {
-            if (ft.IsActive)
-            {
-                using var brush = new SolidBrush(Color.FromArgb((int)(255 * (ft.Life / (float)ft.MaxLife)), ft.TextColor));
-                using var font = new Font("Microsoft YaHei", 9, FontStyle.Bold);
-                g.DrawString(ft.Text, font, brush, ft.X, ft.Y);
-            }
+            using var font = new Font("Impact", 12 * _worldViewFactor, FontStyle.Bold); 
+            using var brush = new SolidBrush(Color.FromArgb((int)(ft.Life / (float)ft.MaxLife * 255), ft.TextColor));
+            g.DrawString(ft.Text, font, brush, ft.X, ft.Y);
         }
 
-        // 绘制选中指示器
-        if (_selectedRobot != null && _selectedRobot.IsActive && !_selectedRobot.IsDead)
-        {
-            DrawSelectionRing(g, _selectedRobot);
-        }
-
-        if (_selectedMonster != null && _selectedMonster.IsActive && !_selectedMonster.IsDead)
-        {
-            DrawSelectionRing(g, _selectedMonster);
-        }
-
-        // 绘制资源UI
+        // 还原变换，绘制不随地图缩放的 UI
+        g.Transform = oldTransform;
+        
+        DrawMinimap(g);
+        DrawZoomButtons(g);
         DrawResourceUI(g);
 
-        // 绘制游戏结束覆盖层
         if (_isGameEnding)
         {
             DrawGameEndingOverlay(g);
         }
 
-        // 绘制鼠标放置预览
         if (_isSpawningMonster)
         {
+            // 在屏幕空间显示预览或是转换为屏幕预览
             using var brush = new SolidBrush(Color.FromArgb(100, Color.Red));
-            g.FillEllipse(brush, _monsterSpawnPoint.X - 40, _monsterSpawnPoint.Y - 40, 80, 80);
-            using var pen = new Pen(Color.Red, 2);
-            g.DrawEllipse(pen, _monsterSpawnPoint.X - 40, _monsterSpawnPoint.Y - 40, 80, 80);
+            g.FillEllipse(brush, _monsterSpawnPoint.X - 25, _monsterSpawnPoint.Y - 25, 50, 50);
         }
+    }
+
+    private void DrawWorldGrid(Graphics g, float centerX, float centerY)
+    {
+        using var pen = new Pen(Color.FromArgb(40, 40, 60), 1);
+        int gridSize = 50;
+        int range = (int)(2000 * _worldViewFactor); 
+
+        int startX = (int)(centerX - range) / gridSize * gridSize;
+        int endX = (int)(centerX + range);
+        int startY = (int)(centerY - range) / gridSize * gridSize;
+        int endY = (int)(centerY + range);
+
+        for (int x = startX; x <= endX; x += gridSize)
+            g.DrawLine(pen, x, startY, x, endY);
+        for (int y = startY; y <= endY; y += gridSize)
+            g.DrawLine(pen, startX, y, endX, y);
     }
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
+        if (keyData == Keys.Space && (msg.Msg == 0x0100 || msg.Msg == 0x0104)) // KeyDown
+        {
+            _isSpaceDown = true;
+        }
+
         // 只有在按下 Alt 键时才触发办公快捷键，避免与浏览器内的正常输入冲突
         if ((keyData & Keys.Alt) == Keys.Alt)
         {
@@ -656,12 +687,40 @@ public partial class BattleForm : Form
 
     private void BattleForm_MouseDown(object? sender, MouseEventArgs e)
     {
+        // 坐标变换 (屏幕 -> 世界)
+        var baseBot = GetBaseRobot();
+        float baseX = baseBot?.X + baseBot?.Size / 2 ?? 0;
+        float baseY = baseBot?.Y + baseBot?.Size / 2 ?? 0;
+        float scale = 1.0f / _worldViewFactor;
+        
+        float worldX = (e.X - (this.ClientSize.Width / 2f + _panX)) / scale + baseX;
+        float worldY = (e.Y - (this.ClientSize.Height / 2f + _panY)) / scale + baseY;
+
+        // 优先检查 UI 点击
+        if (CheckZoomButtonClicked(e.Location)) return;
+        if (CheckMinimapClicked(e.Location))
+        {
+            _isDraggingMinimap = true;
+            return;
+        }
+
+        // 仅当按下空格键且左键按下时开启拖拽
+        if (_isSpaceDown && e.Button == MouseButtons.Left)
+        {
+            _isDragging = true;
+            _lastDragPoint = e.Location;
+            this.Cursor = Cursors.SizeAll; // 视觉反馈
+            return;
+        }
+
         if (e.Button == MouseButtons.Left)
         {
             if (_isSpawningMonster)
             {
                 // 放置怪物
-                var monster = new Monster(e.X - 48, e.Y - 48);
+                var monster = new Monster(worldX - 15, worldY - 15);
+                monster.MaxHP = 500 + CurrentWave * 100;
+                monster.HP = monster.MaxHP;
                 _monsters.Add(monster);
 
                 // 所有机器人立即攻击这个怪物
@@ -684,7 +743,7 @@ public partial class BattleForm : Form
 
                 foreach (var robot in _robots)
                 {
-                    if (robot.IsActive && !robot.IsDead && robot.HitTest(e.X, e.Y))
+                    if (robot.IsActive && !robot.IsDead && robot.HitTest((int)worldX, (int)worldY))
                     {
                         _selectedRobot = robot;
                         break;
@@ -697,8 +756,8 @@ public partial class BattleForm : Form
                     {
                         if (monster.IsActive && !monster.IsDead)
                         {
-                            if (e.X >= monster.X && e.X <= monster.X + monster.Size &&
-                                e.Y >= monster.Y && e.Y <= monster.Y + monster.Size)
+                            if (worldX >= monster.X && worldX <= monster.X + monster.Size &&
+                                worldY >= monster.Y && worldY <= monster.Y + monster.Size)
                             {
                                 _selectedMonster = monster;
                                 break;
@@ -714,21 +773,65 @@ public partial class BattleForm : Form
             if (_selectedRobot != null && _selectedRobot.IsActive && !_selectedRobot.IsDead)
             {
                 _selectedRobot.SetMonsterTarget(null);
-                _selectedRobot.LaunchRemoteAttackAtPosition(e.X, e.Y);
+                _selectedRobot.LaunchRemoteAttackAtPosition(worldX, worldY);
             }
         }
     }
 
     private void BattleForm_MouseMove(object? sender, MouseEventArgs e)
     {
+        if (_isDraggingMinimap)
+        {
+            CheckMinimapClicked(e.Location);
+            return;
+        }
+
+        // 只有拖拽中且空格按下时才平移相机
+        if (_isDragging && _isSpaceDown)
+        {
+            _panX += e.X - _lastDragPoint.X;
+            _panY += e.Y - _lastDragPoint.Y;
+            _lastDragPoint = e.Location;
+        }
+        else
+        {
+            _isDragging = false;
+            if (this.Cursor == Cursors.SizeAll) this.Cursor = Cursors.Default;
+        }
+
         if (_isSpawningMonster)
         {
+            // 在屏幕空间显示预览，转换为世界坐标并在 Render 中绘制
             _monsterSpawnPoint = e.Location;
         }
     }
 
     private void BattleForm_MouseUp(object? sender, MouseEventArgs e)
     {
+        _isDragging = false;
+        _isDraggingMinimap = false;
+        this.Cursor = Cursors.Default;
+    }
+
+    private void BattleForm_MouseWheel(object? sender, MouseEventArgs e)
+    {
+        // 放大倍率限制为 0.2 (极端细节)；缩小倍率限制为 1.5 (全图)
+        if (e.Delta > 0)
+        {
+            _worldViewFactor = Math.Max(0.2f, _worldViewFactor * 0.9f); // 放大
+        }
+        else
+        {
+            _worldViewFactor = Math.Min(1.5f, _worldViewFactor * 1.1f); // 缩小
+        }
+    }
+
+    private void BattleForm_KeyUp(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyCode == Keys.Space)
+        {
+            _isSpaceDown = false;
+        }
     }
 
     private Robot SpawnRobot(string name, float x, float y, RobotClass classType = RobotClass.Shooter)
@@ -1024,16 +1127,22 @@ public partial class BattleForm : Form
             _spawnInterval--;
             if (_spawnInterval <= 0)
             {
-                // 在边缘生成怪物
-                int edge = _rand.Next(4); // 0:上 1:右 2:下 3:左
-                int spawnX = 0, spawnY = 0;
+                // 在地图视野边缘外围生成怪物 (基于世界坐标)
+                var baseB = GetBaseRobot();
+                float bX = baseB?.X + baseB?.Size/2 ?? 0;
+                float bY = baseB?.Y + baseB?.Size/2 ?? 0;
+                float halfVW = (this.ClientSize.Width / 2f) * _worldViewFactor + 50;
+                float halfVH = (this.ClientSize.Height / 2f) * _worldViewFactor + 50;
+
+                int edge = _rand.Next(4);
+                float spawnX = 0, spawnY = 0;
 
                 switch (edge)
                 {
-                    case 0: spawnX = _rand.Next(this.ClientSize.Width); spawnY = -30; break;
-                    case 1: spawnX = this.ClientSize.Width + 30; spawnY = _rand.Next(this.ClientSize.Height); break;
-                    case 2: spawnX = _rand.Next(this.ClientSize.Width); spawnY = this.ClientSize.Height + 30; break;
-                    case 3: spawnX = -30; spawnY = _rand.Next(this.ClientSize.Height); break;
+                    case 0: spawnX = bX + (float)(_rand.NextDouble() - 0.5) * halfVW * 2; spawnY = bY - halfVH; break; // 上
+                    case 1: spawnX = bX + halfVW; spawnY = bY + (float)(_rand.NextDouble() - 0.5) * halfVH * 2; break; // 右
+                    case 2: spawnX = bX + (float)(_rand.NextDouble() - 0.5) * halfVW * 2; spawnY = bY + halfVH; break; // 下
+                    case 3: spawnX = bX - halfVW; spawnY = bY + (float)(_rand.NextDouble() - 0.5) * halfVH * 2; break; // 左
                 }
 
                 var monster = new Monster(spawnX, spawnY);
@@ -1064,12 +1173,8 @@ public partial class BattleForm : Form
                     CurrentWave++;
                     _waveTimer = 600; // 10秒后下一波
                     
-                    // 每次新增一波，地图整体增大一点
-                    this.Width += 30;
-                    this.Height += 20;
-                    // 保持窗口居中（简单处理）
-                    this.Left -= 15;
-                    this.Top -= 10;
+                    // 每新增一波，地图视野稍微扩大点，最高不超过 8.0 倍
+                    _worldViewFactor = Math.Min(8.0f, _worldViewFactor + 0.2f);
                 }
             }
         }
@@ -1095,6 +1200,10 @@ public partial class BattleForm : Form
 
         Gold = 2000;
         Minerals = 500;
+        CurrentWave = 1;
+        _worldViewFactor = 1.5f; // 初始化为远景
+        _panX = 0;
+        _panY = 0;
         CurrentWave = 1;
         _waveTimer = 600;
         _monstersToSpawnInWave = 0;
@@ -1203,6 +1312,178 @@ public partial class BattleForm : Form
 
         var size = g.MeasureString(waveText, waveFont);
         g.DrawString(waveText, waveFont, textBrush, (this.ClientSize.Width - size.Width) / 2, 6);
+    }
+
+    private void DrawMinimap(Graphics g)
+    {
+        int mapSize = 150;
+        int padding = 10;
+        int x = this.ClientSize.Width - mapSize - padding;
+        int y = 45;
+
+        // 背景
+        using var bgBrush = new SolidBrush(Color.FromArgb(150, 10, 10, 15));
+        g.FillRectangle(bgBrush, x, y, mapSize, mapSize);
+        using var borderPen = new Pen(Color.FromArgb(100, 200, 200, 255), 1);
+        g.DrawRectangle(borderPen, x, y, mapSize, mapSize);
+
+        // 小地图中心锚点
+        var baseBot = GetBaseRobot();
+        float bX = baseBot?.X ?? 0;
+        float bY = baseBot?.Y ?? 0;
+
+        // 小地图比例尺：使其初始能完美容纳视野
+        float miniRange = 1.2f * Math.Max(this.ClientSize.Width, this.ClientSize.Height) * _worldViewFactor;
+        float miniScale = mapSize / miniRange; 
+
+        // 绘制资源点
+        using var mineralBrush = new SolidBrush(Color.Cyan);
+        foreach (var m in _minerals)
+        {
+            if (!m.IsActive) continue;
+            float mx = x + mapSize / 2f + (m.X - bX) * miniScale;
+            float my = y + mapSize / 2f + (m.Y - bY) * miniScale;
+            if (mx >= x && mx <= x + mapSize && my >= y && my <= y + mapSize)
+                g.FillRectangle(mineralBrush, mx - 1, my - 1, 2, 2);
+        }
+
+        // 绘制怪物
+        using var monsterBrush = new SolidBrush(Color.Red);
+        foreach (var mon in _monsters)
+        {
+            if (!mon.IsActive || mon.IsDead) continue;
+            float mx = x + mapSize / 2f + (mon.X - bX) * miniScale;
+            float my = y + mapSize / 2f + (mon.Y - bY) * miniScale;
+            if (mx >= x && mx <= x + mapSize && my >= y && my <= y + mapSize)
+                g.FillRectangle(monsterBrush, mx - 1, my - 1, 3, 3);
+        }
+
+        // 绘制机器人
+        using var robotBrush = new SolidBrush(Color.Cyan);
+        foreach (var b in _robots)
+        {
+            if (!b.IsActive || b.IsDead) continue;
+            float mx = x + mapSize / 2f + (b.X - bX) * miniScale;
+            float my = y + mapSize / 2f + (b.Y - bY) * miniScale;
+            if (mx >= x && mx <= x + mapSize && my >= y && my <= y + mapSize)
+                g.FillRectangle(robotBrush, mx - 1, my - 1, 3, 3);
+        }
+
+        // 绘制基地 (大点)
+        if (baseBot != null)
+        {
+            g.FillRectangle(Brushes.White, x + mapSize / 2f - 3, y + mapSize / 2f - 3, 6, 6);
+        }
+
+        // 绘制当前窗口视野范围 (Viewport)
+        float worldViewW = this.ClientSize.Width * _worldViewFactor;
+        float worldViewH = this.ClientSize.Height * _worldViewFactor;
+        // 视野矩形在世界中的中心是 (bX + _panX*factor, bY + _panY*factor)
+        float viewCenterX = bX - (_panX * _worldViewFactor);
+        float viewCenterY = bY - (_panY * _worldViewFactor);
+        
+        float vX = x + mapSize / 2f + (viewCenterX - bX - worldViewW/2f) * miniScale;
+        float vY = y + mapSize / 2f + (viewCenterY - bY - worldViewH/2f) * miniScale;
+        float vW = worldViewW * miniScale;
+        float vH = worldViewH * miniScale;
+
+        using var viewPen = new Pen(Color.White, 1);
+        g.DrawRectangle(viewPen, vX, vY, vW, vH);
+    }
+
+    private void DrawZoomButtons(Graphics g)
+    {
+        int mapSize = 150;
+        int padding = 10;
+        int btnWidth = 30;
+        int startX = this.ClientSize.Width - mapSize - padding - btnWidth - 5;
+        int startY = 45;
+
+        using var bgBrush = new SolidBrush(Color.FromArgb(150, 40, 40, 50));
+        using var borderPen = new Pen(Color.FromArgb(150, 100, 100, 150), 1);
+        using var font = new Font("Impact", 15);
+
+        // [+] 按钮
+        g.FillRectangle(bgBrush, startX, startY, btnWidth, btnWidth);
+        g.DrawRectangle(borderPen, startX, startY, btnWidth, btnWidth);
+        g.DrawString("+", font, Brushes.White, startX + 5, startY + 2);
+
+        // [-] 按钮
+        g.FillRectangle(bgBrush, startX, startY + btnWidth + 5, btnWidth, btnWidth);
+        g.DrawRectangle(borderPen, startX, startY + btnWidth + 5, btnWidth, btnWidth);
+        g.DrawString("-", font, Brushes.White, startX + 7, startY + btnWidth + 6);
+    }
+
+    private bool IsOverMinimap(Point p)
+    {
+        int mapSize = 150;
+        int padding = 10;
+        int x = this.ClientSize.Width - mapSize - padding;
+        int y = 45;
+        return p.X >= x && p.X <= x + mapSize && p.Y >= y && p.Y <= y + mapSize;
+    }
+
+    private bool IsOverZoomButtons(Point p)
+    {
+        int mapSize = 150;
+        int padding = 10;
+        int btnWidth = 30;
+        int startX = this.ClientSize.Width - mapSize - padding - btnWidth - 5;
+        int startY = 45;
+        // [+]
+        if (p.X >= startX && p.X <= startX + btnWidth && p.Y >= startY && p.Y <= startY + btnWidth) return true;
+        // [-]
+        if (p.X >= startX && p.X <= startX + btnWidth && p.Y >= startY + btnWidth + 5 && p.Y <= startY + 2 * btnWidth + 5) return true;
+        return false;
+    }
+
+    private bool CheckZoomButtonClicked(Point p)
+    {
+        int mapSize = 150;
+        int padding = 10;
+        int btnWidth = 30;
+        int startX = this.ClientSize.Width - mapSize - padding - btnWidth - 5;
+        int startY = 45;
+
+        // [+] 放大
+        if (p.X >= startX && p.X <= startX + btnWidth && p.Y >= startY && p.Y <= startY + btnWidth)
+        {
+            _worldViewFactor = Math.Max(0.2f, _worldViewFactor * 0.8f);
+            return true;
+        }
+        // [-] 缩小 (限制在 1.5)
+        if (p.X >= startX && p.X <= startX + btnWidth && p.Y >= startY + btnWidth + 5 && p.Y <= startY + 2 * btnWidth + 5)
+        {
+            _worldViewFactor = Math.Min(1.5f, _worldViewFactor * 1.2f);
+            return true;
+        }
+        return false;
+    }
+
+    private bool CheckMinimapClicked(Point p)
+    {
+        int mapSize = 150;
+        int padding = 10;
+        int x = this.ClientSize.Width - mapSize - padding;
+        int y = 45;
+
+        if (p.X >= x && p.X <= x + mapSize && p.Y >= y && p.Y <= y + mapSize)
+        {
+            // 点击小地图平移相机
+            var baseBot = GetBaseRobot();
+            float bX = baseBot?.X ?? 0;
+            float bY = baseBot?.Y ?? 0;
+            float miniRange = 1.2f * Math.Max(this.ClientSize.Width, this.ClientSize.Height) * _worldViewFactor;
+            float miniScale = mapSize / miniRange;
+
+            float miniRelX = p.X - (x + mapSize / 2f);
+            float miniRelY = p.Y - (y + mapSize / 2f);
+
+            _panX = -(miniRelX / miniScale) / _worldViewFactor;
+            _panY = -(miniRelY / miniScale) / _worldViewFactor;
+            return true;
+        }
+        return false;
     }
 
     private void DrawGrid(Graphics g)
@@ -1433,11 +1714,7 @@ public partial class BattleForm : Form
                 Minerals -= cost;
                 _baseLevel++;
                 var b = GetBaseRobot();
-                if (b != null)
-                {
-                    b.MaxHP = 3000 + (_baseLevel - 1) * 1000;
-                    b.HP = b.MaxHP; // 升级顺便回满血
-                }
+                if (b != null) b.ApplyClassProperties(); // 内部已包含血量和体型更新
                 UpdateUI();
             }
         }, true));
@@ -1466,6 +1743,7 @@ public partial class BattleForm : Form
             {
                 Minerals -= cost;
                 _workerLevel++;
+                foreach (var r in _robots) if (r.ClassType == RobotClass.Worker) r.ApplyClassProperties();
                 UpdateUI();
             }
         }, true));
@@ -1491,6 +1769,7 @@ public partial class BattleForm : Form
             {
                 Minerals -= cost;
                 _healerLevel++;
+                foreach (var r in _robots) if (r.ClassType == RobotClass.Healer) r.ApplyClassProperties();
                 UpdateUI();
             }
         }, true));
@@ -1516,6 +1795,7 @@ public partial class BattleForm : Form
             {
                 Minerals -= cost;
                 _shooterLevel++;
+                foreach (var r in _robots) if (r.ClassType == RobotClass.Shooter) r.ApplyClassProperties();
                 UpdateUI();
             }
         }, true));
@@ -1541,6 +1821,7 @@ public partial class BattleForm : Form
             {
                 Minerals -= cost;
                 _guardianLevel++;
+                foreach (var r in _robots) if (r.ClassType == RobotClass.Guardian) r.ApplyClassProperties();
                 UpdateUI();
             }
         }, true));
@@ -1557,15 +1838,19 @@ public partial class BattleForm : Form
         }));
 
         this.Controls.Add(panel);
-        UpdateUpgradeToolTips(); // 初始化提示信息
+        UpdateUpgradeToolTips(); 
 
-        // 支持拖拽窗口
+        // 支持拖拽窗口 (除 UI 区域外)
         this.MouseDown += (s, e) =>
         {
             if (e.Button == MouseButtons.Left)
             {
-                ReleaseCapture();
-                SendMessage(Handle, WM_NCLBUTTONDOWN, HT_CAPTION, 0);
+                // 排除 UI 区域点击，优先给游戏逻辑处理
+                if (!IsOverMinimap(e.Location) && !IsOverZoomButtons(e.Location))
+                {
+                    ReleaseCapture();
+                    SendMessage(Handle, WM_NCLBUTTONDOWN, HT_CAPTION, 0);
+                }
             }
         };
     }
@@ -1603,25 +1888,61 @@ public partial class BattleForm : Form
         if (panel == null) return;
 
         if (panel.Controls["UpgBase"] is Button uB)
-            _upgradeToolTip.SetToolTip(uB, $"【基地升级 Lv.{_baseLevel}】\n- 当前最大生命: {3000 + (_baseLevel - 1) * 1000}\n- 防御波伤害: {35 + (_baseLevel - 1) * 15}\n- 下级效果: 生命上限+1000，伤害提高，升级瞬间回满血");
+        {
+            int nextHP = 3000 + _baseLevel * 1000;
+            int currentDmg = 35 + (_baseLevel - 1) * 15;
+            _upgradeToolTip.SetToolTip(uB, $"【基地升级】(当前 Lv.{_baseLevel})\n" +
+                $"- 最大生命: {3000 + (_baseLevel - 1) * 1000}\n" +
+                $"- 防御波伤害: {currentDmg}\n" +
+                $"- 下级预览: 生命 → {nextHP}, 伤害 → {currentDmg + 15}\n" +
+                $"- 额外效果: 升级时瞬间补满全部生命值。");
+        }
 
         if (panel.Controls["UpgWorker"] is Button uW)
-            _upgradeToolTip.SetToolTip(uW, $"【采集工升级 Lv.{_workerLevel}】\n- 当前生命加成: +{(_workerLevel - 1) * 20}%\n- 下级效果: 新老采集者生命上限提升20%");
+            _upgradeToolTip.SetToolTip(uW, $"【采集工升级】(当前 Lv.{_workerLevel})\n" +
+                $"- 生命上限加成: +{(_workerLevel - 1) * 20}%\n" +
+                $"- 下级预览: 全体采集工生命上限再提升 20%");
 
         if (panel.Controls["UpgHealer"] is Button uH)
-            _upgradeToolTip.SetToolTip(uH, $"【治疗者升级 Lv.{_healerLevel}】\n- 当前单次治疗: {20 + (_healerLevel - 1) * 5}\n- 下级效果: 提升所有医疗兵的治疗量");
+            _upgradeToolTip.SetToolTip(uH, $"【治疗者升级】(当前 Lv.{_healerLevel})\n" +
+                $"- 单次治疗量: {20 + (_healerLevel - 1) * 5}\n" +
+                $"- 治疗频率: 2.0 次/秒\n" +
+                $"- 下级预览: 治疗量提高至 {25 + (_healerLevel - 1) * 5}");
 
         if (panel.Controls["UpgShooter"] is Button uS)
-            _upgradeToolTip.SetToolTip(uS, $"【攻击者升级 Lv.{_shooterLevel}】\n- 当前生命加成: +{(_shooterLevel - 1) * 20}%\n- 下级效果: 提升游侠20%基础生命上限");
+        {
+            float fireRate = 60.0f / Math.Max(12, 40 - _shooterLevel * 3);
+            int projectiles = 1 + (_shooterLevel - 1) / 3;
+            _upgradeToolTip.SetToolTip(uS, $"【游侠升级】(当前 Lv.{_shooterLevel})\n" +
+                $"- 射击频率: {fireRate:F1} 发/秒\n" +
+                $"- 弹幕数量: {projectiles} 枚/轮\n" +
+                $"- 伤害加成: +{(_shooterLevel - 1) * 25}%\n" +
+                $"- 特殊解锁: {GetShooterUnlockInfo(_shooterLevel)}");
+        }
 
         if (panel.Controls["UpgGuardian"] is Button uG)
-            _upgradeToolTip.SetToolTip(uG, $"【守卫者升级 Lv.{_guardianLevel}】\n- 当前冲撞伤害: {(int)(40 * (1 + (_guardianLevel - 1) * 0.2f))}\n- 下级效果: 提升守护者20%的技能伤害");
+            _upgradeToolTip.SetToolTip(uG, $"【守卫者升级】(当前 Lv.{_guardianLevel})\n" +
+                $"- 冲撞伤害: {(int)(40 * (1 + (_guardianLevel - 1) * 0.25f))}\n" +
+                $"- 保护半径: 150 像素\n" +
+                $"- 下级预览: 冲撞伤害提升 25%");
             
-        // 购买按钮也可以加提示
-        if (panel.Controls["BuyWorker"] is Button bW) _upgradeToolTip.SetToolTip(bW, "招募一名采集工，负责收集地图上的蓝色矿石。");
-        if (panel.Controls["BuyHealer"] is Button bH) _upgradeToolTip.SetToolTip(bH, "招募一名医疗兵，自动为周围受伤的队友（优先基地）回血。");
-        if (panel.Controls["BuyShooter"] is Button bS) _upgradeToolTip.SetToolTip(bS, "招募一名远程游侠，配备激光武器自动攻击怪物。");
-        if (panel.Controls["BuyGuardian"] is Button bG) _upgradeToolTip.SetToolTip(bG, "招募一名重装守卫，在基地附近巡逻并撞开靠近的敌人。");
+        // 购买按钮提示
+        if (panel.Controls["BuyWorker"] is Button bW) _upgradeToolTip.SetToolTip(bW, "【工程单位】不具备攻击力，自动采集蓝色矿石（Minerals）。");
+        if (panel.Controls["BuyHealer"] is Button bH) _upgradeToolTip.SetToolTip(bH, "【后勤单位】极速回血，优先保护基地与濒危队友。");
+        if (panel.Controls["BuyShooter"] is Button bS) _upgradeToolTip.SetToolTip(bS, "【输出主力】全自动武器系统，随等级提升解锁更多弹药。");
+        if (panel.Controls["BuyGuardian"] is Button bG) _upgradeToolTip.SetToolTip(bG, "【重型肉盾】高伤害近战冲撞，将敌人从基地身边无情击退。");
+    }
+
+    private string GetShooterUnlockInfo(int level)
+    {
+        if (level < 2) return "Lv.2 解锁【火箭弹】";
+        if (level < 3) return "Lv.3 解锁【高能激光】";
+        if (level < 4) return "Lv.4 解锁【等离子炮】";
+        if (level < 5) return "Lv.5 解锁【自动制导】";
+        if (level < 6) return "Lv.6 解锁【重型加农炮】";
+        if (level < 8) return "Lv.8 解锁【连锁闪电】";
+        if (level < 10) return "Lv.10 解锁【末日陨石】";
+        return "已解锁终极火力形态";
     }
 
     /// <summary>
