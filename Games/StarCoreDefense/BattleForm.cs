@@ -2097,244 +2097,216 @@ public partial class BattleForm : Form
 
         if (robot.ClassType == RobotClass.Base)
         {
-            // 绘制基地的特殊外观
-            using var baseBodyBrush = new SolidBrush(robot.PrimaryColor);
-            using var baseDarkBrush = new SolidBrush(robot.SecondaryColor);
-
-            // 底座
-            g.FillRectangle(baseDarkBrush, x - 5, y + size - 10, size + 10, 15);
-            // 主体
-            g.FillRectangle(baseBodyBrush, x, y, size, size);
-            // 核心发光
-            using (var baseCoreBrush = new SolidBrush(Color.Cyan))
-            {
-                float basePulse = 1 + (float)Math.Sin(Environment.TickCount / 200.0) * 0.2f;
-                g.FillEllipse(baseCoreBrush, centerX - 10 * basePulse, centerY - 10 * basePulse, 20 * basePulse, 20 * basePulse);
-            }
-
-            // 不绘制眼睛和触手，直接画名字和血条等
+            DrawBaseAppearance(g, robot, x, y, size, centerX, centerY);
         }
         else
         {
-            // 触手
-            DrawTentacles(g, robot, centerX, centerY);
+            using var shadowBrush = new SolidBrush(Color.FromArgb(50, 0, 0, 0));
+            g.FillEllipse(shadowBrush, x, y + size * 0.2f, size, size);
 
-            // 身体
-            using var bodyBrush = new SolidBrush(robot.PrimaryColor);
-            using var darkBrush = new SolidBrush(robot.SecondaryColor);
-            g.FillEllipse(bodyBrush, x, y, size, size);
-            for (int dx = -8; dx <= 8; dx += 4)
+            Draw3DOrbiters(g, robot, centerX, centerY, size, true);
+
+            switch (robot.ClassType)
             {
-                for (int dy = -8; dy <= 8; dy += 4)
-                {
-                    if (dx * dx + dy * dy <= 64 && (dx != 0 || dy != 0))
-                    {
-                        g.FillRectangle(darkBrush, x + size / 2 + dx, y + size / 2 + dy, 4, 4);
-                    }
-                }
+                case RobotClass.Worker: DrawWorkerAppearance(g, robot, x, y, size, centerX, centerY); break;
+                case RobotClass.Shooter: DrawShooterAppearance(g, robot, x, y, size, centerX, centerY); break;
+                case RobotClass.Healer: DrawHealerAppearance(g, robot, x, y, size, centerX, centerY); break;
+                case RobotClass.Guardian: DrawGuardianAppearance(g, robot, x, y, size, centerX, centerY); break;
+                default: DrawDefaultAppearance(g, robot, x, y, size, centerX, centerY); break;
             }
 
-            // 核心
-            using var coreBrush = new SolidBrush(Color.White);
-            float pulse = 1 + (float)Math.Sin(Environment.TickCount / 200.0) * 0.2f;
-            g.FillEllipse(coreBrush, centerX - 4 * pulse, centerY + 2 - 3 * pulse, 8 * pulse, 6 * pulse);
-
-            // 眼睛
-            DrawEyes(g, robot, centerX, centerY);
-
-            // 天线
-            DrawAntennas(g, robot, centerX, centerY);
+            Draw3DOrbiters(g, robot, centerX, centerY, size, false);
         }
 
-        // --- 血条优化显示 ---
-        if (!robot.IsDead)
+        DrawRobotHealthBar(g, robot, x, y, size);
+        if (robot.SpecialState == "SHAKING" && robot.DuelTarget != null) DrawDuelEffect(g, robot, centerX, centerY);
+    }
+
+    private void DrawRobotHealthBar(Graphics g, Robot robot, float x, float y, float size)
+    {
+        if (robot.IsDead) return;
+        if (robot.ClassType == RobotClass.Base)
         {
-            if (robot.ClassType == RobotClass.Base)
-            {
-                // 基地专用华丽血条 (始终显示)
-                float barWidth = 140; 
-                float barHeight = 12;
-                float barX = x + (size - barWidth) / 2;
-                float barY = y - 30;
-
-                // 背景（半透明底框）
-                using (var bgBrush = new SolidBrush(Color.FromArgb(180, 20, 20, 25)))
-                {
-                    g.FillRectangle(bgBrush, barX, barY, barWidth, barHeight);
-                }
-
-                // 核心血量（能量绿色，危机红色）
-                float hpPercent = (float)robot.HP / robot.MaxHP;
-                Color hpColor = (hpPercent > 0.3f) ? Color.FromArgb(0, 255, 127) : Color.FromArgb(255, 60, 60);
-                using (var hpBrush = new SolidBrush(hpColor))
-                {
-                    g.FillRectangle(hpBrush, barX + 2, barY + 2, (barWidth - 4) * Math.Clamp(hpPercent, 0, 1), barHeight - 4);
-                }
-
-                // 外部高对比边框
-                using (var borderPen = new Pen(Color.White, 2))
-                {
-                    g.DrawRectangle(borderPen, barX, barY, barWidth, barHeight);
-                }
-
-                // 数值文本 (带有阴影)
-                using (var font = new Font("Consolas", 9, FontStyle.Bold))
-                {
-                    string hpText = $"{robot.HP} / {robot.MaxHP}";
-                    var textSize = g.MeasureString(hpText, font);
-                    g.DrawString(hpText, font, Brushes.Black, barX + (barWidth - textSize.Width) / 2 + 1, barY - 14 + 1);
-                    g.DrawString(hpText, font, Brushes.White, barX + (barWidth - textSize.Width) / 2, barY - 14);
-                }
-            }
-            else if (robot.HP < robot.MaxHP)
-            {
-                // 普通机器人或小弟的精致血条 (受伤即显)
-                float barWidth = size * 0.9f;
-                float barHeight = 4;
-                float barX = x + (size - barWidth) / 2;
-                float barY = y - 8;
-
-                using var bgBrush = new SolidBrush(Color.FromArgb(150, 50, 50, 50));
-                g.FillRectangle(bgBrush, barX, barY, barWidth, barHeight);
-
-                float hpPercent = (float)robot.HP / robot.MaxHP;
-                Color hpColor = hpPercent > 0.5 ? Color.LimeGreen : (hpPercent > 0.2 ? Color.Gold : Color.Red);
-                using var hpBrush = new SolidBrush(hpColor);
-                g.FillRectangle(hpBrush, barX, barY, barWidth * Math.Clamp(hpPercent, 0, 1), barHeight);
+            float bw = 140, bh = 12, bx = x + (size - bw) / 2, by = y - 30;
+            using (var bgb = new SolidBrush(Color.FromArgb(180, 20, 20, 25))) g.FillRectangle(bgb, bx, by, bw, bh);
+            float pct = (float)robot.HP / robot.MaxHP, hpp = Math.Clamp(pct, 0, 1);
+            Color hpc = (pct > 0.3f) ? Color.FromArgb(0, 255, 127) : Color.FromArgb(255, 60, 60);
+            using (var hpb = new SolidBrush(hpc)) g.FillRectangle(hpb, bx + 2, by + 2, (bw - 4) * hpp, bh - 4);
+            using (var p = new Pen(Color.White, 2)) g.DrawRectangle(p, bx, by, bw, bh);
+            using (var f = new Font("Consolas", 9, FontStyle.Bold)) {
+                string txt = $"{robot.HP}/{robot.MaxHP}";
+                var sz = g.MeasureString(txt, f);
+                g.DrawString(txt, f, Brushes.Black, bx + (bw - sz.Width) / 2 + 1, by - 14 + 1);
+                g.DrawString(txt, f, Brushes.White, bx + (bw - sz.Width) / 2, by - 14);
             }
         }
-
-        // 名字
-        if (!string.IsNullOrEmpty(robot.Name))
+        else if (robot.HP < robot.MaxHP)
         {
-            using var font = new Font("Consolas", 8, FontStyle.Bold);
-            using var brush = new SolidBrush(Color.White);
-            using var shadowBrush = new SolidBrush(Color.Black);
-            float textX = centerX;
-            float textY = y - 15;
-
-            g.DrawString(robot.Name, font, shadowBrush, textX + 1, textY + 1, new StringFormat { Alignment = StringAlignment.Center });
-            g.DrawString(robot.Name, font, brush, textX, textY, new StringFormat { Alignment = StringAlignment.Center });
-        }
-
-        // 伤害数字
-        if (robot.DamageTextTimer > 0 && !string.IsNullOrEmpty(robot.LastDamageText))
-        {
-            float alpha = Math.Min(1.0f, robot.DamageTextTimer / 30f);
-            using var font = new Font("Impact", 14, FontStyle.Bold);
-            using var brush = new SolidBrush(Color.FromArgb((int)(alpha * 255), Color.OrangeRed));
-            using var shadowBrush = new SolidBrush(Color.FromArgb((int)(alpha * 255), Color.Black));
-
-            float textY = y - 30 - (45 - robot.DamageTextTimer) * 1.5f;
-            g.DrawString(robot.LastDamageText, font, shadowBrush, centerX + 1, textY + 1, new StringFormat { Alignment = StringAlignment.Center });
-            g.DrawString(robot.LastDamageText, font, brush, centerX, textY, new StringFormat { Alignment = StringAlignment.Center });
-        }
-
-        // 激光
-        if (robot.IsFiringLaser)
-        {
-            DrawLaserAttack(g, robot, centerX, centerY);
-        }
-
-        // 格斗特效
-        if (robot.SpecialState == "SHAKING" && robot.DuelTimer > 0 && robot.DuelTarget != null)
-        {
-            DrawDuelEffect(g, robot, centerX, centerY);
+            float bw = size * 0.9f, bh = 4, bx = x + (size - bw) / 2, by = y - 8;
+            using var bgb = new SolidBrush(Color.FromArgb(150, 50, 50, 50)); g.FillRectangle(bgb, bx, by, bw, bh);
+            using var hpb = new SolidBrush(robot.PrimaryColor); g.FillRectangle(hpb, bx, by, bw * Math.Clamp((float)robot.HP / robot.MaxHP, 0, 1), bh);
         }
     }
 
-    private void DrawEyes(Graphics g, Robot robot, float cx, float cy)
+    private void Draw3DOrbiters(Graphics g, Robot robot, float cx, float cy, float size, bool backLayer)
     {
-        float eyeY = cy - 5;
-        float leftEyeX = cx - 8;
-        float rightEyeX = cx + 8;
-
-        using var eyeWhiteBrush = new SolidBrush(Color.White);
-        using var eyeBrush = new SolidBrush(robot.EyeColor);
-        using var pupilBrush = new SolidBrush(Color.Black);
-
-        // 左眼
-        g.FillEllipse(eyeWhiteBrush, leftEyeX, eyeY, 10, 8);
-        g.FillEllipse(eyeBrush, leftEyeX + 1, eyeY + 1, 6, 6);
-        g.FillRectangle(pupilBrush, leftEyeX + 2, eyeY, 2, 4);
-
-        // 右眼
-        g.FillEllipse(eyeWhiteBrush, rightEyeX, eyeY, 10, 8);
-        g.FillEllipse(eyeBrush, rightEyeX + 1, eyeY + 1, 6, 6);
-        g.FillRectangle(pupilBrush, rightEyeX + 2, eyeY, 2, 4);
-    }
-
-    private void DrawAntennas(Graphics g, Robot robot, float cx, float cy)
-    {
-        using var antennaBrush = new SolidBrush(robot.SecondaryColor);
-
-        // 左天线
-        g.FillRectangle(antennaBrush, cx - 6 - 2, cy - 6, 2, 12);
-        g.FillRectangle(antennaBrush, cx - 6 / 2 - 2, cy - 12 - 2, 4, 4);
-
-        // 右天线
-        g.FillRectangle(antennaBrush, cx + 6, cy - 6, 2, 12);
-        g.FillRectangle(antennaBrush, cx + 6 / 2 - 2, cy - 12 - 2, 4, 4);
-    }
-
-    private void DrawTentacles(Graphics g, Robot robot, float cx, float cy)
-    {
-        using var tentacleBrush = new SolidBrush(robot.SecondaryColor);
-
-        for (int i = 0; i < 8; i++)
-        {
-            float angle = (float)(i * Math.PI / 4 + robot.TentacleOffsets[i] * 0.1);
-            float startX = cx + (float)Math.Cos(angle) * 15;
-            float startY = cy + (float)Math.Sin(angle) * 15;
-            float wave = (float)Math.Sin(robot.TentacleOffsets[i] + i) * 5;
-            float endX = startX + (float)Math.Cos(angle) * (20 + wave);
-            float endY = startY + (float)Math.Sin(angle) * (20 + wave);
-
-            g.FillRectangle(tentacleBrush, endX - 2, endY - 2, 4, 4);
+        int count = 6;
+        float radius = size * 0.8f, tilt = 0.4f, speed = 1.0f;
+        string type = "SPARK";
+        switch(robot.ClassType) {
+            case RobotClass.Worker: radius = size * 0.5f; speed = 3.0f; type = "DRILL"; break;
+            case RobotClass.Shooter: radius = size * 0.8f; speed = 2.0f; type = "SHELL"; break;
+            case RobotClass.Healer: radius = size * 1.0f; speed = 1.2f; type = "NANO"; break;
+            case RobotClass.Guardian: radius = size * 1.0f; speed = 0.6f; type = "PLATE"; break;
+        }
+        for (int i = 0; i < count; i++) {
+            float ang = (Environment.TickCount/1000f) * speed + (float)(i * Math.PI * 2 / count);
+            float bx = (float)(Math.Sin(ang) * radius), by = (float)(Math.Cos(ang) * radius * tilt), z = (float)Math.Cos(ang);
+            if (backLayer && z > 0) continue; if (!backLayer && z <= 0) continue;
+            float ps = 4 + z * 2, alpha = 150 + z * 100;
+            using var br = new SolidBrush(Color.FromArgb((int)Math.Clamp(alpha, 0, 255), robot.PrimaryColor));
+            if (type == "NANO") {
+                g.FillRectangle(Brushes.LimeGreen, cx + bx - 1, cy + by - 1, 3, 3);
+                if (Environment.TickCount % 500 < 100) g.DrawLine(Pens.White, cx+bx-3, cy+by, cx+bx+3, cy+by);
+            } else g.FillEllipse(br, cx + bx - ps/2, cy + by - ps/2, ps, ps);
         }
     }
+
+    private void DrawBaseAppearance(Graphics g, Robot robot, float x, float y, float size, float cx, float cy)
+    {
+        DrawBaseCubicOrbit(g, cx, cy, size, true);
+        using var bodyBrush = new SolidBrush(robot.PrimaryColor);
+        using var darkBrush = new SolidBrush(robot.SecondaryColor);
+        g.FillRectangle(darkBrush, x - 15, y + size - 5, size + 30, 15);
+        g.FillRectangle(bodyBrush, x - 5, y + size - 12, size + 10, 8);
+        PointF[] pts = { new PointF(x, y+size), new PointF(x+size*0.2f, y+size*0.3f), new PointF(x+size*0.8f, y+size*0.3f), new PointF(x+size, y+size) };
+        g.FillPolygon(bodyBrush, pts); g.DrawPolygon(Pens.Cyan, pts);
+        float hov = (float)Math.Sin(Environment.TickCount / 500.0) * 5;
+        g.FillRectangle(darkBrush, x + size * 0.15f, y + hov, size * 0.7f, size * 0.4f);
+        g.FillEllipse(Brushes.White, cx - 8, cy - 8, 16, 16);
+        DrawBaseCubicOrbit(g, cx, cy, size, false);
+    }
+
+    private void DrawBaseCubicOrbit(Graphics g, float cx, float cy, float size, bool backLayer)
+    {
+        float time = Environment.TickCount / 1500f, radius = size * 1.2f;
+        for (int i = 0; i < 12; i++) {
+            float ang = time + (float)(i * Math.PI * 2 / 12), tilt = (float)Math.Sin(time * 0.5f) * 0.3f;
+            float x = (float)(Math.Cos(ang) * radius), y = (float)(Math.Sin(ang) * radius * tilt), z = (float)Math.Sin(ang);
+            if (backLayer && z > 0) continue; if (!backLayer && z <= 0) continue;
+            float ps = 6 + z * 3; Color c = backLayer ? Color.DarkBlue : Color.Cyan;
+            using var br = new SolidBrush(Color.FromArgb(150 + (int)(z*100), c));
+            g.FillRectangle(br, cx + x - ps/2, cy + y - ps/2, ps, ps);
+            g.DrawRectangle(Pens.White, cx + x - ps/2, cy + y - ps/2, ps, ps);
+        }
+    }
+    private void DrawWorkerAppearance(Graphics g, Robot robot, float x, float y, float size, float cx, float cy)
+    {
+        using var bodyBrush = new SolidBrush(robot.PrimaryColor);
+        using var darkBrush = new SolidBrush(robot.SecondaryColor);
+        g.FillEllipse(bodyBrush, x, y, size, size);
+        g.FillEllipse(darkBrush, x + size * 0.2f, y + size * 0.2f, size * 0.6f, size * 0.6f);
+        float rot = Environment.TickCount / 100.0f;
+        float ax = cx + (float)Math.Cos(rot) * (size * 0.6f), ay = cy + (float)Math.Sin(rot) * (size * 0.6f);
+        using var p = new Pen(robot.PrimaryColor, 3); g.DrawLine(p, cx, cy, ax, ay);
+        g.FillEllipse(Brushes.Yellow, ax - 3, ay - 3, 6, 6);
+        DrawEyes(g, robot, cx, cy, 3);
+    }
+
+    private void DrawShooterAppearance(Graphics g, Robot robot, float x, float y, float size, float cx, float cy)
+    {
+        using var bodyBrush = new SolidBrush(robot.PrimaryColor);
+        using var darkBrush = new SolidBrush(robot.SecondaryColor);
+        PointF[] pts = { new PointF(cx, y), new PointF(x + size, cy), new PointF(cx, y + size), new PointF(x, cy) };
+        g.FillPolygon(bodyBrush, pts); g.FillRectangle(darkBrush, cx - 2, cy - 2, 4, 4);
+        float ang = (float)Math.Atan2(robot.Dy, robot.Dx);
+        if (robot.MonsterTarget != null) ang = (float)Math.Atan2(robot.MonsterTarget.Y - cy, robot.MonsterTarget.X - cx);
+        for (int i = -1; i <= 1; i += 2) {
+            float ba = ang + i * 0.3f, bx = cx + (float)Math.Cos(ba) * (size * 0.7f), by = cy + (float)Math.Sin(ba) * (size * 0.7f);
+            using var bp = new Pen(Color.Gray, 4); g.DrawLine(bp, cx, cy, bx, by);
+        }
+        DrawVisor(g, cx, cy, size, ang);
+    }
+
+    private void DrawHealerAppearance(Graphics g, Robot robot, float x, float y, float size, float cx, float cy)
+    {
+        using var bodyBrush = new SolidBrush(robot.PrimaryColor);
+        using var darkBrush = new SolidBrush(robot.SecondaryColor);
+        g.FillEllipse(bodyBrush, x, y, size, size);
+        float pulse = 0.5f + (float)Math.Sin(Environment.TickCount / 200.0) * 0.5f;
+        using var pb = new SolidBrush(Color.FromArgb((int)(100 * pulse), Color.LimeGreen));
+        g.FillEllipse(pb, x - 5, y - 5, size + 10, size + 10);
+        using var cb = new SolidBrush(Color.White);
+        g.FillRectangle(cb, cx - 2, cy - 8, 4, 16); g.FillRectangle(cb, cx - 8, cy - 2, 16, 4);
+        for (int i = 0; i < 2; i++) {
+            float rot = Environment.TickCount / 500.0f + i * (float)Math.PI;
+            float sx = cx + (float)Math.Cos(rot) * (size * 0.8f), sy = cy + (float)Math.Sin(rot) * (size * 0.8f);
+            g.FillEllipse(Brushes.LimeGreen, sx - 3, sy - 3, 6, 6);
+        }
+    }
+
+    private void DrawGuardianAppearance(Graphics g, Robot robot, float x, float y, float size, float cx, float cy)
+    {
+        using var bodyBrush = new SolidBrush(robot.PrimaryColor);
+        using var darkBrush = new SolidBrush(robot.SecondaryColor);
+        PointF[] hex = new PointF[6];
+        for (int i = 0; i < 6; i++) {
+            float a = i * (float)Math.PI / 3;
+            hex[i] = new PointF(cx + (float)Math.Cos(a) * (size / 2f), cy + (float)Math.Sin(a) * (size / 2f));
+        }
+        g.FillPolygon(bodyBrush, hex); using var bp = new Pen(darkBrush, 2); g.DrawPolygon(bp, hex);
+        g.FillRectangle(darkBrush, x - 4, cy - 4, 8, 8); g.FillRectangle(darkBrush, x + size - 4, cy - 4, 8, 8);
+        float ang = (float)Math.Atan2(robot.Dy, robot.Dx);
+        float sa = (float)(ang * 180 / Math.PI - 45);
+        using var sp = new Pen(Color.FromArgb(150, robot.SecondaryColor), 5);
+        g.DrawArc(sp, x - 10, y - 10, size + 20, size + 20, sa, 90);
+        DrawEyes(g, robot, cx, cy, 2);
+    }
+
+    private void DrawDefaultAppearance(Graphics g, Robot robot, float x, float y, float size, float cx, float cy)
+    {
+        using var bodyBrush = new SolidBrush(robot.PrimaryColor); g.FillEllipse(bodyBrush, x, y, size, size);
+        DrawEyes(g, robot, cx, cy, 4);
+    }
+
+    private void DrawVisor(Graphics g, float cx, float cy, float size, float angle)
+    {
+        float vx = cx + (float)Math.Cos(angle) * (size * 0.2f), vy = cy + (float)Math.Sin(angle) * (size * 0.2f);
+        using var vb = new SolidBrush(Color.FromArgb(200, Color.Red));
+        g.FillRectangle(Brushes.Black, vx - 8, vy - 2, 16, 4); g.FillRectangle(vb, vx - 6, vy - 1, 12, 2);
+    }
+
+    private void DrawEyes(Graphics g, Robot robot, float cx, float cy, float ps)
+    {
+        float ey = cy - 2, lx = cx - ps * 1.5f, rx = cx + ps * 0.5f;
+        using var eb = new SolidBrush(robot.EyeColor);
+        g.FillEllipse(Brushes.White, lx, ey, ps, ps * 0.8f); g.FillEllipse(Brushes.White, rx, ey, ps, ps * 0.8f);
+        g.FillEllipse(eb, lx + ps * 0.2f, ey + ps * 0.2f, ps * 0.6f, ps * 0.6f);
+        g.FillEllipse(eb, rx + ps * 0.2f, ey + ps * 0.2f, ps * 0.6f, ps * 0.6f);
+    }
+
+    private void DrawEyes(Graphics g, Robot robot, float cx, float cy) => DrawEyes(g, robot, cx, cy, 5);
+
+    private void DrawAntennas(Graphics g, Robot robot, float cx, float cy) { }
+    private void DrawTentacles(Graphics g, Robot robot, float cx, float cy) { }
 
     private void DrawLaserAttack(Graphics g, Robot robot, float cx, float cy)
     {
-        // 只有没有激光目标时才返回
         if (!robot.IsFiringLaser) return;
-
-        float targetCx = robot.LaserTargetX;
-        float targetCy = robot.LaserTargetY;
-
-        using var laserPen = new Pen(robot.PrimaryColor, 4);
-        using var corePen = new Pen(Color.White, 2);
-
-        g.DrawLine(laserPen, cx, cy, targetCx, targetCy);
-        g.DrawLine(corePen, cx, cy, targetCx, targetCy);
-
-        using var startGlow = new SolidBrush(Color.FromArgb(100, 255, 100, 100));
-        g.FillEllipse(startGlow, cx - 8, cy - 8, 16, 16);
-
-        using var hitGlow = new SolidBrush(Color.FromArgb(150, 255, 200, 200));
-        g.FillEllipse(hitGlow, targetCx - 6, targetCy - 6, 12, 12);
+        float tcx = robot.LaserTargetX, tcy = robot.LaserTargetY;
+        using var lp = new Pen(robot.PrimaryColor, 4); using var cp = new Pen(Color.White, 2);
+        g.DrawLine(lp, cx, cy, tcx, tcy); g.DrawLine(cp, cx, cy, tcx, tcy);
+        using var sg = new SolidBrush(Color.FromArgb(100, 255, 100, 100)); g.FillEllipse(sg, cx - 8, cy - 8, 16, 16);
+        using var hg = new SolidBrush(Color.FromArgb(150, 255, 200, 200)); g.FillEllipse(hg, tcx - 6, tcy - 6, 12, 12);
     }
 
     private void DrawDuelEffect(Graphics g, Robot robot, float cx, float cy)
     {
         if (robot.DuelTarget == null) return;
-
-        float targetCx = robot.DuelTarget.X + robot.DuelTarget.Size / 2;
-        float targetCy = robot.DuelTarget.Y + robot.DuelTarget.Size / 2;
-
-        using var duelPen = new Pen(Color.FromArgb(180, 255, 100, 100), 3);
-        duelPen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
-        g.DrawLine(duelPen, cx, cy, targetCx, targetCy);
-
-        float midX = (cx + targetCx) / 2;
-        float midY = (cy + targetCy) / 2;
-
-        using var glowBrush = new SolidBrush(Color.FromArgb(120, 255, 200, 100));
-        g.FillEllipse(glowBrush, midX - 10, midY - 10, 20, 20);
+        float tcx = robot.DuelTarget.X + robot.DuelTarget.Size / 2, tcy = robot.DuelTarget.Y + robot.DuelTarget.Size / 2;
+        using var dp = new Pen(Color.FromArgb(180, 255, 100, 100), 3); dp.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
+        g.DrawLine(dp, cx, cy, tcx, tcy);
+        float mx = (cx + tcx) / 2, my = (cy + tcy) / 2;
+        using var gb = new SolidBrush(Color.FromArgb(120, 255, 200, 100)); g.FillEllipse(gb, mx - 10, my - 10, 20, 20);
     }
 }
-
-
-
-
-
