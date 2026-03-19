@@ -202,12 +202,6 @@ public class Monster
         // 应用速度
         X += Dx;
         Y += Dy;
-
-        // 边界限制
-        if (X < 0) { X = 0; Dx = -Dx * 0.8f; }
-        if (X > screenWidth - Size) { X = screenWidth - Size; Dx = -Dx * 0.8f; }
-        if (Y < 0) { Y = 0; Dy = -Dy * 0.8f; }
-        if (Y > screenHeight - Size) { Y = screenHeight - Size; Dy = -Dy * 0.8f; }
     }
 
     public void OnHit(Projectile proj)

@@ -75,6 +75,7 @@ public partial class BattleForm : Form
     private float _worldViewFactor = 1.0f; 
     private float _panX = 0;
     private float _panY = 0;
+    private float _totalMapRange = 1500; // 初始地图实际跨度 (半径)
     private bool _isDragging = false;
     private bool _isDraggingMinimap = false;
     private bool _isSpaceDown = false;
@@ -568,18 +569,23 @@ public partial class BattleForm : Form
     private void DrawWorldGrid(Graphics g, float centerX, float centerY)
     {
         using var pen = new Pen(Color.FromArgb(40, 40, 60), 1);
+        using var borderPen = new Pen(Color.FromArgb(80, 80, 100), 2); // 地图边缘提示
         int gridSize = 50;
-        int range = (int)(2000 * _worldViewFactor); 
+        float range = _totalMapRange; 
 
-        int startX = (int)(centerX - range) / gridSize * gridSize;
+        // 以传入的中心点(基地)为核心绘制网格
+        int startX = (int)(centerX - range);
         int endX = (int)(centerX + range);
-        int startY = (int)(centerY - range) / gridSize * gridSize;
+        int startY = (int)(centerY - range);
         int endY = (int)(centerY + range);
 
         for (int x = startX; x <= endX; x += gridSize)
             g.DrawLine(pen, x, startY, x, endY);
         for (int y = startY; y <= endY; y += gridSize)
             g.DrawLine(pen, startX, y, endX, y);
+            
+        // 绘制地图边界框
+        g.DrawRectangle(borderPen, startX, startY, endX - startX, endY - startY);
     }
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -815,7 +821,9 @@ public partial class BattleForm : Form
 
     private void BattleForm_MouseWheel(object? sender, MouseEventArgs e)
     {
-        // 放大倍率限制为 0.2 (极端细节)；缩小倍率限制为 1.5 (全图)
+        float oldFactor = _worldViewFactor;
+        
+        // 缩放逻辑 (限制在 0.2x 到 1.5x)
         if (e.Delta > 0)
         {
             _worldViewFactor = Math.Max(0.2f, _worldViewFactor * 0.9f); // 放大
@@ -824,6 +832,10 @@ public partial class BattleForm : Form
         {
             _worldViewFactor = Math.Min(1.5f, _worldViewFactor * 1.1f); // 缩小
         }
+
+        // 调整 _panX 和 _panY 使得世界中心保持原处： pan2 = pan1 * (f1 / f2)
+        _panX = _panX * (oldFactor / _worldViewFactor);
+        _panY = _panY * (oldFactor / _worldViewFactor);
     }
 
     private void BattleForm_KeyUp(object? sender, KeyEventArgs e)
@@ -1127,22 +1139,35 @@ public partial class BattleForm : Form
             _spawnInterval--;
             if (_spawnInterval <= 0)
             {
-                // 在地图视野边缘外围生成怪物 (基于世界坐标)
+                // 获取基地参考点
                 var baseB = GetBaseRobot();
-                float bX = baseB?.X + baseB?.Size/2 ?? 0;
-                float bY = baseB?.Y + baseB?.Size/2 ?? 0;
-                float halfVW = (this.ClientSize.Width / 2f) * _worldViewFactor + 50;
-                float halfVH = (this.ClientSize.Height / 2f) * _worldViewFactor + 50;
+                float bX = baseB?.X + baseB?.Size / 2 ?? 0;
+                float bY = baseB?.Y + baseB?.Size / 2 ?? 0;
 
-                int edge = _rand.Next(4);
+                // 核心算法：怪物从基地的真实地图物理边缘刷出
+                float spawnRange = _totalMapRange + 50; 
+
                 float spawnX = 0, spawnY = 0;
+                int edge = _rand.Next(4);
 
                 switch (edge)
                 {
-                    case 0: spawnX = bX + (float)(_rand.NextDouble() - 0.5) * halfVW * 2; spawnY = bY - halfVH; break; // 上
-                    case 1: spawnX = bX + halfVW; spawnY = bY + (float)(_rand.NextDouble() - 0.5) * halfVH * 2; break; // 右
-                    case 2: spawnX = bX + (float)(_rand.NextDouble() - 0.5) * halfVW * 2; spawnY = bY + halfVH; break; // 下
-                    case 3: spawnX = bX - halfVW; spawnY = bY + (float)(_rand.NextDouble() - 0.5) * halfVH * 2; break; // 左
+                    case 0: // 顶部边缘
+                        spawnX = bX + (float)(_rand.NextDouble() - 0.5) * _totalMapRange * 2;
+                        spawnY = bY - spawnRange;
+                        break;
+                    case 1: // 右侧边缘
+                        spawnX = bX + spawnRange;
+                        spawnY = bY + (float)(_rand.NextDouble() - 0.5) * _totalMapRange * 2;
+                        break;
+                    case 2: // 底部边缘
+                        spawnX = bX + (float)(_rand.NextDouble() - 0.5) * _totalMapRange * 2;
+                        spawnY = bY + spawnRange;
+                        break;
+                    case 3: // 左侧边缘
+                        spawnX = bX - spawnRange;
+                        spawnY = bY + (float)(_rand.NextDouble() - 0.5) * _totalMapRange * 2;
+                        break;
                 }
 
                 var monster = new Monster(spawnX, spawnY);
@@ -1173,8 +1198,11 @@ public partial class BattleForm : Form
                     CurrentWave++;
                     _waveTimer = 600; // 10秒后下一波
                     
-                    // 每新增一波，地图视野稍微扩大点，最高不超过 8.0 倍
-                    _worldViewFactor = Math.Min(8.0f, _worldViewFactor + 0.2f);
+                    // 每新增一波，地图实际大小扩大 0.5 倍
+                    _totalMapRange *= 1.5f;
+                    
+                    // 视野也同步稍微拉远一点点，最高不超过 8.0 倍
+                    _worldViewFactor = Math.Min(8.0f, _worldViewFactor + 0.1f);
                 }
             }
         }
@@ -1201,6 +1229,7 @@ public partial class BattleForm : Form
         Gold = 2000;
         Minerals = 500;
         CurrentWave = 1;
+        _totalMapRange = 1500; // 重置地图跨度
         _worldViewFactor = 1.5f; // 初始化为远景
         _panX = 0;
         _panY = 0;
@@ -1329,11 +1358,12 @@ public partial class BattleForm : Form
 
         // 小地图中心锚点
         var baseBot = GetBaseRobot();
-        float bX = baseBot?.X ?? 0;
-        float bY = baseBot?.Y ?? 0;
+        float bX = baseBot?.X + baseBot?.Size / 2 ?? 0;
+        float bY = baseBot?.Y + baseBot?.Size / 2 ?? 0;
 
-        // 小地图比例尺：使其初始能完美容纳视野
-        float miniRange = 1.2f * Math.Max(this.ClientSize.Width, this.ClientSize.Height) * _worldViewFactor;
+        // 小地图比例尺：使其完美容纳整个战区地图 (Grid 范围)
+        // 跨度是 2 * _totalMapRange，我们再扩一点点边界 (1.1倍) 确保怪在最外面也能看到
+        float miniRange = 2.2f * _totalMapRange; 
         float miniScale = mapSize / miniRange; 
 
         // 绘制资源点
@@ -1448,13 +1478,19 @@ public partial class BattleForm : Form
         // [+] 放大
         if (p.X >= startX && p.X <= startX + btnWidth && p.Y >= startY && p.Y <= startY + btnWidth)
         {
+            float oldF = _worldViewFactor;
             _worldViewFactor = Math.Max(0.2f, _worldViewFactor * 0.8f);
+            _panX = _panX * (oldF / _worldViewFactor);
+            _panY = _panY * (oldF / _worldViewFactor);
             return true;
         }
         // [-] 缩小 (限制在 1.5)
         if (p.X >= startX && p.X <= startX + btnWidth && p.Y >= startY + btnWidth + 5 && p.Y <= startY + 2 * btnWidth + 5)
         {
+            float oldF = _worldViewFactor;
             _worldViewFactor = Math.Min(1.5f, _worldViewFactor * 1.2f);
+            _panX = _panX * (oldF / _worldViewFactor);
+            _panY = _panY * (oldF / _worldViewFactor);
             return true;
         }
         return false;
@@ -1471,9 +1507,10 @@ public partial class BattleForm : Form
         {
             // 点击小地图平移相机
             var baseBot = GetBaseRobot();
-            float bX = baseBot?.X ?? 0;
-            float bY = baseBot?.Y ?? 0;
-            float miniRange = 1.2f * Math.Max(this.ClientSize.Width, this.ClientSize.Height) * _worldViewFactor;
+            float bX = baseBot?.X + baseBot?.Size / 2 ?? 0;
+            float bY = baseBot?.Y + baseBot?.Size / 2 ?? 0;
+            // 与 DrawMinimap 里的比例尺严格对齐
+            float miniRange = 2.2f * _totalMapRange; 
             float miniScale = mapSize / miniRange;
 
             float miniRelX = p.X - (x + mapSize / 2f);
