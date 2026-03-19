@@ -72,6 +72,7 @@ public partial class BattleForm : Form
     private Robot? _selectedRobot = null;
     private Monster? _selectedMonster = null;
     private bool _isSpawningMonster = false;
+    private ToolTip _upgradeToolTip = new ToolTip { InitialDelay = 200, AutoPopDelay = 10000 };
     private Point _monsterSpawnPoint;
 
     private sealed class FlickerFreePanel : Panel
@@ -1057,11 +1058,18 @@ public partial class BattleForm : Form
                 foreach (var robot in _robots)
                     if (robot.IsActive && !robot.IsDead) robot.SetMonsterTarget(monster);
 
-                if (_monstersToSpawnInWave <= 0)
+                 if (_monstersToSpawnInWave <= 0)
                 {
                     // 这波刷完了，准备下一波的计时
                     CurrentWave++;
                     _waveTimer = 600; // 10秒后下一波
+                    
+                    // 每次新增一波，地图整体增大一点
+                    this.Width += 30;
+                    this.Height += 20;
+                    // 保持窗口居中（简单处理）
+                    this.Left -= 15;
+                    this.Top -= 10;
                 }
             }
         }
@@ -1549,6 +1557,7 @@ public partial class BattleForm : Form
         }));
 
         this.Controls.Add(panel);
+        UpdateUpgradeToolTips(); // 初始化提示信息
 
         // 支持拖拽窗口
         this.MouseDown += (s, e) =>
@@ -1576,19 +1585,43 @@ public partial class BattleForm : Form
 
         // 更新按钮文字和价格
         if (panel.Controls["UpgBase"] is Button uB) uB.Text = $"Lv.{_baseLevel} 💎{150 * _baseLevel}";
-        // HealBase 不变
-
         if (panel.Controls["UpgWorker"] is Button uW) uW.Text = $"Lv.{_workerLevel} 💎{50 * _workerLevel}";
         if (panel.Controls["BuyWorker"] is Button btnW) btnW.Text = $"采集工\n💰{_workerCost}";
-
         if (panel.Controls["UpgHealer"] is Button uH) uH.Text = $"Lv.{_healerLevel} 💎{80 * _healerLevel}";
         if (panel.Controls["BuyHealer"] is Button btnD) btnD.Text = $"治疗者\n💰{_defenderCost}";
-
         if (panel.Controls["UpgShooter"] is Button uS) uS.Text = $"Lv.{_shooterLevel} 💎{60 * _shooterLevel}";
         if (panel.Controls["BuyShooter"] is Button btnS) btnS.Text = $"攻击者\n💰{_shooterCost}";
-
         if (panel.Controls["UpgGuardian"] is Button uG) uG.Text = $"Lv.{_guardianLevel} 💎{100 * _guardianLevel}";
         if (panel.Controls["BuyGuardian"] is Button btnG) btnG.Text = $"守卫者\n💰{_guardianCost}";
+
+        UpdateUpgradeToolTips();
+    }
+
+    private void UpdateUpgradeToolTips()
+    {
+        var panel = this.Controls["ControlPanel"] as Panel;
+        if (panel == null) return;
+
+        if (panel.Controls["UpgBase"] is Button uB)
+            _upgradeToolTip.SetToolTip(uB, $"【基地升级 Lv.{_baseLevel}】\n- 当前最大生命: {3000 + (_baseLevel - 1) * 1000}\n- 防御波伤害: {35 + (_baseLevel - 1) * 15}\n- 下级效果: 生命上限+1000，伤害提高，升级瞬间回满血");
+
+        if (panel.Controls["UpgWorker"] is Button uW)
+            _upgradeToolTip.SetToolTip(uW, $"【采集工升级 Lv.{_workerLevel}】\n- 当前生命加成: +{(_workerLevel - 1) * 20}%\n- 下级效果: 新老采集者生命上限提升20%");
+
+        if (panel.Controls["UpgHealer"] is Button uH)
+            _upgradeToolTip.SetToolTip(uH, $"【治疗者升级 Lv.{_healerLevel}】\n- 当前单次治疗: {20 + (_healerLevel - 1) * 5}\n- 下级效果: 提升所有医疗兵的治疗量");
+
+        if (panel.Controls["UpgShooter"] is Button uS)
+            _upgradeToolTip.SetToolTip(uS, $"【攻击者升级 Lv.{_shooterLevel}】\n- 当前生命加成: +{(_shooterLevel - 1) * 20}%\n- 下级效果: 提升游侠20%基础生命上限");
+
+        if (panel.Controls["UpgGuardian"] is Button uG)
+            _upgradeToolTip.SetToolTip(uG, $"【守卫者升级 Lv.{_guardianLevel}】\n- 当前冲撞伤害: {(int)(40 * (1 + (_guardianLevel - 1) * 0.2f))}\n- 下级效果: 提升守护者20%的技能伤害");
+            
+        // 购买按钮也可以加提示
+        if (panel.Controls["BuyWorker"] is Button bW) _upgradeToolTip.SetToolTip(bW, "招募一名采集工，负责收集地图上的蓝色矿石。");
+        if (panel.Controls["BuyHealer"] is Button bH) _upgradeToolTip.SetToolTip(bH, "招募一名医疗兵，自动为周围受伤的队友（优先基地）回血。");
+        if (panel.Controls["BuyShooter"] is Button bS) _upgradeToolTip.SetToolTip(bS, "招募一名远程游侠，配备激光武器自动攻击怪物。");
+        if (panel.Controls["BuyGuardian"] is Button bG) _upgradeToolTip.SetToolTip(bG, "招募一名重装守卫，在基地附近巡逻并撞开靠近的敌人。");
     }
 
     /// <summary>
