@@ -1,7 +1,7 @@
 using System;
 using System.Drawing;
 
-namespace PureBattleGame;
+namespace PureBattleGame.Games.StarCoreDefense;
 
 /// <summary>
 /// 怪物实体 - 被投放后所有机器人会集火攻击

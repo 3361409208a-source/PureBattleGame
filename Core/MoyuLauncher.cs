@@ -2,7 +2,9 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 
-namespace PureBattleGame;
+using PureBattleGame.Games.StarCoreDefense;
+
+namespace PureBattleGame.Core;
 
 public partial class MoyuLauncher : Form
 {

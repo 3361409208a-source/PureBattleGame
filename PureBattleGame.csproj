@@ -9,11 +9,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Update="BattleForm.cs" />
-    <Compile Update="Monster.cs" />
-    <Compile Update="Projectile.cs" />
-    <Compile Update="Robot.cs" />
-    <Compile Update="Program.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,7 +1,7 @@
 using System;
 using System.Windows.Forms;
 
-namespace PureBattleGame;
+namespace PureBattleGame.Core;
 
 static class Program
 {

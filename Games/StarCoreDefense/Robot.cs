@@ -1,7 +1,7 @@
 using System;
 using System.Drawing;
 
-namespace PureBattleGame;
+namespace PureBattleGame.Games.StarCoreDefense;
 
 /// <summary>
 /// 机器人战斗实体 - 纯战斗版本

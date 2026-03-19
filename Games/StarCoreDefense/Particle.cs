@@ -1,7 +1,7 @@
 using System;
 using System.Drawing;
 
-namespace PureBattleGame;
+namespace PureBattleGame.Games.StarCoreDefense;
 
 public class Particle
 {

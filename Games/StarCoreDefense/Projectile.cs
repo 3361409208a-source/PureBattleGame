@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 
-namespace PureBattleGame;
+namespace PureBattleGame.Games.StarCoreDefense;
 
 /// <summary>
 /// 投射物 - 子弹、火箭、等离子等
