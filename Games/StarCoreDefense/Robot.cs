@@ -282,7 +282,34 @@ public partial class Robot
         // 1. 检查目标有效性
         CheckTargetsValidity();
 
-        // 2. 自动寻找目标
+        // 2. 低血量撤退逻辑 (HP < 20% 撤退, > 50% 恢复进攻)
+        bool isRetreating = HP < MaxHP * 0.2f;
+        bool hasRecovered = HP >= MaxHP * 0.5f;
+        
+        if (isRetreating && ClassType != RobotClass.Base && ClassType != RobotClass.Guardian)
+        {
+            // 清除进攻目标，向基地方向逃跑
+            MonsterTarget = null;
+            var baseBot = BattleForm.Instance?.GetBaseRobot();
+            if (baseBot != null)
+            {
+                float dx = (baseBot.X + baseBot.Size / 2) - (X + Size / 2);
+                float dy = (baseBot.Y + baseBot.Size / 2) - (Y + Size / 2);
+                float dist = (float)Math.Sqrt(dx * dx + dy * dy);
+                if (dist > 60)
+                {
+                    Dx += (dx / dist) * 2.0f;
+                    Dy += (dy / dist) * 2.0f;
+                }
+            }
+            // 不执行后续进攻，直接跳到移动
+            ApplyMovement(screenWidth, screenHeight);
+            if (HP <= 0 && !IsDead) HandleDeath();
+            UpdateAnimations();
+            return;
+        }
+
+        // 3. 自动寻找目标
         if (ChasingTarget == null && DuelTarget == null && MonsterTarget == null && TargetMineral == null)
         {
             FindAndAssignTarget(allRobots, allMonsters);
@@ -313,16 +340,29 @@ public partial class Robot
         {
             UpdateDuelLogic();
         }
-        else if (ChasingTarget != null)
-        {
-            UpdateChasingRobotLogic();
-        }
         else
         {
             UpdateRandomMovement();
         }
 
-        // 4. 辅助逻辑
+        // 4. 增加机器人之间的相互排斥力 (Separation)，防止挤成一坨
+        foreach (var other in allRobots)
+        {
+            if (other == this || !other.IsActive || other.IsDead || other.ClassType == RobotClass.Base) continue;
+            float dx = X - other.X;
+            float dy = Y - other.Y;
+            float distSq = dx * dx + dy * dy;
+            float safeRadius = (Size + other.Size) * 0.75f; 
+            if (distSq < safeRadius * safeRadius && distSq > 0.01f)
+            {
+                float dist = (float)Math.Sqrt(distSq);
+                float force = (safeRadius - dist) / safeRadius * 0.3f;
+                Dx += (dx / dist) * force;
+                Dy += (dy / dist) * force;
+            }
+        }
+
+        // 5. 辅助逻辑
         UpdateDelayedAttack();
         UpdateLaserTargeting();
 
@@ -406,46 +446,22 @@ public partial class Robot
             }
         }
 
-        // 优先攻击距离基地最近的怪物
+        // 每个机器人独立寻找离自己最近的怪物（而非全都扎堆到基地周围）
         Monster? targetMonster = null;
-        float minBaseDist = float.MaxValue;
+        float minSelfDist = float.MaxValue;
 
-        var baseRobot = BattleForm.Instance?.GetBaseRobot();
+        foreach (var monster in allMonsters)
+        {
+            if (!monster.IsActive || monster.IsDead) continue;
 
-        if (baseRobot != null)
-        {
-            foreach (var monster in allMonsters)
+            float dx = monster.X - (X + Size / 2);
+            float dy = monster.Y - (Y + Size / 2);
+            float dist = dx * dx + dy * dy;
+
+            if (dist < minSelfDist)
             {
-                if (monster.IsActive && !monster.IsDead)
-                {
-                    float dx = monster.X - baseRobot.X;
-                    float dy = monster.Y - baseRobot.Y;
-                    float dist = dx * dx + dy * dy;
-                    if (dist < minBaseDist)
-                    {
-                        minBaseDist = dist;
-                        targetMonster = monster;
-                    }
-                }
-            }
-        }
-        else
-        {
-            // 如果没有基地，则退回到寻找距离自己最近的怪物
-            float nearestDist = float.MaxValue;
-            foreach (var monster in allMonsters)
-            {
-                if (monster.IsActive && !monster.IsDead)
-                {
-                    float dx = monster.X - X;
-                    float dy = monster.Y - Y;
-                    float dist = dx * dx + dy * dy;
-                    if (dist < nearestDist)
-                    {
-                        nearestDist = dist;
-                        targetMonster = monster;
-                    }
-                }
+                minSelfDist = dist;
+                targetMonster = monster;
             }
         }
 
@@ -455,7 +471,7 @@ public partial class Robot
             return;
         }
 
-        // 如果没有怪物，机器人现在**不再互殴**，而是原地待命或随机巡逻
+        // 没有怪物，原地待命
         MonsterTarget = null;
         ChasingTarget = null;
         DuelTarget = null;
@@ -752,11 +768,9 @@ public partial class Robot
 
             if (dist > idealDistance + 20)
             {
-                // 距离太远，靠近
-                float targetDx = (dx / dist) * maxSpeed;
-                float targetDy = (dy / dist) * maxSpeed;
-                Dx = Dx * 0.9f + targetDx * 0.1f;
-                Dy = Dy * 0.9f + targetDy * 0.1f;
+                // 距离太远，全速靠近
+                Dx = (dx / dist) * maxSpeed;
+                Dy = (dy / dist) * maxSpeed;
             }
             else if (dist < idealDistance - 20)
             {

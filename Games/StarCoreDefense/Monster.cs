@@ -50,16 +50,47 @@ public class Monster
     // 战斗属性
     public int AttackCooldown { get; set; } = 0;
     public int ParalyzeTimer { get; set; } = 0; // 麻痹时间 (帧)
+    public float ArmorResist { get; set; } = 0f; // 物理抗性 0~1
+    public bool IsRanged { get; set; } = false;  // 远程型：保持距离
+    public bool IsElite { get; set; } = false;   // 精英型：金边特效
+    public int GoldReward { get; set; } = 50;    // 独立奖励
     
-    public Monster(float x, float y)
+    public Monster(float x, float y, int wave = 1)
     {
         X = x;
         Y = y;
         TargetX = x;
         TargetY = y;
         
-        string[] types = { "SLIME", "SPIDER", "BAT", "WORM" };
-        Type = types[Rand.Next(types.Length)];
+        // 按波次随机选择怪物类型
+        int roll = Rand.Next(100);
+        if (wave >= 5 && roll < 15) // 精英兵 (5波后15%概率)
+        {
+            Type = "ELITE";
+            IsElite = true;
+            Size = 50;
+            GoldReward = 200;
+        }
+        else if (wave >= 3 && roll < 35) // 装甲兵 (3波后20%概率)
+        {
+            Type = "ARMORED";
+            ArmorResist = 0.45f;
+            Size = 45;
+            GoldReward = 100;
+        }
+        else if (wave >= 2 && roll < 55) // 远程兵 (2波后20%概率)
+        {
+            Type = "RANGED";
+            IsRanged = true;
+            Size = 28;
+            GoldReward = 80;
+        }
+        else // 普通怪
+        {
+            string[] types = { "SLIME", "SPIDER", "BAT", "WORM" };
+            Type = types[Rand.Next(types.Length)];
+        }
+
         HP = MaxHP;
     }
 
@@ -143,24 +174,30 @@ public class Monster
             float dy = TargetY - (Y + Size / 2);
             float dist = (float)Math.Sqrt(dx * dx + dy * dy);
             
-            if (dist > 50)
+            // 按类型决定移动策略
+            float moveSpeed = IsElite ? 0.22f : (ArmorResist > 0 ? 0.1f : 0.15f);
+            float keepDist = IsRanged ? 400f : 50f; // 远程兵保持射程
+
+            if (dist > keepDist)
             {
-                Dx += (dx / dist) * 0.15f; // 怪物移动较慢
-                Dy += (dy / dist) * 0.15f;
+                Dx += (dx / dist) * moveSpeed;
+                Dy += (dy / dist) * moveSpeed;
+            }
+            else if (IsRanged && dist < keepDist - 80) // 远程兵拉开距离
+            {
+                Dx -= (dx / dist) * moveSpeed * 1.5f;
+                Dy -= (dy / dist) * moveSpeed * 1.5f;
             }
 
             // 发动攻击
-            if (AttackCooldown <= 0 && dist < 300)
+            if (AttackCooldown <= 0 && dist < (IsRanged ? 500 : 300))
             {
                 int wave = BattleForm.Instance?.CurrentWave ?? 1;
-                // 波次越高，攻击频率越高
                 AttackCooldown = Math.Max(30, 90 - wave * 2); 
                 
-                // 怪物特有攻击：全方位毒液散射或指向性重击
                 int attackType = Rand.Next(100);
-                if (attackType < 40 + wave) // 随着波次增加，散射概率提高
+                if (!IsRanged && attackType < 40 + wave) // 近战散射
                 {
-                    // 随着波次增加，散射的弹丸数量增加
                     int projectiles = Math.Min(16, 8 + wave / 2);
                     for (int i = 0; i < projectiles; i++)
                     {
@@ -170,14 +207,14 @@ public class Monster
                         
                         var p = new Projectile(null, X + Size/2, Y + Size/2, 
                                              X + Size/2 + projDx, Y + Size/2 + projDy, "INK");
-                        p.IsMonsterProjectile = true; // 标记为怪物投射物
+                        p.IsMonsterProjectile = true;
                         BattleForm.Instance?.AddProjectile(p);
                     }
                 }
-                else // 指向性减速口水
+                else // 精准远程/精英重击
                 {
-                    var p = new Projectile(null, X + Size/2, Y + Size/2, 
-                                         TargetX, TargetY, "SPIT");
+                    string projType = IsElite ? "CANNON" : "SPIT";
+                    var p = new Projectile(null, X + Size/2, Y + Size/2, TargetX, TargetY, projType);
                     p.IsMonsterProjectile = true;
                     BattleForm.Instance?.AddProjectile(p);
                 }
@@ -217,16 +254,14 @@ public class Monster
 
     public void OnHit(Projectile proj)
     {
+        int rawDamage = 10;
         if (proj.Owner is Robot bot)
         {
-            int damage = bot.GetProjectileDamage(proj.Type);
-            TakeDamage(damage);
+            rawDamage = bot.GetProjectileDamage(proj.Type);
         }
-        else
-        {
-            // Fallback
-            TakeDamage(10);
-        }
+        // 装甲怪物造成伤害减免
+        int finalDamage = (int)(rawDamage * (1f - ArmorResist));
+        TakeDamage(Math.Max(1, finalDamage)); // 至少冒建1点上去
     }
 
     /// <summary>

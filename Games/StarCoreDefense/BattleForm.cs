@@ -1217,7 +1217,7 @@ public partial class BattleForm : Form
                         break;
                 }
 
-                var monster = new Monster(spawnX, spawnY);
+                var monster = new Monster(spawnX, spawnY, CurrentWave);
                 // 根据波次增加怪物血量，初始第1波血量为 100
                 monster.MaxHP = 80 + CurrentWave * 20;
                 monster.HP = monster.MaxHP;
@@ -1382,12 +1382,44 @@ public partial class BattleForm : Form
 
         // 波次信息居中
         using var textBrush = new SolidBrush(Color.White);
-        string waveText = _monstersToSpawnInWave > 0 ? $"第 {CurrentWave} 波 - 怪物涌入中" :
-                          _waveTimer > 0 ? $"第 {CurrentWave} 波 - {(_waveTimer / 60)}s 后开始" :
-                          $"第 {CurrentWave} 波 - 战斗中";
+        string waveText;
+        Color waveColor;
+        if (_monstersToSpawnInWave > 0)
+        {
+            int remaining = _monsters.Count(m => m.IsActive && !m.IsDead) + _monstersToSpawnInWave;
+            waveText = $"第 {CurrentWave} 波  剩余 {remaining} 敌";
+            waveColor = Color.OrangeRed;
+        }
+        else if (_waveTimer > 0)
+        {
+            int secLeft = (_waveTimer + 59) / 60;
+            waveText = $"第 {CurrentWave} 波  下一波: {secLeft}s";
+            waveColor = secLeft <= 3 ? Color.OrangeRed : Color.LightGreen;
+        }
+        else
+        {
+            waveText = $"第 {CurrentWave} 波  激战中";
+            waveColor = Color.White;
+        }
 
+        using var waveBrush = new SolidBrush(waveColor);
         var size = g.MeasureString(waveText, waveFont);
-        g.DrawString(waveText, waveFont, textBrush, (this.ClientSize.Width - size.Width) / 2, 6);
+        float waveX = (this.ClientSize.Width - size.Width) / 2;
+        g.DrawString(waveText, waveFont, waveBrush, waveX, 6);
+
+        // 倒计时进度条
+        if (_waveTimer > 0 && _monstersToSpawnInWave <= 0)
+        {
+            int barW = 180;
+            float barX = (this.ClientSize.Width - barW) / 2f;
+            float barY = size.Height + 8;
+            float pct = (float)_waveTimer / 600f;
+            
+            using var barBg = new SolidBrush(Color.FromArgb(60, 255, 255, 255));
+            using var barFill = new SolidBrush(pct > 0.2f ? Color.LimeGreen : Color.OrangeRed);
+            g.FillRectangle(barBg, barX, barY, barW, 4);
+            g.FillRectangle(barFill, barX, barY, barW * pct, 4);
+        }
     }
 
     private void DrawMinimap(Graphics g)
