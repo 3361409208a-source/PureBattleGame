@@ -49,6 +49,7 @@ public class Monster
 
     // 战斗属性
     public int AttackCooldown { get; set; } = 0;
+    public int ParalyzeTimer { get; set; } = 0; // 麻痹时间 (帧)
     
     public Monster(float x, float y)
     {
@@ -93,6 +94,17 @@ public class Monster
 
         // 冷却时间递减
         if (AttackCooldown > 0) AttackCooldown--;
+        
+        // 麻痹逻辑
+        if (ParalyzeTimer > 0)
+        {
+            ParalyzeTimer--;
+            Dx *= 0.5f; // 麻痹时剧烈减速
+            Dy *= 0.5f;
+            X += Dx;
+            Y += Dy;
+            return; // 不执行后续追踪和攻击逻辑
+        }
 
         // 寻找目标，优先攻击基地
         Robot? nearestTarget = null;
@@ -177,11 +189,10 @@ public class Monster
             ChangeTargetTimer--;
             if (ChangeTargetTimer <= 0)
             {
-                ChangeTargetTimer = 60 + Rand.Next(60);
-                int maxX = Math.Max(1, screenWidth - Size);
-                int maxY = Math.Max(1, screenHeight - Size);
-                TargetX = Rand.Next(maxX);
-                TargetY = Rand.Next(maxY);
+                // 没有目标时在大范围内游走，而不是屏幕内
+            ChangeTargetTimer = 120 + Rand.Next(120);
+            TargetX = X + (float)(Rand.NextDouble() - 0.5) * 1000;
+            TargetY = Y + (float)(Rand.NextDouble() - 0.5) * 1000;
             }
             
             float dxWalk = TargetX - X;

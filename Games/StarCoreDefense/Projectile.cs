@@ -28,6 +28,7 @@ public class Projectile
     public float ExplosionRadius { get; set; } = 0;
     public float Size { get; set; } = 0; // 0 means default size based on type
     public bool IsMonsterProjectile { get; set; } = false; // 新增：是否由怪物发射
+    public int ChainCount { get; set; } = 0; // 连锁次数
 
     public Projectile(Robot? owner, float x, float y, float tx, float ty, string type = "BULLET", Robot? target = null)
     {

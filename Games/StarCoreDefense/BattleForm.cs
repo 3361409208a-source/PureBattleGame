@@ -75,7 +75,7 @@ public partial class BattleForm : Form
     private float _worldViewFactor = 1.0f; 
     private float _panX = 0;
     private float _panY = 0;
-    private float _totalMapRange = 1500; // 初始地图实际跨度 (半径)
+    private float _totalMapRange = 600; // 初始地图实际跨度 (半径) - 降低初始值更紧凑
     private bool _isDragging = false;
     private bool _isDraggingMinimap = false;
     private bool _isSpaceDown = false;
@@ -324,10 +324,17 @@ public partial class BattleForm : Form
         if (_mineralSpawnTimer <= 0)
         {
             _mineralSpawnTimer = 300 + _rand.Next(300);
-            if (_minerals.Count < 8) // 最多存在 8 个矿物
+            if (_minerals.Count < 20) // 适当增加资源密度
             {
-                int mx = 50 + _rand.Next(this.ClientSize.Width - 100);
-                int my = 50 + _rand.Next(this.ClientSize.Height - 150);
+                // 改为在大地图物理范围内生成，而不是屏幕内 (彻底修复 ClientSize 可能为负导致的崩溃)
+                var baseB = GetBaseRobot();
+                float bX = baseB?.X + baseB?.Size / 2 ?? 0;
+                float bY = baseB?.Y + baseB?.Size / 2 ?? 0;
+                
+                // 在当前地图半径内随机分布
+                float mx = bX + (float)(_rand.NextDouble() - 0.5) * _totalMapRange * 1.5f;
+                float my = bY + (float)(_rand.NextDouble() - 0.5) * _totalMapRange * 1.5f;
+
                 _minerals.Add(new Mineral(mx, my));
             }
         }
@@ -391,7 +398,41 @@ public partial class BattleForm : Form
                         {
                             monster.OnHit(p);
 
-                            // 命中特效
+                            if (p.Type == "LIGHTNING")
+                            {
+                                monster.ParalyzeTimer = 60; // 1秒麻痹
+                                AddExplosion(monster.X + monster.Size / 2, monster.Y + monster.Size / 2, Color.White, 3, "SPARK");
+                                
+                                // 连锁闪电逻辑：寻找 250 距离内的下一个目标
+                                if (p.ChainCount < 3)
+                                {
+                                    Monster? nextTarget = null;
+                                    float minDist = 250;
+                                    foreach(var m in _monsters)
+                                    {
+                                        if (m == monster || !m.IsActive || m.IsDead) continue;
+                                        float dx = m.X - monster.X;
+                                        float dy = m.Y - monster.Y;
+                                        float d = (float)Math.Sqrt(dx*dx + dy*dy);
+                                        if (d < minDist)
+                                        {
+                                            minDist = d;
+                                            nextTarget = m;
+                                        }
+                                    }
+
+                                    if (nextTarget != null)
+                                    {
+                                        var nextP = new Projectile(p.Owner, monster.X + monster.Size/2, monster.Y + monster.Size/2, 
+                                                                  nextTarget.X + nextTarget.Size/2, nextTarget.Y + nextTarget.Size/2, "LIGHTNING");
+                                        nextP.ChainCount = p.ChainCount + 1;
+                                        nextP.TrackingMonster = nextTarget; // 锁定追踪新目标
+                                        _projectiles.Add(nextP);
+                                    }
+                                }
+                            }
+
+                            // 通用命中特效
                             AddExplosion(p.X, p.Y, p.ProjectileColor, 5, "SPARK");
                             if (p.Type == "METEOR") AddExplosion(p.X, p.Y, Color.OrangeRed, 10, "SMOKE");
                             if (p.Type == "BLACK_HOLE") AddExplosion(p.X, p.Y, Color.Purple, 1, "RING");
@@ -823,19 +864,25 @@ public partial class BattleForm : Form
     {
         float oldFactor = _worldViewFactor;
         
-        // 缩放逻辑 (限制在 0.2x 到 1.5x)
+        // 动态计算最大缩小倍率：确保能看到全图 (跨度是 2 * _totalMapRange)
+        float maxFactor = Math.Max(1.5f, (2.2f * _totalMapRange) / Math.Min(this.ClientSize.Width, this.ClientSize.Height));
+
+        // 缩放逻辑 (限制在 0.2x 到动态 maxFactor)
         if (e.Delta > 0)
         {
             _worldViewFactor = Math.Max(0.2f, _worldViewFactor * 0.9f); // 放大
         }
         else
         {
-            _worldViewFactor = Math.Min(1.5f, _worldViewFactor * 1.1f); // 缩小
+            _worldViewFactor = Math.Min(maxFactor, _worldViewFactor * 1.1f); // 缩小
         }
 
-        // 调整 _panX 和 _panY 使得世界中心保持原处： pan2 = pan1 * (f1 / f2)
-        _panX = _panX * (oldFactor / _worldViewFactor);
-        _panY = _panY * (oldFactor / _worldViewFactor);
+        // 调整 _panX 和 _panY 使得世界中心保持原处
+        if (oldFactor != _worldViewFactor)
+        {
+            _panX = _panX * (oldFactor / _worldViewFactor);
+            _panY = _panY * (oldFactor / _worldViewFactor);
+        }
     }
 
     private void BattleForm_KeyUp(object? sender, KeyEventArgs e)
@@ -1229,7 +1276,7 @@ public partial class BattleForm : Form
         Gold = 2000;
         Minerals = 500;
         CurrentWave = 1;
-        _totalMapRange = 1500; // 重置地图跨度
+        _totalMapRange = 600; // 重置初始地图跨度 (更紧密战场)
         _worldViewFactor = 1.5f; // 初始化为远景
         _panX = 0;
         _panY = 0;
@@ -1484,13 +1531,18 @@ public partial class BattleForm : Form
             _panY = _panY * (oldF / _worldViewFactor);
             return true;
         }
-        // [-] 缩小 (限制在 1.5)
+        // [-] 缩小 (动态适配地图大小)
         if (p.X >= startX && p.X <= startX + btnWidth && p.Y >= startY + btnWidth + 5 && p.Y <= startY + 2 * btnWidth + 5)
         {
             float oldF = _worldViewFactor;
-            _worldViewFactor = Math.Min(1.5f, _worldViewFactor * 1.2f);
-            _panX = _panX * (oldF / _worldViewFactor);
-            _panY = _panY * (oldF / _worldViewFactor);
+            float maxFactor = Math.Max(1.5f, (2.2f * _totalMapRange) / Math.Min(this.ClientSize.Width, this.ClientSize.Height));
+            _worldViewFactor = Math.Min(maxFactor, _worldViewFactor * 1.2f);
+            
+            if (oldF != _worldViewFactor)
+            {
+                _panX = _panX * (oldF / _worldViewFactor);
+                _panY = _panY * (oldF / _worldViewFactor);
+            }
             return true;
         }
         return false;
