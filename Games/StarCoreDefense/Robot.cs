@@ -988,48 +988,33 @@ public partial class Robot
             float dist = (float)Math.Sqrt(dx * dx + dy * dy);
 
             // 根据不同的兵种，设定不同的理想环绕半径
-            float idealRadius = 80;
-            if (ClassType == RobotClass.Guardian) idealRadius = 150; // 守卫者在最外圈
-            else if (ClassType == RobotClass.Shooter) idealRadius = 100 + (Id % 3) * 20; // 射手在中圈错开
-            else if (ClassType == RobotClass.Healer) idealRadius = 60; // 治疗者紧贴基地
+            float idealRadius = 70;
+            if (ClassType == RobotClass.Guardian) idealRadius = 120;
+            else if (ClassType == RobotClass.Shooter) idealRadius = 80 + (Id % 4) * 15; // 射手在中圈错开
+            else if (ClassType == RobotClass.Healer) idealRadius = 50; // 治疗者紧贴基地
 
-            float maxSpeed = 2.0f * SpeedMultiplier;
+            float maxSpeed = 2.5f * SpeedMultiplier;
 
-            if (dist > idealRadius + 20)
+            if (dist > idealRadius + 15)
             {
-                // 距离太远，向基地靠拢
-                Dx = Dx * 0.9f + (dx / dist) * maxSpeed * 0.2f;
-                Dy = Dy * 0.9f + (dy / dist) * maxSpeed * 0.2f;
+                // 距离太远，全速回归基地
+                Dx = (dx / dist) * maxSpeed;
+                Dy = (dy / dist) * maxSpeed;
             }
-            else if (dist < idealRadius - 20)
+            else if (dist < idealRadius - 15)
             {
                 // 距离太近，向外散开
-                Dx -= (dx / dist) * 0.2f;
-                Dy -= (dy / dist) * 0.2f;
+                Dx -= (dx / dist) * 0.4f;
+                Dy -= (dy / dist) * 0.4f;
             }
             else
             {
-                // 在理想半径内，缓慢环绕或停留
-                if (Rand.Next(100) < 10)
-                {
-                    // 产生一个切向力，使其环绕
-                    float tangentDx = -dy / dist * maxSpeed * 0.5f;
-                    float tangentDy = dx / dist * maxSpeed * 0.5f;
-                    // 一半顺时针，一半逆时针
-                    if (Id % 2 == 0)
-                    {
-                        tangentDx = -tangentDx;
-                        tangentDy = -tangentDy;
-                    }
-                    Dx = Dx * 0.8f + tangentDx * 0.2f;
-                    Dy = Dy * 0.8f + tangentDy * 0.2f;
-                }
-                else
-                {
-                    // 逐渐停下
-                    Dx *= 0.9f;
-                    Dy *= 0.9f;
-                }
+                // 在理想半径内，持续环绕（Id奇偶决定顺逆时针）
+                float tangentDx = -(dy / dist) * maxSpeed * 0.6f;
+                float tangentDy = (dx / dist) * maxSpeed * 0.6f;
+                if (Id % 2 == 0) { tangentDx = -tangentDx; tangentDy = -tangentDy; }
+                Dx = Dx * 0.85f + tangentDx * 0.15f;
+                Dy = Dy * 0.85f + tangentDy * 0.15f;
             }
 
             // 限制最大速度

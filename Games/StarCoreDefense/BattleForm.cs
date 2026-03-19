@@ -1789,16 +1789,16 @@ public partial class BattleForm : Form
 
     private void CreateControlPanel()
     {
-        int panelWidth = 495;
-        int btnWidth = 80;
-        int btnHeight = 38; // 加高以显示兵种名+价格两行文字
-        int spacing = 15;
+        int panelWidth = 510;
+        int btnWidth = 85;
+        int btnHeight = 42; // 足够展示两行文字
+        int spacing = 12;
 
         var panel = new FlickerFreePanel
         {
             Name = "ControlPanel",
-            Size = new Size(panelWidth, 80), // 加高面板
-            Location = new Point((this.ClientSize.Width - panelWidth) / 2, this.ClientSize.Height - 85),
+            Size = new Size(panelWidth, 90),
+            Location = new Point((this.ClientSize.Width - panelWidth) / 2, this.ClientSize.Height - 95),
             BackColor = Color.FromArgb(20, 20, 25),
             BorderStyle = BorderStyle.None,
             Anchor = AnchorStyles.Bottom
@@ -1812,15 +1812,16 @@ public partial class BattleForm : Form
                 Name = id,
                 Text = text,
                 Location = new Point(x, y),
-                Size = new Size(btnWidth, isUpgrade ? 22 : btnHeight),
+                Size = new Size(btnWidth, isUpgrade ? 24 : btnHeight),
                 FlatStyle = FlatStyle.Flat,
                 ForeColor = isUpgrade ? Color.Cyan : Color.White,
-                BackColor = Color.FromArgb(40, 40, 50),
-                Font = new Font("Microsoft YaHei", isUpgrade ? 6.5f : 7f, FontStyle.Bold),
+                BackColor = isUpgrade ? Color.FromArgb(30, 30, 55) : Color.FromArgb(40, 40, 50),
+                Font = new Font("Microsoft YaHei", isUpgrade ? 6.5f : 7.5f, FontStyle.Bold),
                 Cursor = Cursors.Hand,
                 TextAlign = ContentAlignment.MiddleCenter,
                 Margin = new Padding(0),
-                Padding = new Padding(0)
+                Padding = new Padding(2),
+                AutoEllipsis = false,
             };
             btn.FlatAppearance.BorderSize = 1;
             btn.FlatAppearance.BorderColor = Color.FromArgb(80, 80, 100);
@@ -1829,11 +1830,14 @@ public partial class BattleForm : Form
             return btn;
         }
 
-        int startX = 10;
+        int startX = 5;
+        // 购买按钮 y 坐标（顶部留给升级按钮）
+        int buyY = 28;
+        int upgY = 4;
 
         // 0. 基地升级 (无购买按钮，只有一个占位或恢复血量)
         int baseUpgradeCost = 150 * _baseLevel;
-        panel.Controls.Add(CreateBtn("UpgBase", $"Lv.{_baseLevel} 💎{baseUpgradeCost}", startX, 5, (s, e) =>
+        panel.Controls.Add(CreateBtn("UpgBase", $"Lv.{_baseLevel} 💎{baseUpgradeCost}", startX, upgY, (s, e) =>
         {
             int cost = 150 * _baseLevel;
             if (Minerals >= cost)
@@ -1841,11 +1845,11 @@ public partial class BattleForm : Form
                 Minerals -= cost;
                 _baseLevel++;
                 var b = GetBaseRobot();
-                if (b != null) b.ApplyClassProperties(); // 内部已包含血量和体型更新
+                if (b != null) b.ApplyClassProperties();
                 UpdateUI();
             }
         }, true));
-        panel.Controls.Add(CreateBtn("HealBase", $"维修基地\n💰100", startX, 30, (s, e) =>
+        panel.Controls.Add(CreateBtn("HealBase", $"维修 💰100", startX, buyY, (s, e) =>
         {
             if (Gold >= 100)
             {
@@ -1863,7 +1867,7 @@ public partial class BattleForm : Form
         // 1. 采集工
         int workerStartX = startX + btnWidth + spacing;
         int workerUpgradeCost = 50 * _workerLevel;
-        panel.Controls.Add(CreateBtn("UpgWorker", $"Lv.{_workerLevel} 💎{workerUpgradeCost}", workerStartX, 5, (s, e) =>
+        panel.Controls.Add(CreateBtn("UpgWorker", $"Lv.{_workerLevel} 💎{workerUpgradeCost}", workerStartX, upgY, (s, e) =>
         {
             int cost = 50 * _workerLevel;
             if (Minerals >= cost)
@@ -1874,7 +1878,7 @@ public partial class BattleForm : Form
                 UpdateUI();
             }
         }, true));
-        panel.Controls.Add(CreateBtn("BuyWorker", $"采集工\n💰{_workerCost}", workerStartX, 30, (s, e) =>
+        panel.Controls.Add(CreateBtn("BuyWorker", $"采集工 💰{_workerCost}", workerStartX, buyY, (s, e) =>
         {
             if (Gold >= _workerCost)
             {
@@ -1889,7 +1893,7 @@ public partial class BattleForm : Form
         // 2. 治疗者
         int healerStartX = workerStartX + btnWidth + spacing;
         int healerUpgradeCost = 80 * _healerLevel;
-        panel.Controls.Add(CreateBtn("UpgHealer", $"Lv.{_healerLevel} 💎{healerUpgradeCost}", healerStartX, 5, (s, e) =>
+        panel.Controls.Add(CreateBtn("UpgHealer", $"Lv.{_healerLevel} 💎{healerUpgradeCost}", healerStartX, upgY, (s, e) =>
         {
             int cost = 80 * _healerLevel;
             if (Minerals >= cost)
@@ -1900,7 +1904,7 @@ public partial class BattleForm : Form
                 UpdateUI();
             }
         }, true));
-        panel.Controls.Add(CreateBtn("BuyHealer", $"治疗者\n💰{_defenderCost}", healerStartX, 30, (s, e) =>
+        panel.Controls.Add(CreateBtn("BuyHealer", $"治疗者 💰{_defenderCost}", healerStartX, buyY, (s, e) =>
         {
             if (Gold >= _defenderCost)
             {
@@ -1915,7 +1919,7 @@ public partial class BattleForm : Form
         // 3. 攻击者
         int shooterStartX = healerStartX + btnWidth + spacing;
         int shooterUpgradeCost = 60 * _shooterLevel;
-        panel.Controls.Add(CreateBtn("UpgShooter", $"Lv.{_shooterLevel} 💎{shooterUpgradeCost}", shooterStartX, 5, (s, e) =>
+        panel.Controls.Add(CreateBtn("UpgShooter", $"Lv.{_shooterLevel} 💎{shooterUpgradeCost}", shooterStartX, upgY, (s, e) =>
         {
             int cost = 60 * _shooterLevel;
             if (Minerals >= cost)
@@ -1926,7 +1930,7 @@ public partial class BattleForm : Form
                 UpdateUI();
             }
         }, true));
-        panel.Controls.Add(CreateBtn("BuyShooter", $"攻击者\n💰{_shooterCost}", shooterStartX, 30, (s, e) =>
+        panel.Controls.Add(CreateBtn("BuyShooter", $"攻击者 💰{_shooterCost}", shooterStartX, buyY, (s, e) =>
         {
             if (Gold >= _shooterCost)
             {
@@ -1941,7 +1945,7 @@ public partial class BattleForm : Form
         // 4. 守卫者
         int guardianStartX = shooterStartX + btnWidth + spacing;
         int guardianUpgradeCost = 100 * _guardianLevel;
-        panel.Controls.Add(CreateBtn("UpgGuardian", $"Lv.{_guardianLevel} 💎{guardianUpgradeCost}", guardianStartX, 5, (s, e) =>
+        panel.Controls.Add(CreateBtn("UpgGuardian", $"Lv.{_guardianLevel} 💎{guardianUpgradeCost}", guardianStartX, upgY, (s, e) =>
         {
             int cost = 100 * _guardianLevel;
             if (Minerals >= cost)
@@ -1952,7 +1956,7 @@ public partial class BattleForm : Form
                 UpdateUI();
             }
         }, true));
-        panel.Controls.Add(CreateBtn("BuyGuardian", $"守卫者\n💰{_guardianCost}", guardianStartX, 30, (s, e) =>
+        panel.Controls.Add(CreateBtn("BuyGuardian", $"守卫者 💰{_guardianCost}", guardianStartX, buyY, (s, e) =>
         {
             if (Gold >= _guardianCost)
             {
@@ -1998,13 +2002,13 @@ public partial class BattleForm : Form
         // 更新按钮文字和价格
         if (panel.Controls["UpgBase"] is Button uB) uB.Text = $"Lv.{_baseLevel} 💎{150 * _baseLevel}";
         if (panel.Controls["UpgWorker"] is Button uW) uW.Text = $"Lv.{_workerLevel} 💎{50 * _workerLevel}";
-        if (panel.Controls["BuyWorker"] is Button btnW) btnW.Text = $"采集工\n💰{_workerCost}";
+        if (panel.Controls["BuyWorker"] is Button btnW) btnW.Text = $"采集工 💰{_workerCost}";
         if (panel.Controls["UpgHealer"] is Button uH) uH.Text = $"Lv.{_healerLevel} 💎{80 * _healerLevel}";
-        if (panel.Controls["BuyHealer"] is Button btnD) btnD.Text = $"治疗者\n💰{_defenderCost}";
+        if (panel.Controls["BuyHealer"] is Button btnD) btnD.Text = $"治疗者 💰{_defenderCost}";
         if (panel.Controls["UpgShooter"] is Button uS) uS.Text = $"Lv.{_shooterLevel} 💎{60 * _shooterLevel}";
-        if (panel.Controls["BuyShooter"] is Button btnS) btnS.Text = $"攻击者\n💰{_shooterCost}";
+        if (panel.Controls["BuyShooter"] is Button btnS) btnS.Text = $"攻击者 💰{_shooterCost}";
         if (panel.Controls["UpgGuardian"] is Button uG) uG.Text = $"Lv.{_guardianLevel} 💎{100 * _guardianLevel}";
-        if (panel.Controls["BuyGuardian"] is Button btnG) btnG.Text = $"守卫者\n💰{_guardianCost}";
+        if (panel.Controls["BuyGuardian"] is Button btnG) btnG.Text = $"守卫者 💰{_guardianCost}";
 
         UpdateUpgradeToolTips();
     }
@@ -2329,6 +2333,7 @@ public partial class BattleForm : Form
         g.FillEllipse(glowBrush, midX - 10, midY - 10, 20, 20);
     }
 }
+
 
 
 
