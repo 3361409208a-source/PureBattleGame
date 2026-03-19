@@ -16,6 +16,12 @@ public enum RobotClass
     Guardian    // 守卫者 (近战/击退型)
 }
 
+public enum RobotRank
+{
+    Normal,
+    Mega
+}
+
 public partial class Robot
 {
     // 采集
@@ -28,6 +34,7 @@ public partial class Robot
 
     // 兵种类型
     public RobotClass ClassType { get; set; } = RobotClass.Shooter;
+    public RobotRank Rank { get; set; } = RobotRank.Normal;
 
     // 基本信息
     public int Id { get; set; }
@@ -105,13 +112,14 @@ public partial class Robot
     public float ShakingOffset { get; set; } = 0;
     public float RotationAngle { get; set; } = 0;
 
-    public Robot(int id, string name, float x, float y, RobotClass classType = RobotClass.Shooter)
+    public Robot(int id, string name, float x, float y, RobotClass classType = RobotClass.Shooter, RobotRank rank = RobotRank.Normal)
     {
         Id = id;
         Name = name;
         X = x;
         Y = y;
         ClassType = classType;
+        Rank = rank;
 
         // 根据兵种设置不同属性
         switch (ClassType)
@@ -161,6 +169,14 @@ public partial class Robot
                 MaxHP = 2000; // 血量较厚
                 HP = MaxHP;
                 break;
+        }
+
+        // --- Rank 强化升级 ---
+        if (Rank == RobotRank.Mega)
+        {
+            Size = (int)(Size * 1.8f);
+            MaxHP *= 6;
+            HP = MaxHP;
         }
 
         // 随机初始方向，如果不是基地

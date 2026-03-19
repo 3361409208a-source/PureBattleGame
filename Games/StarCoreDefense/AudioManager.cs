@@ -10,4 +10,5 @@ public static class AudioManager
     public static void PlayProjectileSound(string type) { }
     public static void PlayHitSound() { }
     public static void PlayDeathSound() { }
+    public static void PlaySound(string effect) { }
 }
