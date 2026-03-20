@@ -687,29 +687,34 @@ public partial class Robot
 
     private void UpdateEngineerLogic()
     {
+        bool l1Active = BattleForm.Instance?.IsLayer1Complete() ?? false;
+
         // 战斗状态下的精细化决策
         if (BattleForm.Instance != null && BattleForm.Instance.IsUnderThreat())
         {
-            // 检查当前是否有内层防线的修理任务
-            bool doingInner = TargetWall != null && TargetWall.Layer == 0 && TargetWall.HP < TargetWall.MaxHP;
+            // 修正冲突逻辑：如果外线已开机，外线就是主战场，允许工程师继续待在外线。
+            // 只有在外线还没开机，或者内层出现裂痕时，才由于“避险”逻辑退守。
+            bool doingUrgentWork = TargetWall != null && 
+                                  (TargetWall.Layer == 0 || (l1Active && TargetWall.Layer == 1)) && 
+                                  TargetWall.HP < TargetWall.MaxHP;
             
-            if (!doingInner)
+            if (!doingUrgentWork)
             {
-                // 如果没有内层任务，尝试在“战火中”寻找一个内层缺口/损伤进行抢修
-                var urgentInner = BattleForm.Instance._walls
-                                    .Where(w => w.Layer == 0 && w.HP < w.MaxHP && (w.LockingRobot == null || w.LockingRobot == this))
-                                    .OrderBy(w => w.HP)
+                // 如果当前没在干活，优先找内层修，内层满了再看外层（如果外层已逻辑在线）
+                var bestRepair = BattleForm.Instance?._walls
+                                    .Where(w => ((l1Active && w.Layer == 1) || w.Layer == 0) && w.HP < w.MaxHP && (w.LockingRobot == null || w.LockingRobot == this))
+                                    .OrderBy(w => (l1Active ? (w.Layer == 1 ? 0 : 1) : w.Layer))
                                     .FirstOrDefault();
                 
-                if (urgentInner != null)
+                if (bestRepair != null)
                 {
                     UnlockTargets();
-                    TargetWall = urgentInner;
+                    TargetWall = bestRepair;
                     TargetWall.LockingRobot = this;
                 }
                 else
                 {
-                    // 确实没活干（内层全满），且外面有大批敌人，撤回中心待命
+                    // 确实内外都没活干（全满），撤回中心避险
                     UnlockTargets();
                     TargetWall = null;
                     UpdateSafetyRetreat();
