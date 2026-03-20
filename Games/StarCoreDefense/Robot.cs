@@ -747,8 +747,10 @@ public partial class Robot
             Dx *= 0.5f;
             Dy *= 0.5f;
             _buildingTimer++;
-            int repairAmt = 2 + (BattleForm.Instance?._engineerLevel ?? 1); // 修理量随等级提升
-            TargetWall.Repair(repairAmt); 
+            // 效率大幅提升：外环工作量大，修理速度额外增加 5 倍
+            float baseRepair = 2.0f + (BattleForm.Instance?._engineerLevel ?? 1) * 2.5f;
+            float finalRepair = TargetWall.Layer == 1 ? baseRepair * 5.0f : baseRepair;
+            TargetWall.Repair((int)finalRepair); 
             
             if (_buildingTimer % 15 == 0)
             {

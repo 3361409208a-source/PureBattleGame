@@ -16,7 +16,9 @@ public static class AudioManager
     [DllImport("winmm.dll")]
     private static extern long mciSendString(string command, StringBuilder? returnValue, int returnLength, IntPtr winHandle);
 
-    public static bool IsMuted { get; set; } = false; // 音效开关
+    public static bool IsMutedSFX { get; set; } = false;
+    public static bool IsMutedBGM { get; set; } = false;
+    private static int _currentBGMTrack = -1; // -1: none, 1: battle, 2: peace
 
     private static readonly Dictionary<string, string> _soundPaths = new Dictionary<string, string>();
     private static readonly Dictionary<string, int> _channelIndices = new Dictionary<string, int>();
@@ -84,7 +86,7 @@ public static class AudioManager
 
     public static void PlaySound(string effect, int cooldownMs = 20)
     {
-        if (IsMuted) return; // 声音禁用
+        if (IsMutedSFX) return; // 音效禁用
 
         string name = effect.ToLower();
         if (!_soundPaths.ContainsKey(name)) return;
@@ -131,6 +133,51 @@ public static class AudioManager
             bw.Write(Encoding.ASCII.GetBytes("data"));
             bw.Write(data.Length); bw.Write(data);
         }
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Auto)]
+    private static extern int GetShortPathName([MarshalAs(UnmanagedType.LPTStr)] string lpszLongPath, 
+        [MarshalAs(UnmanagedType.LPTStr)] StringBuilder lpszShortPath, int cchBuffer);
+
+    public static void PlayBGM(int track) // 1: battle, 2: peace
+    {
+        if (_currentBGMTrack == track) return;
+        _currentBGMTrack = track;
+
+        mciSendString("stop bgm", null, 0, IntPtr.Zero);
+        mciSendString("close bgm", null, 0, IntPtr.Zero);
+
+        if (IsMutedBGM) return;
+
+        string fileName = $"{track}.mp3";
+        // 尝试多个路径定位 (针对 dotnet run 和 发布环境)
+        string[] candidates = {
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Games", "StarCoreDefense", fileName),
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "Games", "StarCoreDefense", fileName),
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, fileName),
+            Path.Combine(Environment.CurrentDirectory, "Games", "StarCoreDefense", fileName)
+        };
+
+        string finalPath = candidates.FirstOrDefault(File.Exists) ?? "";
+
+        if (!string.IsNullOrEmpty(finalPath))
+        {
+            // MCI 极度讨厌长路径和特殊字符，必须转 8.3 短路径名
+            StringBuilder shortPath = new StringBuilder(255);
+            GetShortPathName(finalPath, shortPath, shortPath.Capacity);
+            string path = shortPath.ToString();
+
+            // 必须明确指定 type mpegvideo 以启用 MP3 解码器
+            mciSendString($"open \"{path}\" type mpegvideo alias bgm", null, 0, IntPtr.Zero);
+            mciSendString("play bgm repeat", null, 0, IntPtr.Zero);
+        }
+    }
+
+    public static void UpdateBGMVolume()
+    {
+        int t = _currentBGMTrack;
+        _currentBGMTrack = -1; 
+        PlayBGM(t);
     }
 
     public static void StopAll() => mciSendString("close all", null, 0, IntPtr.Zero);

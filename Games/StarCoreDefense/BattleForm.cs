@@ -70,6 +70,7 @@ public partial class BattleForm : Form
     // 渲染
     private Bitmap? _backBuffer;
     private Graphics? _bufferGraphics;
+    private Panel? _settingsPanel;
 
     // 粒子系统
     private List<Particle> _particles = new List<Particle>();
@@ -321,14 +322,14 @@ public partial class BattleForm : Form
         // 创建控制面板
         CreateControlPanel();
         CreateHomeButton();
-        CreateSoundToggleButton();
+        CreateSettingsUI();
     }
 
-    private void CreateSoundToggleButton()
+    private void CreateSettingsUI()
     {
-        Button btnSound = new Button
+        Button btnSettings = new Button
         {
-            Text = AudioManager.IsMuted ? "🔇 声音" : "🔊 声音",
+            Text = "⚙️ 设置",
             Location = new Point(this.ClientSize.Width - 150, 5),
             Size = new Size(70, 25),
             FlatStyle = FlatStyle.Flat,
@@ -338,14 +339,60 @@ public partial class BattleForm : Form
             Cursor = Cursors.Hand,
             Anchor = AnchorStyles.Top | AnchorStyles.Right
         };
-        btnSound.FlatAppearance.BorderSize = 1;
-        btnSound.FlatAppearance.BorderColor = Color.FromArgb(80, 80, 100);
-        btnSound.Click += (s, e) => {
-            AudioManager.IsMuted = !AudioManager.IsMuted;
-            btnSound.Text = AudioManager.IsMuted ? "🔇 声音" : "🔊 声音";
+        btnSettings.FlatAppearance.BorderSize = 1;
+        btnSettings.FlatAppearance.BorderColor = Color.FromArgb(80, 80, 100);
+        btnSettings.Click += (s, e) => { 
+            if (_settingsPanel != null)
+            {
+                _settingsPanel.Visible = !_settingsPanel.Visible; 
+                _settingsPanel.BringToFront(); 
+            }
         };
-        this.Controls.Add(btnSound);
-        btnSound.BringToFront();
+        this.Controls.Add(btnSettings);
+        btnSettings.BringToFront();
+
+        _settingsPanel = new Panel
+        {
+            Size = new Size(120, 80),
+            Location = new Point(this.ClientSize.Width - 150, 35),
+            BackColor = Color.FromArgb(200, 30, 30, 35),
+            Visible = false,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right,
+            BorderStyle = BorderStyle.FixedSingle
+        };
+
+        CheckBox cbSfx = new CheckBox 
+        { 
+            Text = "音效已开启", 
+            Checked = !AudioManager.IsMutedSFX, 
+            ForeColor = Color.White, 
+            Location = new Point(10, 10), 
+            AutoSize = true,
+            Font = new Font("Microsoft YaHei", 8)
+        };
+        cbSfx.CheckedChanged += (s, e) => {
+            AudioManager.IsMutedSFX = !cbSfx.Checked;
+            cbSfx.Text = cbSfx.Checked ? "音效已开启" : "音效已禁用";
+        };
+
+        CheckBox cbBgm = new CheckBox 
+        { 
+            Text = "音乐已开启", 
+            Checked = !AudioManager.IsMutedBGM, 
+            ForeColor = Color.White, 
+            Location = new Point(10, 40), 
+            AutoSize = true,
+            Font = new Font("Microsoft YaHei", 8)
+        };
+        cbBgm.CheckedChanged += (s, e) => {
+            AudioManager.IsMutedBGM = !cbBgm.Checked;
+            cbBgm.Text = cbBgm.Checked ? "音乐已开启" : "音乐已禁用";
+            AudioManager.UpdateBGMVolume();
+        };
+
+        _settingsPanel.Controls.Add(cbSfx);
+        _settingsPanel.Controls.Add(cbBgm);
+        this.Controls.Add(_settingsPanel);
     }
 
     private void ReturnToHome()
@@ -436,6 +483,10 @@ public partial class BattleForm : Form
                 monster.Update(this.ClientSize.Width, this.ClientSize.Height, _robots);
             }
         }
+
+        // 背景音乐切换逻辑：如果有活着的怪物则放战斗音乐(1.mp3)，否则放平时音乐(2.mp3)
+        bool hasThreat = _monsters.Any(m => m.IsActive && !m.IsDead);
+        AudioManager.PlayBGM(hasThreat ? 1 : 2);
 
         // 更新矿物生成逻辑
         _mineralSpawnTimer--;
@@ -3038,6 +3089,8 @@ public partial class BattleForm : Form
         float bx = b.X + b.Size / 2, by = b.Y + b.Size / 2;
 
         bool l1Active = IsLayer1Complete();
+        int innerCount = _walls.Count(w => w.Layer == 0);
+        int outerCount = _walls.Count(w => w.Layer == 1);
 
         foreach (var m in _monsters)
         {
@@ -3048,27 +3101,24 @@ public partial class BattleForm : Form
             // 优先检查外层
             foreach (var wall in _walls)
             {
-                // 外层必须全部建成才生效
+                // 关键修正：只有在外圈全部完工且处于激活状态时，怪物才会被阻挡
                 if (wall.Layer == 1 && !l1Active) continue;
                 if (wall.HP <= 0) continue;
                 
-                // 检查怪物是否进入围墙半径 (考虑厚度)
                 float angle = (float)Math.Atan2(dy, dx);
                 float angleDiff = (float)Math.Abs(angle - wall.Angle);
                 if (angleDiff > Math.PI) angleDiff = (float)(Math.PI * 2 - angleDiff);
 
-                if (angleDiff < Math.PI / _walls.Count) // 在该节范围内
+                float halfSweep = (float)Math.PI / (wall.Layer == 1 ? outerCount : innerCount);
+                if (angleDiff < halfSweep + 0.05f) // 加入少量容错
                 {
-                    if (dist < wall.Radius + wall.Thickness && dist > wall.Radius - wall.Thickness)
+                    if (Math.Abs(dist - wall.Radius) < (wall.Thickness + m.Size) / 2)
                     {
                         // 碰撞：阻挡怪物并造成伤害
-                        m.X -= (dx / dist) * 5f; // 击退效果
-                        m.Y -= (dy / dist) * 5f;
+                        m.X -= (dx / dist) * 8f; // 击退效果增加
+                        m.Y -= (dy / dist) * 8f;
                         wall.TakeDamage(1 + CurrentWave / 5);
                         AddExplosion(m.X, m.Y, Color.Orange, 1, "SPARK");
-                        
-                        // 怪物也受到反震伤害 (可选)
-                        // m.TakeDamage(5);
                     }
                 }
             }
