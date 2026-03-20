@@ -868,7 +868,7 @@ public partial class Robot
                 if (SpecialStateTimer % 4 == 0) // 每隔几帧攻击一次
                 {
                     float aoe = 120f;
-                    var hits = BattleForm.Instance?.GetAllMonsters().Where(m => m.IsActive && !m.IsDead && 
+                    var hits = allMonsters.Where(m => m.IsActive && !m.IsDead && 
                         Math.Sqrt(Math.Pow(m.X - X, 2) + Math.Pow(m.Y - Y, 2)) < aoe).ToList();
                     
                     int dmg = (int)(30 * (1 + (BattleForm.Instance?._guardianLevel - 1 ?? 0) * 0.2f));
