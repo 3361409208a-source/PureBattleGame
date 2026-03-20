@@ -257,7 +257,7 @@ public partial class Robot
                 SecondaryColor = Color.FromArgb(255, 195, 0);
                 EyeColor = Color.Black;
                 Size = 18;
-                SpeedMultiplier = 1.2f;
+                SpeedMultiplier = 1.2f + 0.1f * (BattleForm.Instance?._workerLevel - 1 ?? 0); // 等级越高移速越快
                 MaxHP = (int)(600 * (1 + 0.2f * (BattleForm.Instance?._workerLevel - 1 ?? 0))); // 根据等级提升血量
                 HP = MaxHP;
                 break;
@@ -266,7 +266,7 @@ public partial class Robot
                 SecondaryColor = Color.FromArgb(9, 132, 227);
                 EyeColor = Color.White;
                 Size = 25;
-                SpeedMultiplier = 0.9f;
+                SpeedMultiplier = 0.9f + 0.05f * (BattleForm.Instance?._healerLevel - 1 ?? 0);
                 MaxHP = (int)(1200 * (1 + 0.2f * (BattleForm.Instance?._healerLevel - 1 ?? 0)));
                 HP = MaxHP;
                 break;
@@ -275,7 +275,7 @@ public partial class Robot
                 SecondaryColor = Color.FromArgb(255, 77, 77);
                 EyeColor = Color.Cyan;
                 Size = 23;
-                SpeedMultiplier = 1.0f;
+                SpeedMultiplier = 1.0f + 0.05f * (BattleForm.Instance?._shooterLevel - 1 ?? 0);
                 MaxHP = (int)(1000 * (1 + 0.2f * (BattleForm.Instance?._shooterLevel - 1 ?? 0)));
                 HP = MaxHP;
                 break;
@@ -651,8 +651,11 @@ public partial class Robot
                 // 这里加星矿（钻石）而不是钱
                 if (BattleForm.Instance != null)
                 {
-                    BattleForm.Instance.Minerals += 15;
-                    BattleForm.Instance.AddFloatingText(X, Y - 20, "+15 💎", Color.Cyan);
+                    // 采矿量随采集工等级提升（Lv.1: 15, Lv.2: 20, Lv.3: 25...）
+                    int workerLv = BattleForm.Instance._workerLevel;
+                    int mineralYield = 10 + workerLv * 5;
+                    BattleForm.Instance.Minerals += mineralYield;
+                    BattleForm.Instance.AddFloatingText(X, Y - 20, $"+{mineralYield} 💎", Color.Cyan);
                     
                     // 彻底移除该晶体，确保“采完了”
                     TargetMineral.LockingRobot = null; // 采完释放
@@ -717,10 +720,13 @@ public partial class Robot
         HealingTargets.Clear();
         _healCooldown--;
 
-        // 寻找需要治疗的队友（距离300以内，血量不满的，最多3个），优先治疗基地
-        var targets = allRobots.Where(r => r != this && r.IsActive && !r.IsDead && r.HP < r.MaxHP)
-                               .OrderBy(r => r.ClassType == RobotClass.Base ? 0 : 1) // 优先基地
-                               .ThenBy(r => (r.X - X) * (r.X - X) + (r.Y - Y) * (r.Y - Y)) // 按距离排序
+        // 寻找需要治疗的队友，优先选择血量百分比最低的（伤势最重的）
+        // 当基地血量百分比低于70%时，才将基地提至最高优先级
+        var baseRobot2 = allRobots.FirstOrDefault(r => r.ClassType == RobotClass.Base);
+        bool baseInDanger = baseRobot2 != null && (float)baseRobot2.HP / baseRobot2.MaxHP < 0.70f;
+        var targets = allRobots.Where(r => r != this && r.IsActive && !r.IsDead && r.HP < r.MaxHP && r.ClassType != RobotClass.Worker)
+                               .OrderBy(r => baseInDanger && r.ClassType == RobotClass.Base ? 0 : 1) // 仅基地危机时优先基地
+                               .ThenBy(r => (float)r.HP / r.MaxHP) // 按血量百分比排序，最危险的先治
                                .Take(3)
                                .ToList();
 
@@ -1285,6 +1291,9 @@ public partial class Robot
     public void ApplyAttackEffect(int damage = 5)
     {
         if (IsDead) return;
+        
+        // 采集工人不具有血量概念，无视所有伤害，避免占用治疗资源
+        if (ClassType == RobotClass.Worker) return;
 
         HP = Math.Max(0, HP - damage);
 

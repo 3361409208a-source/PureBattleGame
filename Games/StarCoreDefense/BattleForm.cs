@@ -1350,8 +1350,11 @@ public partial class BattleForm : Form
         _monsters.Add(monster);
         _monstersToSpawnInWave--;
 
+        // 仅通知当前没有追踪目标的机器人去追击新怪物。
+        // 正在被攻击的机器人不会丢下当前目标去追新怪。
         foreach (var robot in _robots)
-            if (robot.IsActive && !robot.IsDead) robot.SetMonsterTarget(monster);
+            if (robot.IsActive && !robot.IsDead && robot.ClassType != RobotClass.Worker && robot.MonsterTarget == null)
+                robot.SetMonsterTarget(monster);
     }
 
     private void HandleGameEnding()
@@ -2316,7 +2319,7 @@ public partial class BattleForm : Form
                 g.DrawString(txt, f, Brushes.White, bx + (bw - sz.Width) / 2, by - 14);
             }
         }
-        else if (robot.HP < robot.MaxHP)
+        else if (robot.HP < robot.MaxHP && robot.ClassType != RobotClass.Worker)
         {
             float bw = size * 0.9f, bh = 4, bx = x + (size - bw) / 2, by = y - 8;
             using var bgb = new SolidBrush(Color.FromArgb(150, 50, 50, 50)); g.FillRectangle(bgb, bx, by, bw, bh);
@@ -2644,15 +2647,17 @@ public partial class BattleForm : Form
         AddExplosion(bx, by, Color.Cyan, 30, "RING");
         AudioManager.PlaySound("overload");
 
+        // 超载半径随基地等级动态增长（基础 600，每升一级+80）
+        float overloadRadius = 600f + (_baseLevel - 1) * 80f;
         foreach (var m in _monsters)
         {
             if (!m.IsActive || m.IsDead) continue;
             float dx = m.X - bx, dy = m.Y - by;
             float distSq = dx * dx + dy * dy;
-            if (distSq < 600 * 600)
+            if (distSq < overloadRadius * overloadRadius)
             {
                 float dist = (float)Math.Sqrt(distSq);
-                float force = (600 - dist) / 600 * 50f;
+                float force = (overloadRadius - dist) / overloadRadius * 50f;
                 m.X += (dx / dist) * force;
                 m.Y += (dy / dist) * force;
                 m.TakeDamage(2000 + _baseLevel * 200);
