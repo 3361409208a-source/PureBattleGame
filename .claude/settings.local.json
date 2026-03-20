@@ -6,7 +6,9 @@
       "Bash(git commit:*)",
       "Bash(git push:*)",
       "Bash(git checkout:*)",
-      "Bash(git config:*)"
+      "Bash(git config:*)",
+      "Bash(taskkill /f /im PureBattleGame.exe)",
+      "Bash(taskkill //f //im PureBattleGame.exe)"
     ]
   }
 }

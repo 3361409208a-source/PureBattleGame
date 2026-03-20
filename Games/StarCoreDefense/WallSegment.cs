@@ -22,6 +22,9 @@ public class WallSegment
     
     // 该分节当前可能正被某个工程单位锁定，防止多单位无效重叠
     public Robot? LockingRobot { get; set; }
+    
+    // 该分节当前驻扎的战斗单位，用于实现防线平均分布
+    public Robot? GarrisonRobot { get; set; }
 
     public WallSegment(float angle, float radius, float thickness, int maxHP)
     {
