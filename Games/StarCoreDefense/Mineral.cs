@@ -12,6 +12,7 @@ public class Mineral
     public bool IsActive { get; set; } = true;
     public float Rotation { get; set; }
     public Color Color { get; set; } = Color.Cyan;
+    public Robot? LockingRobot { get; set; } // 哪个机器人锁定了这个矿物，防止扎堆
 
     public Mineral(float x, float y)
     {

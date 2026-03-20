@@ -10,23 +10,34 @@ namespace PureBattleGame.Games.StarCoreDefense;
 public enum RobotClass
 {
     Base,       // 基地
-    Worker,     // 采集/生产型
-    Healer,     // 治疗/辅助型 (原防御者)
+    Worker,     // 采集/搜索型 (高机动)
+    Healer,     // 治疗/辅助型
     Shooter,    // 攻击/远程型
-    Guardian    // 守卫者 (近战/击退型)
+    Guardian,   // 守卫者 (近战)
+    Engineer    // 工程兵 (防御工事维护)
+}
+
+public enum BaseModule
+{
+    None,
+    Bastion,    // 堡垒模式：极大血量 + 减速场
+    Industrial  // 工业模式：极速采集 + 购买折扣
 }
 
 public enum RobotRank
 {
     Normal,
-    Mega
+    Mega,
+    Ultra
 }
 
 public partial class Robot
 {
-    // 采集
+    // 采集与建造
     public Mineral? TargetMineral { get; set; }
+    public WallSegment? TargetWall { get; set; }
     private int _miningTimer = 0;
+    private int _buildingTimer = 0;
 
     // 治疗技能
     public List<Robot> HealingTargets { get; } = new List<Robot>();
@@ -70,6 +81,8 @@ public partial class Robot
     public bool IsWeaponMaster { get; set; } = false;
     public int ShootCooldown { get; set; } = 0;
     public string CurrentAttackType { get; set; } = "LASER";
+    public int Damage { get; set; } = 100; // Added for Rank upgrade
+    public int AttackInterval { get; set; } = 60; // Added for Rank upgrade
 
     // 攻击状态
     public bool IsFiringLaser { get; set; } = false;
@@ -96,6 +109,7 @@ public partial class Robot
     public string? LastDamageText { get; set; }
     public int DamageTextTimer { get; set; } = 0;
     public int DamageFeedbackTimer { get; set; } = 0;
+    private int _targetUpdateCooldown = 0;
 
     // 动画
     public int AnimationFrame { get; set; } = 0;
@@ -169,15 +183,42 @@ public partial class Robot
                 MaxHP = 2000; // 血量较厚
                 HP = MaxHP;
                 break;
+            case RobotClass.Engineer:
+                PrimaryColor = Color.FromArgb(0, 102, 204); // 藏蓝色
+                SecondaryColor = Color.FromArgb(0, 76, 153);
+                EyeColor = Color.LightSkyBlue;
+                Size = 20;
+                SpeedMultiplier = 1.3f;
+                MaxHP = 800;
+                HP = MaxHP;
+                break;
         }
 
+        // 基地特殊属性，根据等级动态调整
+        if (ClassType == RobotClass.Base)
+        {
+            int baseLevel = BattleForm.Instance?._baseLevel ?? 1;
+            MaxHP = 3000 + (baseLevel - 1) * 5000; // 基地血量随等级大幅提升
+            Size = 60 + (baseLevel - 1) * 5;
+        }
+        
         // --- Rank 强化升级 ---
         if (Rank == RobotRank.Mega)
         {
             Size = (int)(Size * 1.8f);
             MaxHP *= 6;
-            HP = MaxHP;
+            Damage *= 4;
+            AttackInterval = (int)(AttackInterval * 0.7f);
         }
+        else if (Rank == RobotRank.Ultra)
+        {
+            Size = (int)(Size * 2.8f);
+            MaxHP *= 30;
+            Damage *= 15;
+            AttackInterval = (int)(AttackInterval * 0.5f);
+        }
+        
+        HP = MaxHP; // 升级或重置时满血
 
         // 随机初始方向，如果不是基地
         if (ClassType != RobotClass.Base)
@@ -247,6 +288,15 @@ public partial class Robot
                 MaxHP = (int)(2000 * (1 + 0.2f * (BattleForm.Instance?._guardianLevel - 1 ?? 0))); // 血量较厚
                 HP = MaxHP;
                 break;
+            case RobotClass.Engineer:
+                PrimaryColor = Color.FromArgb(0, 102, 204); // 藏蓝色
+                SecondaryColor = Color.FromArgb(0, 76, 153);
+                EyeColor = Color.LightSkyBlue;
+                Size = 20;
+                SpeedMultiplier = 1.3f;
+                MaxHP = (int)(800 * (1 + 0.2f * (BattleForm.Instance?._engineerLevel - 1 ?? 0)));
+                HP = MaxHP;
+                break;
         }
 
         // 应用全局生命加成
@@ -284,6 +334,8 @@ public partial class Robot
     /// </summary>
     public void Update(int screenWidth, int screenHeight, List<Robot> allRobots, List<Monster> allMonsters)
     {
+        if (_targetUpdateCooldown > 0) _targetUpdateCooldown--; // Decrement cooldown
+
         if (!IsActive || IsDead) return;
 
         if (ShootCooldown > 0) ShootCooldown--;
@@ -345,7 +397,7 @@ public partial class Robot
         }
 
         // 没有目标时，寻找 Aggro 范围内的新目标
-        if (ChasingTarget == null && DuelTarget == null && MonsterTarget == null && TargetMineral == null)
+        if (ChasingTarget == null && DuelTarget == null && MonsterTarget == null && TargetMineral == null && TargetWall == null)
         {
             FindAndAssignTarget(allRobots, allMonsters);
         }
@@ -358,6 +410,10 @@ public partial class Robot
         else if (ClassType == RobotClass.Worker)
         {
             UpdateWorkerLogic();
+        }
+        else if (ClassType == RobotClass.Engineer)
+        {
+            UpdateEngineerLogic();
         }
         else if (ClassType == RobotClass.Healer)
         {
@@ -459,33 +515,58 @@ public partial class Robot
     /// </summary>
     private void FindAndAssignTarget(List<Robot> allRobots, List<Monster> allMonsters)
     {
-        // 采集型机器人优先寻找矿物，不参与战斗
+        if (_targetUpdateCooldown > 0) return;
+        _targetUpdateCooldown = 15 + new Random().Next(15); // 随机错开更新频率
+        // 1. 采集型机器人：全屏超速搜索逻辑
         if (ClassType == RobotClass.Worker)
         {
             var minerals = BattleForm.Instance?.GetMinerals();
             if (minerals != null)
             {
-                Mineral? nearestMineral = null;
-                float minDist = float.MaxValue;
+                Mineral? bestMineral = null;
+                float bestMineralScore = float.MaxValue;
+                
+                // 采集工总数
+                int totalWorkers = allRobots.Count(r => r.ClassType == RobotClass.Worker && r.IsActive && !r.IsDead);
+
                 foreach (var m in minerals)
                 {
                     if (!m.IsActive) continue;
+                    
+                    // 核心抢占锁逻辑：严格 1对1，如果被别人锁了就不去，保证不扎堆
+                    if (m.LockingRobot != null && m.LockingRobot != this)
+                        continue;
+
                     float dxM = m.X - X;
                     float dyM = m.Y - Y;
-                    float distM = dxM * dxM + dyM * dyM;
-                    if (distM < minDist)
+                    float distSq = dxM * dxM + dyM * dyM;
+                    
+                    float mineralScore = distSq;
+                    
+                    if (mineralScore < bestMineralScore)
                     {
-                        minDist = distM;
-                        nearestMineral = m;
+                        bestMineralScore = mineralScore;
+                        bestMineral = m;
                     }
                 }
-                if (nearestMineral != null)
+                
+                if (bestMineral != null)
                 {
-                    TargetMineral = nearestMineral;
+                    // 先释放旧锁，再锁定新目标
+                    if (TargetMineral != null && TargetMineral.LockingRobot == this) TargetMineral.LockingRobot = null;
+                    TargetMineral = bestMineral;
+                    TargetMineral.LockingRobot = this; 
                     return;
                 }
             }
-            return; // 采集工没矿就回巡逻，不打怪
+            return;
+        }
+
+        // 2. 工程兵：寻找损坏的围墙
+        if (ClassType == RobotClass.Engineer)
+        {
+            TargetWall = BattleForm.Instance?.GetWeakestWall();
+            return;
         }
 
         // ── Aggro Range 核心逻辑 ──────────────────────────────────
@@ -533,14 +614,12 @@ public partial class Robot
         ChasingTarget = null;
         DuelTarget = null;
         TargetMineral = null;
+        TargetWall = null; // Clear wall target too
     }
 
     private void UpdateWorkerLogic()
     {
-        if (TargetMineral != null && !TargetMineral.IsActive)
-        {
-            TargetMineral = null;
-        }
+        if (TargetMineral != null && !TargetMineral.IsActive) TargetMineral = null;
 
         if (TargetMineral == null)
         {
@@ -548,37 +627,83 @@ public partial class Robot
             return;
         }
 
-        // 靠近矿物
         float dx = TargetMineral.X - X;
         float dy = TargetMineral.Y - Y;
         float dist = (float)Math.Sqrt(dx * dx + dy * dy);
 
-        if (dist > 10)
+        // 采集工速度随等级极快增长：基础 6.0 + (等级 * 1.5)
+        float maxSpeed = (6.0f + (BattleForm.Instance?._workerLevel ?? 1) * 1.5f) * SpeedMultiplier;
+
+        if (dist > 15)
         {
-            float maxSpeed = 3.0f * SpeedMultiplier;
-            Dx = Dx * 0.9f + (dx / dist) * maxSpeed * 0.1f;
-            Dy = Dy * 0.9f + (dy / dist) * maxSpeed * 0.1f;
+            Dx = Dx * 0.8f + (dx / dist) * maxSpeed * 0.2f;
+            Dy = Dy * 0.8f + (dy / dist) * maxSpeed * 0.2f;
+            _miningTimer = 0;
         }
         else
         {
-            // 开始采集
-            Dx *= 0.5f;
-            Dy *= 0.5f;
+            Dx *= 0.3f;
+            Dy *= 0.3f;
             _miningTimer++;
-            if (_miningTimer >= 60) // 1秒开采一个
+            if (_miningTimer >= 40) // 采集速度也变快了
             {
                 _miningTimer = 0;
-                TargetMineral.IsActive = false;
+                // 这里加星矿（钻石）而不是钱
                 if (BattleForm.Instance != null)
                 {
-                    BattleForm.Instance.Minerals += TargetMineral.Value;
+                    BattleForm.Instance.Minerals += 15;
+                    BattleForm.Instance.AddFloatingText(X, Y - 20, "+15 💎", Color.Cyan);
+                    
+                    // 彻底移除该晶体，确保“采完了”
+                    TargetMineral.LockingRobot = null; // 采完释放
+                    TargetMineral.IsActive = false;
                     BattleForm.Instance.RemoveMineral(TargetMineral);
-                    BattleForm.Instance.AddExplosion(X, Y, Color.Cyan, 5, "SPARK");
                 }
+                // 采集完后清除目标重新通过 FindAndAssignTarget 全局检索
                 TargetMineral = null;
             }
         }
     }
+
+    private void UpdateEngineerLogic()
+    {
+        if (TargetWall == null || !TargetWall.IsActive)
+        {
+            TargetWall = BattleForm.Instance?.GetWeakestWall();
+        }
+
+        if (TargetWall == null)
+        {
+            UpdateRandomMovement();
+            return;
+        }
+
+        var wp = TargetWall.GetWorldPosition(BattleForm.Instance!.GetBaseRobot()?.X ?? 0, BattleForm.Instance!.GetBaseRobot()?.Y ?? 0);
+        float dx = wp.X - X;
+        float dy = wp.Y - Y;
+        float dist = (float)Math.Sqrt(dx * dx + dy * dy);
+
+        if (dist > 25)
+        {
+            float maxSpeed = 5.0f * SpeedMultiplier;
+            Dx = Dx * 0.9f + (dx / dist) * maxSpeed * 0.1f;
+            Dy = Dy * 0.9f + (dy / dist) * maxSpeed * 0.1f;
+            _buildingTimer = 0;
+        }
+        else
+        {
+            Dx *= 0.5f;
+            Dy *= 0.5f;
+            _buildingTimer++;
+            TargetWall.Repair(2); // 工程兵修理效率更高
+            if (_buildingTimer % 15 == 0)
+            {
+                BattleForm.Instance?.AddExplosion(X + Size / 2, Y + Size / 2, Color.DeepSkyBlue, 2, "SPARK");
+            }
+            if (TargetWall.HP >= TargetWall.MaxHP) TargetWall = null;
+        }
+    }
+
 
     private void UpdateChasingRobotLogic()
     {
@@ -1125,6 +1250,13 @@ public partial class Robot
 
     private void HandleDeath()
     {
+        if (TargetMineral != null && TargetMineral.LockingRobot == this)
+        {
+            TargetMineral.LockingRobot = null;
+        }
+        TargetMineral = null;
+        TargetWall = null;
+
         IsDead = true;
         IsMoving = false;
         RotationAngle = 90f;
@@ -1269,6 +1401,7 @@ public partial class Robot
                 RobotClass.Worker => BattleForm.Instance._workerLevel - 1,
                 RobotClass.Healer => BattleForm.Instance._healerLevel - 1,
                 RobotClass.Guardian => BattleForm.Instance._guardianLevel - 1,
+                RobotClass.Engineer => BattleForm.Instance._engineerLevel - 1,
                 _ => 0
             };
         }

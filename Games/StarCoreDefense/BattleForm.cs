@@ -4,6 +4,8 @@ using System.Drawing;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.WinForms;
 using Microsoft.Web.WebView2.Core;
+using System.Linq; // Added for LINQ operations
+using System.Collections.Concurrent; // Added for ConcurrentDictionary in SpatialGrid
 
 using PureBattleGame.Core;
 
@@ -43,16 +45,20 @@ public partial class BattleForm : Form
 
     // 兵种升级等级
     public int _baseLevel = 1;
+    public BaseModule _currentBaseModule = BaseModule.None;
+    private int _baseOverloadCooldown = 0;
     public int _workerLevel = 1;
     public int _healerLevel = 1;
     public int _shooterLevel = 1;
     public int _guardianLevel = 1;
+    public int _engineerLevel = 1;
 
     // 机器人价格递增
     private int _workerCost = 50;
     private int _defenderCost = 150;
     private int _shooterCost = 100;
     private int _guardianCost = 200;
+    private int _engineerCost = 150;
 
     // 办公浏览器
     private WebView2? _webView;
@@ -66,6 +72,7 @@ public partial class BattleForm : Form
     // 粒子系统
     private List<Particle> _particles = new List<Particle>();
     private List<Mineral> _minerals = new List<Mineral>();
+    private List<WallSegment> _walls = new List<WallSegment>();
     private int _mineralSpawnTimer = 300; // 每 5 秒尝试生成一个矿物
 
     // 鼠标交互
@@ -108,6 +115,7 @@ public partial class BattleForm : Form
         Instance = this;
         InitializeComponent();
         SetupGame();
+        InitializeWalls();
     }
 
     private void InitializeComponent()
@@ -135,6 +143,8 @@ public partial class BattleForm : Form
         SetupZoomButtons();
         InitializeBrowser();
     }
+
+    private SpatialGrid _spatialGrid = new SpatialGrid(200);
 
     private void SetupZoomButtons()
     {
@@ -344,8 +354,12 @@ public partial class BattleForm : Form
         }
 
         // 更新机器人
-        // 每帧重置怪物被攻击计数
-        foreach (var m in _monsters) m.AttackerCount = 0;
+        // --- 性能优化：空间网格更新 ---
+        _spatialGrid.Clear();
+        foreach (var m in _monsters) {
+            m.AttackerCount = 0;
+            if (m.IsActive && !m.IsDead) _spatialGrid.Add(m);
+        }
 
         foreach (var robot in _robots)
         {
@@ -435,63 +449,32 @@ public partial class BattleForm : Form
                 }
             }
 
-            // 检测与怪物碰撞 (只有机器人的投射物才对怪物造成伤害)
+            // 检测与怪物碰撞 (只有机器人的投射物才对怪物造成伤害) - 使用空间网格优化
             if (p.IsActive && !p.IsMonsterProjectile)
             {
-                foreach (var monster in _monsters)
+                foreach (var monster in _spatialGrid.GetNearby(p.X, p.Y))
                 {
-                    if (monster.IsActive && !monster.IsDead)
+                    if (monster.IsActive && !monster.IsDead && p.CheckCollision(monster.X, monster.Y, monster.Size))
                     {
-                        if (CheckCollision(p, monster))
+                        monster.OnHit(p);
+
+                        if (p.Type == "LIGHTNING")
                         {
-                            monster.OnHit(p);
-
-                            if (p.Type == "LIGHTNING")
-                            {
-                                monster.ParalyzeTimer = 60; // 1秒麻痹
-                                AddExplosion(monster.X + monster.Size / 2, monster.Y + monster.Size / 2, Color.White, 3, "SPARK");
-                                
-                                // 连锁闪电逻辑：寻找 250 距离内的下一个目标
-                                if (p.ChainCount < 3)
-                                {
-                                    Monster? nextTarget = null;
-                                    float minDist = 250;
-                                    foreach(var m in _monsters)
-                                    {
-                                        if (m == monster || !m.IsActive || m.IsDead) continue;
-                                        float dx = m.X - monster.X;
-                                        float dy = m.Y - monster.Y;
-                                        float d = (float)Math.Sqrt(dx*dx + dy*dy);
-                                        if (d < minDist)
-                                        {
-                                            minDist = d;
-                                            nextTarget = m;
-                                        }
-                                    }
-
-                                    if (nextTarget != null)
-                                    {
-                                        var nextP = new Projectile(p.Owner, monster.X + monster.Size/2, monster.Y + monster.Size/2, 
-                                                                  nextTarget.X + nextTarget.Size/2, nextTarget.Y + nextTarget.Size/2, "LIGHTNING");
-                                        nextP.ChainCount = p.ChainCount + 1;
-                                        nextP.TrackingMonster = nextTarget; // 锁定追踪新目标
-                                        _projectiles.Add(nextP);
-                                    }
-                                }
-                            }
-
-                            // 通用命中特效
-                            AddExplosion(p.X, p.Y, p.ProjectileColor, 5, "SPARK");
-                            if (p.Type == "METEOR") AddExplosion(p.X, p.Y, Color.OrangeRed, 10, "SMOKE");
-                            if (p.Type == "BLACK_HOLE") AddExplosion(p.X, p.Y, Color.Purple, 1, "RING");
-
-                            if (p.Type != "BLACK_HOLE" && p.Type != "DEATH_RAY") // 穿透性武器不销毁
-                            {
-                                p.IsActive = false;
-                                _projectiles.RemoveAt(i);
-                            }
-                            break;
+                            monster.ParalyzeTimer = 60; // 1秒麻痹
+                            AddExplosion(monster.X + monster.Size / 2, monster.Y + monster.Size / 2, Color.White, 3, "SPARK");
                         }
+
+                        // 通用命中特效
+                        AddExplosion(p.X, p.Y, p.ProjectileColor, 5, "SPARK");
+                        if (p.Type == "METEOR") AddExplosion(p.X, p.Y, Color.OrangeRed, 10, "SMOKE");
+                        if (p.Type == "BLACK_HOLE") AddExplosion(p.X, p.Y, Color.Purple, 1, "RING");
+
+                        if (p.Type != "BLACK_HOLE" && p.Type != "DEATH_RAY") // 穿透性武器不销毁
+                        {
+                            p.IsActive = false;
+                            _projectiles.RemoveAt(i);
+                        }
+                        break;
                     }
                 }
             }
@@ -499,6 +482,10 @@ public partial class BattleForm : Form
 
         // 处理所有实体之间的物理碰撞
         HandleAllCollisions();
+        HandleMonsterWallCollision();
+
+        // 基地被动与冷却
+        HandleBaseModulePassives();
 
         // 基地能量波技能 (每6秒)
         UpdateBaseWave();
@@ -508,6 +495,12 @@ public partial class BattleForm : Form
 
         // 检查游戏结束条件
         CheckGameEnd();
+
+        // 围墙状态更新
+        foreach (var w in _walls) {
+            if (w.HitFlashTimer > 0) w.HitFlashTimer--;
+            if (w.RepairEffectTimer > 0) w.RepairEffectTimer--;
+        }
 
         // 重绘
         this.Invalidate();
@@ -574,6 +567,9 @@ public partial class BattleForm : Form
 
         // 绘制网格背景 (扩大范围以覆盖缩放后的视野)
         DrawWorldGrid(g, baseX, baseY);
+
+        // 绘制围墙
+        RenderWalls(g, baseX, baseY);
 
         // 绘制粒子 (底层)
         foreach (var p in _particles)
@@ -1055,6 +1051,9 @@ public partial class BattleForm : Form
                     bool f1 = r1.ClassType == RobotClass.Base;
                     bool f2 = r2.ClassType == RobotClass.Base;
 
+                    // 采集工不与采集工发生碰撞，避免在矿区发生“推搡”或“打架”现象
+                    if (r1.ClassType == RobotClass.Worker && r2.ClassType == RobotClass.Worker) continue;
+
                     if (f1 && !f2) { r2.X += pushX * 2; r2.Y += pushY * 2; }
                     else if (!f1 && f2) { r1.X -= pushX * 2; r1.Y -= pushY * 2; }
                     else if (!f1 && !f2) { r1.X -= pushX; r1.Y -= pushY; r2.X += pushX; r2.Y += pushY; }
@@ -1134,6 +1133,48 @@ public partial class BattleForm : Form
                         r.Y -= pushY;
                         m.X += pushX;
                         m.Y += pushY;
+                    }
+                }
+            }
+        }
+
+        // 4. 怪物与围墙之间
+        var baseB = GetBaseRobot();
+        if (baseB != null && _walls.Count > 0)
+        {
+            float bx = baseB.X + baseB.Size / 2, by = baseB.Y + baseB.Size / 2;
+            foreach (var m in _monsters)
+            {
+                if (!m.IsActive || m.IsDead) continue;
+                float dx = m.X + m.Size / 2 - bx, dy = m.Y + m.Size / 2 - by;
+                float dist = (float)Math.Sqrt(dx * dx + dy * dy);
+                float angle = (float)Math.Atan2(dy, dx);
+                if (angle < 0) angle += (float)(Math.PI * 2);
+
+                // 找到角度匹配的墙段
+                foreach (var wall in _walls)
+                {
+                    if (!wall.IsActive) continue;
+                    float angleDiff = Math.Abs(angle - wall.Angle);
+                    if (angleDiff > Math.PI) angleDiff = (float)(Math.PI * 2) - angleDiff;
+
+                    if (angleDiff < (Math.PI * 2 / _walls.Count)) 
+                    {
+                        // 在该墙段的扇区内，检查径向距离
+                        float wallDist = wall.Radius;
+                        if (dist < wallDist + wall.Thickness && dist > wallDist - wall.Thickness)
+                        {
+                            // 发生碰撞：阻挡怪物并反弹，同时对墙造成伤害
+                            float push = (wallDist + wall.Thickness + 5) - dist;
+                            m.X += (dx / dist) * push;
+                            m.Y += (dy / dist) * push;
+                            
+                            if (Environment.TickCount % 30 == 0)
+                            {
+                                wall.TakeDamage(5 + CurrentWave);
+                                AddFloatingText(m.X, m.Y, "BLOCK", Color.Silver);
+                            }
+                        }
                     }
                 }
             }
@@ -1238,6 +1279,7 @@ public partial class BattleForm : Form
             }
         }
 
+        // 处理合体逻辑 (每 5 个同类普通单位合成 1 个精英)
         // 生成怪物逻辑 (支持单帧多刷)
         if (_monstersToSpawnInWave > 0)
         {
@@ -1810,7 +1852,6 @@ public partial class BattleForm : Form
         using var font = new Font("Microsoft YaHei", 36, FontStyle.Bold);
         using var largeFont = new Font("Microsoft YaHei", 48, FontStyle.Bold);
         using var whiteBrush = new SolidBrush(Color.White);
-
         string title = "战斗结束";
         SizeF titleSize = g.MeasureString(title, largeFont);
         g.DrawString(title, largeFont, whiteBrush,
@@ -1835,20 +1876,31 @@ public partial class BattleForm : Form
 
     private void CreateControlPanel()
     {
-        int panelWidth = 510;
-        int btnWidth = 85;
-        int btnHeight = 42; // 足够展示两行文字
-        int spacing = 12;
+        int panelWidth = 530; // 稍作加宽以容纳 6 个栏位
+        int btnWidth = 72;   // 按钮变小一点
+        int btnHeight = 28;  // 紧凑高度
+        int spacing = 8;     // 间距调窄
 
         var panel = new FlickerFreePanel
         {
             Name = "ControlPanel",
-            Size = new Size(panelWidth, 90),
-            Location = new Point((this.ClientSize.Width - panelWidth) / 2, this.ClientSize.Height - 95),
+            Size = new Size(panelWidth, 75), // 降低高度
+            Location = new Point((this.ClientSize.Width - panelWidth) / 2, this.ClientSize.Height - 80),
             BackColor = Color.FromArgb(20, 20, 25),
             BorderStyle = BorderStyle.None,
             Anchor = AnchorStyles.Bottom
         };
+
+        panel.Controls.Add(new Label
+        {
+            Name = "ResMonitor",
+            Text = "💰 {Gold}  |  💎 {Minerals}",
+            Location = new Point(5, 52),
+            Size = new Size(panelWidth - 10, 20),
+            ForeColor = Color.Gold,
+            Font = new Font("Consolas", 8.5f, FontStyle.Bold),
+            TextAlign = ContentAlignment.MiddleCenter
+        });
 
         // 按钮样式生成器
         Button CreateBtn(string id, string text, int x, int y, EventHandler onClick, bool isUpgrade = false)
@@ -1858,11 +1910,11 @@ public partial class BattleForm : Form
                 Name = id,
                 Text = text,
                 Location = new Point(x, y),
-                Size = new Size(btnWidth, isUpgrade ? 24 : btnHeight),
+                Size = new Size(btnWidth, isUpgrade ? 20 : btnHeight),
                 FlatStyle = FlatStyle.Flat,
                 ForeColor = isUpgrade ? Color.Cyan : Color.White,
                 BackColor = isUpgrade ? Color.FromArgb(30, 30, 55) : Color.FromArgb(40, 40, 50),
-                Font = new Font("Microsoft YaHei", isUpgrade ? 6.5f : 7.5f, FontStyle.Bold),
+                Font = new Font("Microsoft YaHei", isUpgrade ? 6.0f : 6.8f, FontStyle.Bold),
                 Cursor = Cursors.Hand,
                 TextAlign = ContentAlignment.MiddleCenter,
                 Margin = new Padding(0),
@@ -1890,11 +1942,21 @@ public partial class BattleForm : Form
             {
                 Minerals -= cost;
                 _baseLevel++;
+                
+                // Lv.10 分支：选择模块
+                if (_baseLevel == 10)
+                {
+                    ShowBaseModuleSelection();
+                }
+
+                UpdateWallScaling(); // 更新围墙
+
                 var b = GetBaseRobot();
                 if (b != null) b.ApplyClassProperties();
                 UpdateUI();
             }
         }, true));
+        
         panel.Controls.Add(CreateBtn("HealBase", $"维修 💰100", startX, buyY, (s, e) =>
         {
             if (Gold >= 100)
@@ -1909,6 +1971,14 @@ public partial class BattleForm : Form
                 }
             }
         }));
+
+        // 主动技能：超载 (Lv.5 解锁)
+        var btnOverload = CreateBtn("Overload", "⚡ 超载 ⚡", startX, buyY + 45, (s, e) => TriggerBaseOverload());
+        btnOverload.Height = 15;
+        btnOverload.Font = new Font("Microsoft YaHei", 5.5f, FontStyle.Bold);
+        btnOverload.Visible = _baseLevel >= 5;
+        panel.Controls.Add(btnOverload);
+        if (_baseOverloadCooldown > 0) btnOverload.Enabled = false;
 
         // 1. 采集工
         int workerStartX = startX + btnWidth + spacing;
@@ -1926,9 +1996,10 @@ public partial class BattleForm : Form
         }, true));
         panel.Controls.Add(CreateBtn("BuyWorker", $"采集工 💰{_workerCost}", workerStartX, buyY, (s, e) =>
         {
-            if (Gold >= _workerCost)
+            int realCost = (_currentBaseModule == BaseModule.Industrial) ? (int)(_workerCost * 0.8f) : _workerCost;
+            if (Gold >= realCost)
             {
-                Gold -= _workerCost;
+                Gold -= realCost;
                 var r = SpawnRobot("采集者", -1, -1, RobotClass.Worker);
                 r.ApplyClassProperties();
                 _workerCost = (int)(_workerCost * 1.2f);
@@ -1952,9 +2023,10 @@ public partial class BattleForm : Form
         }, true));
         panel.Controls.Add(CreateBtn("BuyHealer", $"治疗者 💰{_defenderCost}", healerStartX, buyY, (s, e) =>
         {
-            if (Gold >= _defenderCost)
+            int realCost = (_currentBaseModule == BaseModule.Industrial) ? (int)(_defenderCost * 0.8f) : _defenderCost;
+            if (Gold >= realCost)
             {
-                Gold -= _defenderCost;
+                Gold -= realCost;
                 var r = SpawnRobot("守护者", -1, -1, RobotClass.Healer);
                 r.ApplyClassProperties();
                 _defenderCost = (int)(_defenderCost * 1.3f);
@@ -1978,9 +2050,10 @@ public partial class BattleForm : Form
         }, true));
         panel.Controls.Add(CreateBtn("BuyShooter", $"攻击者 💰{_shooterCost}", shooterStartX, buyY, (s, e) =>
         {
-            if (Gold >= _shooterCost)
+            int realCost = (_currentBaseModule == BaseModule.Industrial) ? (int)(_shooterCost * 0.8f) : _shooterCost;
+            if (Gold >= realCost)
             {
-                Gold -= _shooterCost;
+                Gold -= realCost;
                 var r = SpawnRobot("游侠", -1, -1, RobotClass.Shooter);
                 r.ApplyClassProperties();
                 _shooterCost = (int)(_shooterCost * 1.25f);
@@ -2004,9 +2077,10 @@ public partial class BattleForm : Form
         }, true));
         panel.Controls.Add(CreateBtn("BuyGuardian", $"守卫者 💰{_guardianCost}", guardianStartX, buyY, (s, e) =>
         {
-            if (Gold >= _guardianCost)
+            int realCost = (_currentBaseModule == BaseModule.Industrial) ? (int)(_guardianCost * 0.8f) : _guardianCost;
+            if (Gold >= realCost)
             {
-                Gold -= _guardianCost;
+                Gold -= realCost;
                 var r = SpawnRobot("守卫者", -1, -1, RobotClass.Guardian);
                 r.ApplyClassProperties();
                 _guardianCost = (int)(_guardianCost * 1.35f);
@@ -2014,7 +2088,35 @@ public partial class BattleForm : Form
             }
         }));
 
+        // 5. 工程兵
+        int engineerStartX = guardianStartX + btnWidth + spacing;
+        int engineerUpgradeCost = 120 * _engineerLevel;
+        panel.Controls.Add(CreateBtn("UpgEngineer", $"Lv.{_engineerLevel} 💎{engineerUpgradeCost}", engineerStartX, upgY, (s, e) =>
+        {
+            int cost = 120 * _engineerLevel;
+            if (Minerals >= cost)
+            {
+                Minerals -= cost;
+                _engineerLevel++;
+                foreach (var r in _robots) if (r.ClassType == RobotClass.Engineer) r.ApplyClassProperties();
+                UpdateUI();
+            }
+        }, true));
+        panel.Controls.Add(CreateBtn("BuyEngineer", $"工程兵 💰{_engineerCost}", engineerStartX, buyY, (s, e) =>
+        {
+            int realCost = (_currentBaseModule == BaseModule.Industrial) ? (int)(_engineerCost * 0.8f) : _engineerCost;
+            if (Gold >= realCost)
+            {
+                Gold -= realCost;
+                var r = SpawnRobot("工程兵", -1, -1, RobotClass.Engineer);
+                r.ApplyClassProperties();
+                _engineerCost = (int)(_engineerCost * 1.4f);
+                UpdateUI();
+            }
+        }));
+
         this.Controls.Add(panel);
+        UpdateUI();
         UpdateUpgradeToolTips(); 
 
         // 支持拖拽窗口 (除 UI 区域外)
@@ -2046,15 +2148,31 @@ public partial class BattleForm : Form
         if (panel == null) return;
 
         // 更新按钮文字和价格
+        bool isInd = _currentBaseModule == BaseModule.Industrial;
         if (panel.Controls["UpgBase"] is Button uB) uB.Text = $"Lv.{_baseLevel} 💎{150 * _baseLevel}";
         if (panel.Controls["UpgWorker"] is Button uW) uW.Text = $"Lv.{_workerLevel} 💎{50 * _workerLevel}";
-        if (panel.Controls["BuyWorker"] is Button btnW) btnW.Text = $"采集工 💰{_workerCost}";
+        if (panel.Controls["BuyWorker"] is Button btnW) btnW.Text = $"采集工 💰{(isInd ? (int)(_workerCost * 0.8f) : _workerCost)}";
         if (panel.Controls["UpgHealer"] is Button uH) uH.Text = $"Lv.{_healerLevel} 💎{80 * _healerLevel}";
-        if (panel.Controls["BuyHealer"] is Button btnD) btnD.Text = $"治疗者 💰{_defenderCost}";
+        if (panel.Controls["BuyHealer"] is Button btnD) btnD.Text = $"治疗者 💰{(isInd ? (int)(_defenderCost * 0.8f) : _defenderCost)}";
         if (panel.Controls["UpgShooter"] is Button uS) uS.Text = $"Lv.{_shooterLevel} 💎{60 * _shooterLevel}";
-        if (panel.Controls["BuyShooter"] is Button btnS) btnS.Text = $"攻击者 💰{_shooterCost}";
+        if (panel.Controls["BuyShooter"] is Button btnS) btnS.Text = $"攻击者 💰{(isInd ? (int)(_shooterCost * 0.8f) : _shooterCost)}";
         if (panel.Controls["UpgGuardian"] is Button uG) uG.Text = $"Lv.{_guardianLevel} 💎{100 * _guardianLevel}";
-        if (panel.Controls["BuyGuardian"] is Button btnG) btnG.Text = $"守卫者 💰{_guardianCost}";
+        if (panel.Controls["BuyGuardian"] is Button btnG) btnG.Text = $"守卫者 💰{(isInd ? (int)(_guardianCost * 0.8f) : _guardianCost)}";
+        if (panel.Controls["UpgEngineer"] is Button uE) uE.Text = $"Lv.{_engineerLevel} 💎{120 * _engineerLevel}";
+        if (panel.Controls["BuyEngineer"] is Button btnE) btnE.Text = $"工程兵 💰{(isInd ? (int)(_engineerCost * 0.8f) : _engineerCost)}";
+
+        if (panel.Controls["Overload"] is Button bO)
+        {
+            bO.Visible = _baseLevel >= 5;
+            bO.Enabled = _baseOverloadCooldown <= 0;
+            if (_baseOverloadCooldown > 0) bO.Text = $"{_baseOverloadCooldown / 60}s";
+            else bO.Text = "⚡ 超载 ⚡";
+        }
+
+        if (panel.Controls["ResMonitor"] is Label resL)
+        {
+            resL.Text = $"💰 {Gold}  |  💎 {Minerals}";
+        }
 
         UpdateUpgradeToolTips();
     }
@@ -2130,6 +2248,13 @@ public partial class BattleForm : Form
         float x = robot.X;
         float y = robot.Y;
         int size = robot.Size;
+
+        if (robot.Rank == RobotRank.Ultra)
+        {
+            DrawUltraAppearance(g, robot, x, y, size, x + size / 2, y + size / 2);
+            DrawRobotHealthBar(g, robot, x, y, size);
+            return;
+        }
 
         if (robot.IsDead)
         {
@@ -2301,12 +2426,41 @@ public partial class BattleForm : Form
             hex[i] = new PointF(cx + (float)Math.Cos(a) * (size / 2f), cy + (float)Math.Sin(a) * (size / 2f));
         }
         g.FillPolygon(bodyBrush, hex); using var bp = new Pen(darkBrush, 2); g.DrawPolygon(bp, hex);
-        g.FillRectangle(darkBrush, x - 4, cy - 4, 8, 8); g.FillRectangle(darkBrush, x + size - 4, cy - 4, 8, 8);
-        float ang = (float)Math.Atan2(robot.Dy, robot.Dx);
-        float sa = (float)(ang * 180 / Math.PI - 45);
-        using var sp = new Pen(Color.FromArgb(150, robot.SecondaryColor), 5);
-        g.DrawArc(sp, x - 10, y - 10, size + 20, size + 20, sa, 90);
         DrawEyes(g, robot, cx, cy, 2);
+    }
+
+    private void DrawUltraAppearance(Graphics g, Robot robot, float x, float y, float size, float cx, float cy)
+    {
+        // 终极形态：多重环绕、核心脉冲、半透明重影
+        float time = Environment.TickCount / 500f;
+        
+        // 1. 底层核心光晕
+        using (var haloBrush = new SolidBrush(Color.FromArgb(100, robot.PrimaryColor)))
+        {
+            float haloSize = size * (1.2f + 0.1f * (float)Math.Sin(time * 2));
+            g.FillEllipse(haloBrush, cx - haloSize/2, cy - haloSize/2, haloSize, haloSize);
+        }
+
+        // 2. 主体：尖锐的多边形
+        PointF[] points = new PointF[8];
+        for (int i = 0; i < 8; i++)
+        {
+            float angle = i * (float)Math.PI / 4 + time * 0.5f;
+            float r = (i % 2 == 0) ? size * 0.6f : size * 0.4f;
+            points[i] = new PointF(cx + (float)Math.Cos(angle) * r, cy + (float)Math.Sin(angle) * r);
+        }
+        using var bodyBrush = new SolidBrush(robot.PrimaryColor);
+        g.FillPolygon(bodyBrush, points);
+        using var p = new Pen(Color.White, 3);
+        g.DrawPolygon(p, points);
+
+        // 3. 三重环绕粒子
+        for (int i = 0; i < 3; i++)
+        {
+            Draw3DOrbiters(g, robot, cx, cy, size * (1.0f + i * 0.3f), i % 2 == 0);
+        }
+
+        DrawEyes(g, robot, cx, cy, 8);
     }
 
     private void DrawDefaultAppearance(Graphics g, Robot robot, float x, float y, float size, float cx, float cy)
@@ -2355,25 +2509,7 @@ public partial class BattleForm : Form
         float mx = (cx + tcx) / 2, my = (cy + tcy) / 2;
         using var gb = new SolidBrush(Color.FromArgb(120, 255, 200, 100)); g.FillEllipse(gb, mx - 10, my - 10, 20, 20);
     }
-    private void UpdateFusion()
-    {
-        if (Environment.TickCount % 60 != 0) return;
-        foreach (RobotClass ct in Enum.GetValues<RobotClass>()) {
-            if (ct == RobotClass.Base) continue;
-            var normals = _robots.Where(r => r.IsActive && !r.IsDead && r.ClassType == ct && r.Rank == RobotRank.Normal).ToList();
-            if (normals.Count >= 5) {
-                var group = normals.Take(5).ToList();
-                float ax = group.Average(r => r.X), ay = group.Average(r => r.Y);
-                foreach (var r in group) { r.HP = 0; r.IsDead = true; r.IsActive = false; }
-                var mega = new Robot(++_robotIdCounter, "MEGA " + ct, ax, ay, ct, RobotRank.Mega);
-                mega.ApplyClassProperties(); _robots.Add(mega);
-                AddExplosion(ax + 10, ay + 10, mega.PrimaryColor, 30, "RING");
-                AddExplosion(ax + 10, ay + 10, Color.White, 20, "FLASH");
-                AddFloatingText(ax, ay - 30, "UNITS FUSED!", Color.Gold);
-                AudioManager.PlaySound("POWERUP");
-            }
-        }
-    }
+
 
     private void DrawMegaAppearance(Graphics g, Robot robot, float x, float y, float size, float cx, float cy)
     {
@@ -2423,5 +2559,270 @@ public partial class BattleForm : Form
                 break;
         }
         DrawEyes(g, robot, cx, cy, 6);
+    } // Fix missing brace
+
+    private void UpdateFusion()
+    {
+        // 1. Normal -> Mega Fusion (5 required)
+        var groups = _robots.Where(r => r.IsActive && !r.IsDead && r.Rank == RobotRank.Normal && r.ClassType != RobotClass.Base)
+                           .GroupBy(r => r.ClassType);
+        foreach (var group in groups)
+        {
+            if (group.Count() >= 5)
+            {
+                var list = group.Take(5).ToList();
+                float ax = list.Average(r => r.X), ay = list.Average(r => r.Y);
+                RobotClass ct = list[0].ClassType;
+                foreach (var r in list) { r.IsActive = false; r.IsDead = true; AddExplosion(r.X, r.Y, Color.White, 3); }
+                var mega = new Robot(++_robotIdCounter, "MEGA " + ct, ax, ay, ct, RobotRank.Mega);
+                mega.ApplyClassProperties();
+                _robots.Add(mega);
+                AddFloatingText(ax, ay, "MEGA FUSION!", Color.Gold);
+                AudioManager.PlaySound("fusion");
+            }
+        }
+
+        // 2. Mega -> Ultra Fusion (3 required)
+        var megaGroups = _robots.Where(r => r.IsActive && !r.IsDead && r.Rank == RobotRank.Mega)
+                               .GroupBy(r => r.ClassType);
+        foreach (var group in megaGroups)
+        {
+            if (group.Count() >= 3)
+            {
+                var list = group.Take(3).ToList();
+                float ax = list.Average(r => r.X), ay = list.Average(r => r.Y);
+                RobotClass ct = list[0].ClassType;
+                foreach (var r in list) { r.IsActive = false; r.IsDead = true; AddExplosion(r.X, r.Y, Color.Gold, 8); }
+                var ultra = new Robot(++_robotIdCounter, "ULTRA " + ct, ax, ay, ct, RobotRank.Ultra);
+                ultra.ApplyClassProperties();
+                _robots.Add(ultra);
+                AddFloatingText(ax, ay, "ULTRA EVOLUTION!", Color.DeepSkyBlue);
+                AudioManager.PlaySound("ultra_fusion");
+                AddExplosion(ax, ay, Color.Cyan, 20, "RING");
+            }
+        }
+    }
+
+    private void ShowBaseModuleSelection()
+    {
+        var result = MessageBox.Show(
+            "基地达到 Lv.10！建议选择进化方向：\n\n" +
+            "【是】堡垒模式 (Bastion)：极大血量 + 减速力场\n" +
+            "【否】工业模式 (Industrial)：极致效率 + 购买 8 折",
+            "高级进化选择",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Information);
+
+        if (result == DialogResult.Yes)
+        {
+            _currentBaseModule = BaseModule.Bastion;
+            var b = GetBaseRobot();
+            if (b != null) { b.MaxHP += 50000; b.HP += 50000; }
+            AddFloatingText(this.ClientSize.Width / 2, this.ClientSize.Height / 2, "BASTION MODE!", Color.DeepSkyBlue);
+        }
+        else
+        {
+            _currentBaseModule = BaseModule.Industrial;
+            AddFloatingText(this.ClientSize.Width / 2, this.ClientSize.Height / 2, "INDUSTRIAL MODE!", Color.LimeGreen);
+        }
+    }
+
+    private void TriggerBaseOverload()
+    {
+        if (_baseOverloadCooldown > 0) return;
+        var b = GetBaseRobot();
+        if (b == null) return;
+
+        _baseOverloadCooldown = 600; 
+        float bx = b.X + b.Size / 2, by = b.Y + b.Size / 2;
+
+        AddExplosion(bx, by, Color.Cyan, 30, "RING");
+        AudioManager.PlaySound("overload");
+
+        foreach (var m in _monsters)
+        {
+            if (!m.IsActive || m.IsDead) continue;
+            float dx = m.X - bx, dy = m.Y - by;
+            float distSq = dx * dx + dy * dy;
+            if (distSq < 600 * 600)
+            {
+                float dist = (float)Math.Sqrt(distSq);
+                float force = (600 - dist) / 600 * 50f;
+                m.X += (dx / dist) * force;
+                m.Y += (dy / dist) * force;
+                m.TakeDamage(2000 + _baseLevel * 200);
+                AddExplosion(m.X, m.Y, Color.DeepSkyBlue, 3, "SPARK");
+            }
+        }
+    }
+
+    private void HandleBaseModulePassives()
+    {
+        if (_baseOverloadCooldown > 0) _baseOverloadCooldown--;
+
+        // 动态更新墙体属性 (半径与厚度随等级成长)
+        UpdateWallScaling();
+
+        if (_currentBaseModule == BaseModule.Bastion)
+        {
+            var b = GetBaseRobot();
+            if (b != null)
+            {
+                foreach (var m in _spatialGrid.GetNearby(b.X, b.Y))
+                {
+                    float dx = m.X - b.X, dy = m.Y - b.Y;
+                    if (dx * dx + dy * dy < 350 * 350) m.SlowTimer = 10;
+                }
+            }
+        }
+    }
+
+    private void InitializeWalls()
+    {
+        _walls.Clear();
+        int segments = 24; // 24节围墙组成一个圆
+        for (int i = 0; i < segments; i++)
+        {
+            float angle = (float)(i * Math.PI * 2 / segments);
+            var wall = new WallSegment(angle, 150, 10, 1000);
+            wall.HP = 0; // 初始为蓝图状态
+            _walls.Add(wall);
+        }
+    }
+
+    private void UpdateWallScaling()
+    {
+        float targetRadius = 130 + _baseLevel * 15;
+        float targetThickness = 8 + _baseLevel * 2;
+        int targetMaxHP = 1000 + _baseLevel * 500;
+
+        foreach (var wall in _walls)
+        {
+            // 半径平滑过渡 (可选)
+            wall.Radius = wall.Radius * 0.95f + targetRadius * 0.05f;
+            wall.Thickness = targetThickness;
+            wall.MaxHP = targetMaxHP;
+            if (wall.HP > wall.MaxHP) wall.HP = wall.MaxHP;
+        }
+    }
+
+    public WallSegment? GetWeakestWall()
+    {
+        return _walls.Where(w => w.HP < w.MaxHP).OrderBy(w => w.HP).FirstOrDefault();
+    }
+
+    private void RenderWalls(Graphics g, float bx, float by)
+    {
+        float sweepAngle = 360f / _walls.Count;
+        foreach (var wall in _walls)
+        {
+            float wx = bx + (float)Math.Cos(wall.Angle) * wall.Radius;
+            float wy = by + (float)Math.Sin(wall.Angle) * wall.Radius;
+            float startAngle = (float)(wall.Angle * 180 / Math.PI) - sweepAngle / 2;
+
+            // 如果 HP 为 0，绘制带有高透明度的“蓝图”边框，不绘制实体色
+            if (wall.HP <= 0)
+            {
+                using var blueprintPen = new Pen(Color.FromArgb(50, 200, 255, 255), 1);
+                g.DrawArc(blueprintPen, bx - wall.Radius, by - wall.Radius, wall.Radius * 2, wall.Radius * 2, startAngle, sweepAngle);
+                
+                g.TranslateTransform(wx, wy);
+                g.RotateTransform((float)(wall.Angle * 180 / Math.PI));
+                g.DrawRectangle(blueprintPen, -wall.Thickness / 2, -wall.Thickness / 2, wall.Thickness, wall.Thickness * 2);
+                g.ResetTransform();
+                g.TranslateTransform(this.ClientSize.Width / 2f + _panX, this.ClientSize.Height / 2f + _panY);
+                g.ScaleTransform(1.0f / _worldViewFactor, 1.0f / _worldViewFactor);
+                g.TranslateTransform(-bx, -by);
+                continue;
+            }
+
+            float hpPercent = (float)wall.HP / wall.MaxHP;
+            Color wallColor = wall.HitFlashTimer > 0 ? Color.White : 
+                             Color.FromArgb(200, (int)(255 * (1 - hpPercent)), (int)(255 * hpPercent), 100);
+
+            using var brush = new SolidBrush(wallColor);
+            using var pen = new Pen(Color.FromArgb(150, wallColor), 2);
+            
+            // 绘制圆弧段作为围墙感
+            g.DrawArc(pen, bx - wall.Radius, by - wall.Radius, wall.Radius * 2, wall.Radius * 2, startAngle, sweepAngle);
+            
+            // 绘制厚标示 (小矩形)
+            g.TranslateTransform(wx, wy);
+            g.RotateTransform((float)(wall.Angle * 180 / Math.PI));
+            g.FillRectangle(brush, -wall.Thickness / 2, -wall.Thickness / 2, wall.Thickness, wall.Thickness * 2);
+            g.ResetTransform();
+            g.TranslateTransform(this.ClientSize.Width / 2f + _panX, this.ClientSize.Height / 2f + _panY);
+            g.ScaleTransform(1.0f / _worldViewFactor, 1.0f / _worldViewFactor);
+            g.TranslateTransform(-bx, -by);
+        }
+    }
+
+    private void HandleMonsterWallCollision()
+    {
+        var b = GetBaseRobot();
+        if (b == null) return;
+        float bx = b.X + b.Size / 2, by = b.Y + b.Size / 2;
+
+        foreach (var m in _monsters)
+        {
+            if (!m.IsActive || m.IsDead) continue;
+            float dx = m.X - bx, dy = m.Y - by;
+            float dist = (float)Math.Sqrt(dx * dx + dy * dy);
+
+            foreach (var wall in _walls)
+            {
+                if (wall.HP <= 0) continue;
+                
+                // 检查怪物是否进入围墙半径 (考虑厚度)
+                float angle = (float)Math.Atan2(dy, dx);
+                float angleDiff = (float)Math.Abs(angle - wall.Angle);
+                if (angleDiff > Math.PI) angleDiff = (float)(Math.PI * 2 - angleDiff);
+
+                if (angleDiff < Math.PI / _walls.Count) // 在该节范围内
+                {
+                    if (dist < wall.Radius + wall.Thickness && dist > wall.Radius - wall.Thickness)
+                    {
+                        // 碰撞：阻挡怪物并造成伤害
+                        m.X -= (dx / dist) * 5f; // 击退效果
+                        m.Y -= (dy / dist) * 5f;
+                        wall.TakeDamage(1 + CurrentWave / 5);
+                        AddExplosion(m.X, m.Y, Color.Orange, 1, "SPARK");
+                        
+                        // 怪物也受到反震伤害 (可选)
+                        // m.TakeDamage(5);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// <summary>
+/// 空间网格系统 - 优化大规模实体的查询性能 (O(N))
+/// </summary>
+public class SpatialGrid
+{
+    private readonly int _cellSize;
+    private readonly ConcurrentDictionary<(int, int), List<Monster>> _cells = new();
+
+    public SpatialGrid(int cellSize = 200) { _cellSize = cellSize; }
+
+    private (int, int) GetCell(float x, float y) => ((int)Math.Floor(x / _cellSize), (int)Math.Floor(y / _cellSize));
+
+    public void Clear() => _cells.Clear();
+
+    public void Add(Monster m)
+    {
+        var key = GetCell(m.X, m.Y);
+        _cells.GetOrAdd(key, _ => new List<Monster>()).Add(m);
+    }
+
+    public IEnumerable<Monster> GetNearby(float x, float y)
+    {
+        var (cx, cy) = GetCell(x, y);
+        for (int i = -1; i <= 1; i++)
+            for (int j = -1; j <= 1; j++)
+                if (_cells.TryGetValue((cx + i, cy + j), out var list))
+                    foreach (var m in list) yield return m;
     }
 }

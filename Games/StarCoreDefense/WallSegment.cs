@@ -1,0 +1,55 @@
+using System;
+using System.Drawing;
+
+namespace PureBattleGame.Games.StarCoreDefense;
+
+/// <summary>
+/// 基地围墙分节 - 由建造者在该位置施工生成
+/// </summary>
+public class WallSegment
+{
+    public float Angle { get; set; } // 在环形中的角度 (0-2PI)
+    public float Radius { get; set; } // 距离基地的半径
+    public float Thickness { get; set; } // 墙体厚度
+    
+    public int HP { get; set; }
+    public int MaxHP { get; set; }
+    public bool IsActive => HP > 0;
+    
+    // 视觉反馈
+    public int HitFlashTimer { get; set; } = 0;
+    public int RepairEffectTimer { get; set; } = 0;
+
+    public WallSegment(float angle, float radius, float thickness, int maxHP)
+    {
+        Angle = angle;
+        Radius = radius;
+        Thickness = thickness;
+        MaxHP = maxHP;
+        HP = maxHP;
+    }
+
+    public void TakeDamage(int damage)
+    {
+        if (!IsActive) return;
+        HP -= damage;
+        HitFlashTimer = 10;
+    }
+
+    public void Repair(int amount)
+    {
+        if (HP < MaxHP)
+        {
+            HP = Math.Min(MaxHP, HP + amount);
+            RepairEffectTimer = 15;
+        }
+    }
+
+    // 获取该分节在世界坐标系中的估算中心点 (用于寻路)
+    public PointF GetWorldPosition(float centerX, float centerY)
+    {
+        float x = centerX + (float)Math.Cos(Angle) * Radius;
+        float y = centerY + (float)Math.Sin(Angle) * Radius;
+        return new PointF(x, y);
+    }
+}

@@ -1143,7 +1143,6 @@ public partial class CodeEditorForm : Form
                 break;
         }
     }
-    }
 
     private void ReturnToHome()
     {

@@ -155,6 +155,18 @@ public class Projectile
         if (LifeTime <= 0) IsActive = false;
     }
 
+    /// <summary>
+    /// 检测与目标圆形边界的碰撞
+    /// </summary>
+    public bool CheckCollision(float targetX, float targetY, float targetSize)
+    {
+        float dx = X - (targetX + targetSize / 2);
+        float dy = Y - (targetY + targetSize / 2);
+        float distSq = dx * dx + dy * dy;
+        float radius = targetSize / 2 + (Size > 0 ? Size / 2 : 5);
+        return distSq < radius * radius;
+    }
+
     private int GetInitialLifeTime(string type)
     {
         return type switch

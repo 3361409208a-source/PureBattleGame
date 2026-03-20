@@ -55,6 +55,7 @@ public class Monster
     public bool IsElite { get; set; } = false;   // 精英型：金边特效
     public int GoldReward { get; set; } = 50;    // 独立奖励
     public int AttackerCount { get; set; } = 0;  // 当前有多少机器人在攻击本怪物
+    public int SlowTimer { get; set; } = 0;      // 减速时间
     
     public Monster(float x, float y, int wave = 1)
     {
@@ -127,10 +128,22 @@ public class Monster
         // 冷却时间递减
         if (AttackCooldown > 0) AttackCooldown--;
         
-        // 麻痹逻辑
+        // 麻痹和减速逻辑
+        float currentSpeedMultiplier = 1.0f;
+        if (SlowTimer > 0)
+        {
+            currentSpeedMultiplier *= 0.5f; // 减速50%
+            SlowTimer--;
+        }
         if (ParalyzeTimer > 0)
         {
+            currentSpeedMultiplier = 0f; // 麻痹时速度为0
             ParalyzeTimer--;
+        }
+
+        // 如果完全麻痹，则只应用残余速度并返回
+        if (currentSpeedMultiplier == 0f)
+        {
             Dx *= 0.5f; // 麻痹时剧烈减速
             Dy *= 0.5f;
             X += Dx;
