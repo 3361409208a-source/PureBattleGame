@@ -11,6 +11,7 @@ public class WallSegment
     public float Angle { get; set; } // 在环形中的角度 (0-2PI)
     public float Radius { get; set; } // 距离基地的半径
     public float Thickness { get; set; } // 墙体厚度
+    public int Layer { get; set; } = 0; // 0: 内层, 1: 外层
     
     public int HP { get; set; }
     public int MaxHP { get; set; }

@@ -622,8 +622,15 @@ public partial class Robot
 
     private void UpdateWorkerLogic()
     {
-        if (TargetMineral != null && !TargetMineral.IsActive) TargetMineral = null;
+        // 关键逻辑增强：如果在交战状态，工人必须退回基地内部避难
+        if (BattleForm.Instance != null && BattleForm.Instance.IsUnderThreat())
+        {
+            TargetMineral = null;
+            UpdateSafetyRetreat();
+            return;
+        }
 
+        if (TargetMineral != null && !TargetMineral.IsActive) TargetMineral = null;
         if (TargetMineral == null)
         {
             UpdateRandomMovement();
@@ -674,8 +681,44 @@ public partial class Robot
 
     private void UpdateEngineerLogic()
     {
+        // 战斗状态下的精细化决策
+        if (BattleForm.Instance != null && BattleForm.Instance.IsUnderThreat())
+        {
+            // 检查当前是否有内层防线的修理任务
+            bool doingInner = TargetWall != null && TargetWall.Layer == 0 && TargetWall.HP < TargetWall.MaxHP;
+            
+            if (!doingInner)
+            {
+                // 如果没有内层任务，尝试在“战火中”寻找一个内层缺口/损伤进行抢修
+                var urgentInner = BattleForm.Instance._walls
+                                    .Where(w => w.Layer == 0 && w.HP < w.MaxHP && (w.LockingRobot == null || w.LockingRobot == this))
+                                    .OrderBy(w => w.HP)
+                                    .FirstOrDefault();
+                
+                if (urgentInner != null)
+                {
+                    UnlockTargets();
+                    TargetWall = urgentInner;
+                    TargetWall.LockingRobot = this;
+                }
+                else
+                {
+                    // 确实没活干（内层全满），且外面有大批敌人，撤回中心待命
+                    UnlockTargets();
+                    TargetWall = null;
+                    UpdateSafetyRetreat();
+                    return;
+                }
+            }
+        }
+        if (TargetWall != null && TargetWall.HP > 0 && BattleForm.Instance != null && BattleForm.Instance.HasWallGaps())
+        {
+             UnlockTargets();
+             TargetWall = null;
+        }
+
         // 目标失效、修复完成或被他人占用时，重新选择目标
-        if (TargetWall == null || !TargetWall.IsActive || TargetWall.HP >= TargetWall.MaxHP || (TargetWall.LockingRobot != null && TargetWall.LockingRobot != this))
+        if (TargetWall == null || (TargetWall.LockingRobot != null && TargetWall.LockingRobot != this) || TargetWall.HP >= TargetWall.MaxHP)
         {
             UnlockTargets(); // 先清除旧的锁定关系
             TargetWall = BattleForm.Instance?.GetWeakestWall(this);
@@ -719,6 +762,33 @@ public partial class Robot
             }
         }
     }
+
+    private void UpdateSafetyRetreat()
+    {
+        var baseBot = BattleForm.Instance?.GetBaseRobot();
+        if (baseBot == null) return;
+
+        float bx = baseBot.X + baseRobotCenterOffset;
+        float by = baseBot.Y + baseRobotCenterOffset;
+        float dx = bx - X, dy = by - Y;
+        float dist = (float)Math.Sqrt(dx * dx + dy * dy);
+
+        if (dist > 50)
+        {
+            float maxSpeed = 5.0f * SpeedMultiplier;
+            Dx = Dx * 0.9f + (dx / dist) * maxSpeed * 0.1f;
+            Dy = Dy * 0.9f + (dy / dist) * maxSpeed * 0.1f;
+            IsMoving = true;
+        }
+        else
+        {
+            Dx *= 0.5f;
+            Dy *= 0.5f;
+            IsMoving = false;
+        }
+    }
+
+    private float baseRobotCenterOffset => BattleForm.Instance?.GetBaseRobot()?.Size / 2 ?? 20;
 
     public void UnlockTargets()
     {

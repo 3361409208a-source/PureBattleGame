@@ -21,6 +21,8 @@ public partial class BattleForm : Form
     private List<Robot> _robots = new List<Robot>();
     private List<Monster> _monsters = new List<Monster>();
     private List<Projectile> _projectiles = new List<Projectile>();
+    private readonly object _projectileLock = new object(); // 并发锁
+    private Dictionary<Color, Brush> _brushCache = new Dictionary<Color, Brush>(); // 画笔缓存
     private List<FloatingText> _floatingTexts = new List<FloatingText>();
 
     // 游戏参数
@@ -72,7 +74,7 @@ public partial class BattleForm : Form
     // 粒子系统
     private List<Particle> _particles = new List<Particle>();
     private List<Mineral> _minerals = new List<Mineral>();
-    private List<WallSegment> _walls = new List<WallSegment>();
+    public List<WallSegment> _walls = new List<WallSegment>();
     private int _mineralSpawnTimer = 300; // 每 5 秒尝试生成一个矿物
 
     // 鼠标交互
@@ -319,6 +321,31 @@ public partial class BattleForm : Form
         // 创建控制面板
         CreateControlPanel();
         CreateHomeButton();
+        CreateSoundToggleButton();
+    }
+
+    private void CreateSoundToggleButton()
+    {
+        Button btnSound = new Button
+        {
+            Text = AudioManager.IsMuted ? "🔇 声音" : "🔊 声音",
+            Location = new Point(this.ClientSize.Width - 150, 5),
+            Size = new Size(70, 25),
+            FlatStyle = FlatStyle.Flat,
+            ForeColor = Color.White,
+            BackColor = Color.FromArgb(50, 50, 60),
+            Font = new Font("Microsoft YaHei", 8, FontStyle.Bold),
+            Cursor = Cursors.Hand,
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+        btnSound.FlatAppearance.BorderSize = 1;
+        btnSound.FlatAppearance.BorderColor = Color.FromArgb(80, 80, 100);
+        btnSound.Click += (s, e) => {
+            AudioManager.IsMuted = !AudioManager.IsMuted;
+            btnSound.Text = AudioManager.IsMuted ? "🔇 声音" : "🔊 声音";
+        };
+        this.Controls.Add(btnSound);
+        btnSound.BringToFront();
     }
 
     private void ReturnToHome()
@@ -451,59 +478,49 @@ public partial class BattleForm : Form
         }
 
         // 更新投射物
-        for (int i = _projectiles.Count - 1; i >= 0; i--)
+        lock (_projectileLock)
         {
-            var p = _projectiles[i];
-            if (!p.IsActive)
+            for (int i = _projectiles.Count - 1; i >= 0; i--)
             {
-                _projectiles.RemoveAt(i);
-                continue;
-            }
-
-            p.Update();
-
-            // 检测与机器人碰撞
-            foreach (var robot in _robots)
-            {
-                // 只有怪物的投射物才能对机器人造成伤害
-                if (robot.IsActive && !robot.IsDead && p.IsMonsterProjectile)
+                var p = _projectiles[i];
+                if (!p.IsActive)
                 {
-                    if (CheckCollision(p, robot))
-                    {
-                        robot.HandleProjectileHit(p);
-                        p.IsActive = false;
-                        _projectiles.RemoveAt(i);
-                        break;
-                    }
+                    _projectiles.RemoveAt(i);
+                    continue;
                 }
-            }
 
-            // 检测与怪物碰撞 (只有机器人的投射物才对怪物造成伤害) - 使用空间网格优化
-            if (p.IsActive && !p.IsMonsterProjectile)
-            {
-                foreach (var monster in _spatialGrid.GetNearby(p.X, p.Y))
+                p.Update();
+
+                // 检测与机器人碰撞
+                foreach (var robot in _robots)
                 {
-                    if (monster.IsActive && !monster.IsDead && p.CheckCollision(monster.X, monster.Y, monster.Size))
+                    if (robot.IsActive && !robot.IsDead && p.IsMonsterProjectile)
                     {
-                        monster.OnHit(p);
-
-                        if (p.Type == "LIGHTNING")
+                        if (CheckCollision(p, robot))
                         {
-                            monster.ParalyzeTimer = 60; // 1秒麻痹
-                            AddExplosion(monster.X + monster.Size / 2, monster.Y + monster.Size / 2, Color.White, 3, "SPARK");
-                        }
-
-                        // 通用命中特效
-                        AddExplosion(p.X, p.Y, p.ProjectileColor, 5, "SPARK");
-                        if (p.Type == "METEOR") AddExplosion(p.X, p.Y, Color.OrangeRed, 10, "SMOKE");
-                        if (p.Type == "BLACK_HOLE") AddExplosion(p.X, p.Y, Color.Purple, 1, "RING");
-
-                        if (p.Type != "BLACK_HOLE" && p.Type != "DEATH_RAY") // 穿透性武器不销毁
-                        {
+                            robot.HandleProjectileHit(p);
                             p.IsActive = false;
                             _projectiles.RemoveAt(i);
+                            break;
                         }
-                        break;
+                    }
+                }
+
+                if (!p.IsActive) continue;
+
+                // 检测与怪物碰撞 (只有机器人的投射物才对怪物造成伤害) - 使用空间网格优化
+                if (!p.IsMonsterProjectile)
+                {
+                    foreach (var monster in _spatialGrid.GetNearby(p.X, p.Y))
+                    {
+                        if (monster.IsActive && !monster.IsDead && p.CheckCollision(monster.X, monster.Y, monster.Size))
+                        {
+                            monster.OnHit(p);
+                            if (p.Type == "LIGHTNING") { monster.ParalyzeTimer = 60; AddExplosion(monster.X + monster.Size / 2, monster.Y + monster.Size / 2, Color.White, 3, "SPARK"); }
+                            AddExplosion(p.X, p.Y, p.ProjectileColor, 5, "SPARK");
+                            if (p.Type != "BLACK_HOLE" && p.Type != "DEATH_RAY") { p.IsActive = false; _projectiles.RemoveAt(i); }
+                            break;
+                        }
                     }
                 }
             }
@@ -624,13 +641,12 @@ public partial class BattleForm : Form
             }
         }
 
-        // 绘制投射物
-        foreach (var p in _projectiles)
+        // 绘制投射物 - 使用快照防止遍历冲突
+        Projectile[] pArray;
+        lock (_projectileLock) pArray = _projectiles.ToArray();
+        foreach (var p in pArray)
         {
-            if (p.IsActive)
-            {
-                DrawProjectile(g, p);
-            }
+            if (p.IsActive) DrawProjectile(g, p);
         }
 
         // 绘制治疗连接线
@@ -1002,8 +1018,21 @@ public partial class BattleForm : Form
 
     private Robot SpawnRobot(string name, float x, float y, RobotClass classType = RobotClass.Shooter)
     {
-        if (x < 0) x = _rand.Next(50, this.ClientSize.Width - 100);
-        if (y < 0) y = _rand.Next(50, this.ClientSize.Height - 150);
+        // 关键逻辑调整：如果没有指定坐标，则默认从基地中心出生
+        if (x < 0 || y < 0)
+        {
+            var b = GetBaseRobot();
+            if (b != null)
+            {
+                x = b.X + b.Size / 2;
+                y = b.Y + b.Size / 2;
+            }
+            else
+            {
+                x = this.ClientSize.Width / 2;
+                y = this.ClientSize.Height / 2;
+            }
+        }
 
         var robot = new Robot(_robotIdCounter++, name, x, y, classType);
         _robots.Add(robot);
@@ -1013,11 +1042,7 @@ public partial class BattleForm : Form
     // 供 Robot 调用的方法
     public void AddProjectile(Projectile p)
     {
-        if (this.InvokeRequired)
-        {
-            this.Invoke(new Action(() => _projectiles.Add(p)));
-        }
-        else
+        lock (_projectileLock)
         {
             _projectiles.Add(p);
         }
@@ -1788,7 +1813,12 @@ public partial class BattleForm : Form
             _ => p.ProjectileColor
         };
 
-        using var brush = new SolidBrush(color);
+        // 画笔缓存优化，避免高并发分配内存
+        if (!_brushCache.TryGetValue(color, out var brush))
+        {
+            brush = new SolidBrush(color);
+            _brushCache[color] = brush;
+        }
 
         // 绘制弹丸
         float size = p.Type switch
@@ -2842,37 +2872,74 @@ public partial class BattleForm : Form
     private void InitializeWalls()
     {
         _walls.Clear();
-        int segments = 24; // 24节围墙组成一个圆
-        for (int i = 0; i < segments; i++)
+        // Layer 0: 内层防线 (基础 24 节)
+        int innerSegments = 24; 
+        for (int i = 0; i < innerSegments; i++)
         {
-            float angle = (float)(i * Math.PI * 2 / segments);
-            var wall = new WallSegment(angle, 150, 10, 1000);
-            wall.HP = 0; // 初始为蓝图状态
+            float angle = (float)(i * Math.PI * 2 / innerSegments);
+            var wall = new WallSegment(angle, 150, 10, 1000) { Layer = 0, HP = 0 }; 
+            _walls.Add(wall);
+        }
+
+        // Layer 1: 更广阔的外围防线 (36 节，更长更厚)
+        int outerSegments = 36;
+        for (int i = 0; i < outerSegments; i++)
+        {
+            float angle = (float)(i * Math.PI * 2 / outerSegments);
+            var wall = new WallSegment(angle, 450, 15, 3000) { Layer = 1, HP = 0 };
             _walls.Add(wall);
         }
     }
 
+    public bool IsLayer1Complete()
+    {
+        var l1 = _walls.Where(w => w.Layer == 1).ToList();
+        return l1.Count > 0 && l1.All(w => w.HP >= w.MaxHP);
+    }
+
+    public bool IsUnderThreat()
+    {
+        // 判定条件：如果在小地图显示范围内（约 1.2倍地图半径）有任何活着的怪物，即视为不安全
+        return _monsters.Any(m => m.IsActive && !m.IsDead);
+    }
+
     private void UpdateWallScaling()
     {
-        float targetRadius = 130 + _baseLevel * 15;
-        float targetThickness = 8 + _baseLevel * 2;
-        int targetMaxHP = 1000 + _baseLevel * 500;
+        float targetRadius0 = 130 + _baseLevel * 15;
+        float targetRadius1 = 450 + _baseLevel * 10;
+        float targetThickness0 = 8 + _baseLevel * 2;
+        float targetThickness1 = 15 + _baseLevel * 5;
+        int targetMaxHP0 = 1000 + _baseLevel * 500;
+        int targetMaxHP1 = 5000 + _baseLevel * 2000;
 
         foreach (var wall in _walls)
         {
-            // 半径平滑过渡 (可选)
-            wall.Radius = wall.Radius * 0.95f + targetRadius * 0.05f;
-            wall.Thickness = targetThickness;
-            wall.MaxHP = targetMaxHP;
-            if (wall.HP > wall.MaxHP) wall.HP = wall.MaxHP;
+            if (wall.Layer == 0)
+            {
+                wall.Radius = wall.Radius * 0.95f + targetRadius0 * 0.05f;
+                wall.Thickness = targetThickness0;
+                wall.MaxHP = targetMaxHP0;
+            }
+            else
+            {
+                wall.Radius = wall.Radius * 0.95f + targetRadius1 * 0.05f;
+                wall.Thickness = targetThickness1;
+                wall.MaxHP = targetMaxHP1;
+            }
         }
+    }
+
+    public bool HasWallGaps()
+    {
+        // 只有内层缺口才视为紧急撤回信号
+        return _walls.Any(w => w.Layer == 0 && w.HP <= 0);
     }
 
     public WallSegment? GetWeakestWall(Robot caller)
     {
-        // 优先寻找：当前没被锁定的、血量不满或处于蓝图阶段（HP=0）的墙体
+        // 1. 优先度排序：层级优先 (层 0 高于 层 1)，缺失优先 (HP=0 高于 HP>0)
         var best = _walls.Where(w => (w.LockingRobot == null || w.LockingRobot == caller) && w.HP < w.MaxHP)
-                         .OrderBy(w => w.HP)
+                         .OrderBy(w => w.Layer * 1000000 + (w.HP <= 0 ? -10000 : w.HP)) 
                          .FirstOrDefault();
 
         if (best != null) best.LockingRobot = caller;
@@ -2881,9 +2948,15 @@ public partial class BattleForm : Form
 
     public WallSegment? GetGarrisonWall(Robot caller, Monster threat)
     {
-        // 寻找离当前威胁最近且未被占用的驻扎位
+        // 寻找最优驻扎位：
+        // 1. 如果外层防线已激活，则全员拉往外层。
+        // 2. 如果外层未激活，则留在内层防守。
+        bool l1Active = IsLayer1Complete();
         var br = GetBaseRobot();
-        var best = _walls.Where(w => w.IsActive && (w.GarrisonRobot == null || w.GarrisonRobot == caller))
+        
+        var best = _walls.Where(w => w.IsActive && 
+                                    (w.Layer == (l1Active ? 1 : 0)) && 
+                                    (w.GarrisonRobot == null || w.GarrisonRobot == caller))
                          .OrderBy(w => {
                              var wp = w.GetWorldPosition(br?.X ?? 0, br?.Y ?? 0);
                              return Math.Pow(wp.X - threat.X, 2) + Math.Pow(wp.Y - threat.Y, 2);
@@ -2904,47 +2977,57 @@ public partial class BattleForm : Form
 
     private void RenderWalls(Graphics g, float bx, float by)
     {
-        float sweepAngle = 360f / _walls.Count;
+        float sweepAngleOuter = 360f / _walls.Count(w => w.Layer == 1);
+        float sweepAngleInner = 360f / _walls.Count(w => w.Layer == 0);
+        
+        bool l1Active = IsLayer1Complete();
+
         foreach (var wall in _walls)
         {
+            float sweepAngle = wall.Layer == 1 ? sweepAngleOuter : sweepAngleInner;
             float wx = bx + (float)Math.Cos(wall.Angle) * wall.Radius;
             float wy = by + (float)Math.Sin(wall.Angle) * wall.Radius;
             float startAngle = (float)(wall.Angle * 180 / Math.PI) - sweepAngle / 2;
 
-            // 如果 HP 为 0，绘制带有高透明度的“蓝图”边框，不绘制实体色
+            // 状态 1：完全损坏或未建成的蓝图
             if (wall.HP <= 0)
             {
-                using var blueprintPen = new Pen(Color.FromArgb(50, 200, 255, 255), 1);
+                Color bpColor = wall.Layer == 1 ? Color.FromArgb(40, 255, 200, 0) : Color.FromArgb(50, 200, 255, 255);
+                using var blueprintPen = new Pen(bpColor, 1);
                 g.DrawArc(blueprintPen, bx - wall.Radius, by - wall.Radius, wall.Radius * 2, wall.Radius * 2, startAngle, sweepAngle);
+                continue;
+            }
+
+            // 状态 2：正在建设中但未完整的层（尤其是外层）
+            if (wall.Layer == 1 && !l1Active)
+            {
+                float buildPct = (float)wall.HP / wall.MaxHP;
+                using var constructPen = new Pen(Color.FromArgb(80, 255, 180, 0), 2);
+                g.DrawArc(constructPen, bx - wall.Radius, by - wall.Radius, wall.Radius * 2, wall.Radius * 2, startAngle, sweepAngle * buildPct);
+                continue;
+            }
+
+            // 状态 3：正常渲染 (已建成)
+            float hpPercent = (float)wall.HP / wall.MaxHP;
+            Color baseColor = Color.FromArgb(200, (int)(255 * (1 - hpPercent)), (int)(255 * hpPercent), 
+                                          wall.Layer == 1 ? (hpPercent > 0.8f ? 255 : 100) : 100);
+            
+            Color wallColor = wall.HitFlashTimer > 0 ? Color.White : baseColor;
+
+            using (var brush = new SolidBrush(wallColor))
+            using (var pen = new Pen(Color.FromArgb(150, wallColor), 2))
+            {
+                g.DrawArc(pen, bx - wall.Radius, by - wall.Radius, wall.Radius * 2, wall.Radius * 2, startAngle, sweepAngle);
                 
+                // 绘制厚度标示 (小矩形)
                 g.TranslateTransform(wx, wy);
                 g.RotateTransform((float)(wall.Angle * 180 / Math.PI));
-                g.DrawRectangle(blueprintPen, -wall.Thickness / 2, -wall.Thickness / 2, wall.Thickness, wall.Thickness * 2);
+                g.FillRectangle(brush, -wall.Thickness / 2, -wall.Thickness / 2, wall.Thickness, wall.Thickness * 2);
                 g.ResetTransform();
                 g.TranslateTransform(this.ClientSize.Width / 2f + _panX, this.ClientSize.Height / 2f + _panY);
                 g.ScaleTransform(1.0f / _worldViewFactor, 1.0f / _worldViewFactor);
                 g.TranslateTransform(-bx, -by);
-                continue;
             }
-
-            float hpPercent = (float)wall.HP / wall.MaxHP;
-            Color wallColor = wall.HitFlashTimer > 0 ? Color.White : 
-                             Color.FromArgb(200, (int)(255 * (1 - hpPercent)), (int)(255 * hpPercent), 100);
-
-            using var brush = new SolidBrush(wallColor);
-            using var pen = new Pen(Color.FromArgb(150, wallColor), 2);
-            
-            // 绘制圆弧段作为围墙感
-            g.DrawArc(pen, bx - wall.Radius, by - wall.Radius, wall.Radius * 2, wall.Radius * 2, startAngle, sweepAngle);
-            
-            // 绘制厚标示 (小矩形)
-            g.TranslateTransform(wx, wy);
-            g.RotateTransform((float)(wall.Angle * 180 / Math.PI));
-            g.FillRectangle(brush, -wall.Thickness / 2, -wall.Thickness / 2, wall.Thickness, wall.Thickness * 2);
-            g.ResetTransform();
-            g.TranslateTransform(this.ClientSize.Width / 2f + _panX, this.ClientSize.Height / 2f + _panY);
-            g.ScaleTransform(1.0f / _worldViewFactor, 1.0f / _worldViewFactor);
-            g.TranslateTransform(-bx, -by);
         }
     }
 
@@ -2954,14 +3037,19 @@ public partial class BattleForm : Form
         if (b == null) return;
         float bx = b.X + b.Size / 2, by = b.Y + b.Size / 2;
 
+        bool l1Active = IsLayer1Complete();
+
         foreach (var m in _monsters)
         {
             if (!m.IsActive || m.IsDead) continue;
             float dx = m.X - bx, dy = m.Y - by;
             float dist = (float)Math.Sqrt(dx * dx + dy * dy);
 
+            // 优先检查外层
             foreach (var wall in _walls)
             {
+                // 外层必须全部建成才生效
+                if (wall.Layer == 1 && !l1Active) continue;
                 if (wall.HP <= 0) continue;
                 
                 // 检查怪物是否进入围墙半径 (考虑厚度)
