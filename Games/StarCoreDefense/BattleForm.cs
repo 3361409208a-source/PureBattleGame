@@ -778,6 +778,11 @@ public partial class BattleForm : Form
         {
             ResetGame();
         }
+        // 空格键：用于配合左键拖动画面
+        else if (e.KeyCode == Keys.Space)
+        {
+            _isSpaceDown = true;
+        }
         // Escape: 取消怪物放置
         else if (e.KeyCode == Keys.Escape)
         {
@@ -805,12 +810,12 @@ public partial class BattleForm : Form
             return;
         }
 
-        // 仅当按下空格键且左键按下时开启拖拽
-        if (_isSpaceDown && e.Button == MouseButtons.Left)
+        // 点击中间（主窗口区域）可移动画面：支持【中键拖拽】或【空格+左键拖拽】
+        if ((e.Button == MouseButtons.Middle) || (_isSpaceDown && e.Button == MouseButtons.Left))
         {
             _isDragging = true;
             _lastDragPoint = e.Location;
-            this.Cursor = Cursors.SizeAll; // 视觉反馈
+            this.Cursor = Cursors.SizeAll; // 视觉反馈：显示可移动状态
             return;
         }
 
@@ -887,8 +892,8 @@ public partial class BattleForm : Form
             return;
         }
 
-        // 只有拖拽中且空格按下时才平移相机
-        if (_isDragging && _isSpaceDown)
+        // 平移相机：中键或空格+左键
+        if (_isDragging && (_isSpaceDown || Control.MouseButtons == MouseButtons.Middle))
         {
             _panX += e.X - _lastDragPoint.X;
             _panY += e.Y - _lastDragPoint.Y;
