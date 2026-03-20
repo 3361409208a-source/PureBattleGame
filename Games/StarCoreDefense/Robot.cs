@@ -651,6 +651,7 @@ public partial class Robot
             if (_miningTimer >= 40) // 采集速度也变快了
             {
                 _miningTimer = 0;
+                AudioManager.PlaySound("mine");
                 // 这里加星矿（钻石）而不是钱
                 if (BattleForm.Instance != null)
                 {
@@ -708,6 +709,7 @@ public partial class Robot
             
             if (_buildingTimer % 15 == 0)
             {
+                AudioManager.PlaySound("build");
                 BattleForm.Instance?.AddExplosion(X + Size / 2, Y + Size / 2, Color.DeepSkyBlue, 2, "SPARK");
             }
 
@@ -852,6 +854,7 @@ public partial class Robot
                 SpecialStateTimer = 15;
                 Dx += (dx / d) * 35.0f; // 瞬间爆发初速度
                 Dy += (dy / d) * 35.0f;
+                AudioManager.PlaySound("leap");
                 BattleForm.Instance?.AddExplosion(X, Y, Color.OrangeRed, 10, "SPARK");
             }
             else if (SpecialState != "WHIRLWIND" && d < 60)
@@ -859,6 +862,7 @@ public partial class Robot
                 // 到达中心，开启旋风打击
                 SpecialState = "WHIRLWIND";
                 SpecialStateTimer = 60; // 持续1秒的旋风
+                AudioManager.PlaySound("whirlwind");
                 Dx *= 0.2f; Dy *= 0.2f; // 旋风期间移速变慢但更稳健
             }
 
@@ -1027,6 +1031,7 @@ public partial class Robot
     {
         if (monster == null || !monster.IsActive || monster.IsDead || IsDead) return;
 
+        AudioManager.PlayShootSound();
         SpecialState = "ANGRY";
         SpecialStateTimer = 100;
 
@@ -1278,6 +1283,7 @@ public partial class Robot
     private void HandleDeath()
     {
         UnlockTargets();
+        AudioManager.PlayDeathSound();
 
         IsDead = true;
         IsMoving = false;

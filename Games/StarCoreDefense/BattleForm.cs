@@ -90,6 +90,14 @@ public partial class BattleForm : Form
     private ToolTip _upgradeToolTip = new ToolTip { InitialDelay = 200, AutoPopDelay = 10000 };
     private Point _monsterSpawnPoint;
 
+    // 性能诊断
+    private int _fps = 0;
+    private int _frameCountForFps = 0;
+    private DateTime _lastMetricUpdate = DateTime.Now;
+    private TimeSpan _lastTotalProcessorTime = System.Diagnostics.Process.GetCurrentProcess().TotalProcessorTime;
+    private double _cpuUsage = 0;
+    private double _memUsageMB = 0;
+
     private sealed class FlickerFreePanel : Panel
     {
         public FlickerFreePanel()
@@ -347,6 +355,27 @@ public partial class BattleForm : Form
 
     private void GameLoop()
     {
+        // 性能指标计算
+        _frameCountForFps++;
+        var now = DateTime.Now;
+        var elapsed = (now - _lastMetricUpdate).TotalSeconds;
+        if (elapsed >= 1.0)
+        {
+            _fps = (int)(_frameCountForFps / elapsed);
+            _frameCountForFps = 0;
+            
+            // CPU 计算
+            var currentCpuTime = System.Diagnostics.Process.GetCurrentProcess().TotalProcessorTime;
+            var cpuUsedMs = (currentCpuTime - _lastTotalProcessorTime).TotalMilliseconds;
+            _cpuUsage = cpuUsedMs / (Environment.ProcessorCount * elapsed * 1000);
+            _lastTotalProcessorTime = currentCpuTime;
+
+            // 内存计算
+            _memUsageMB = System.Diagnostics.Process.GetCurrentProcess().PrivateMemorySize64 / 1024.0 / 1024.0;
+            
+            _lastMetricUpdate = now;
+        }
+
         if (_isGameEnding)
         {
             HandleGameEnding();
@@ -659,6 +688,25 @@ public partial class BattleForm : Form
             using var brush = new SolidBrush(Color.FromArgb(100, Color.Red));
             g.FillEllipse(brush, _monsterSpawnPoint.X - 25, _monsterSpawnPoint.Y - 25, 50, 50);
         }
+
+        // 绘制性能诊断信息
+        DrawPerformanceStats(g);
+    }
+
+    private void DrawPerformanceStats(Graphics g)
+    {
+        string fpsText = $"FPS: {_fps}";
+        string cpuText = $"CPU: {_cpuUsage:P1}";
+        string memText = $"MEM: {_memUsageMB:F1} MB";
+        string fullText = $"{fpsText} | {cpuText} | {memText}";
+
+        using var font = new Font("Consolas", 9, FontStyle.Bold);
+        var size = g.MeasureString(fullText, font);
+        
+        using var bgBrush = new SolidBrush(Color.FromArgb(120, 0, 0, 0));
+        g.FillRectangle(bgBrush, 10, 10, size.Width + 10, size.Height + 6);
+        g.DrawRectangle(Pens.Gray, 10, 10, size.Width + 10, size.Height + 6);
+        g.DrawString(fullText, font, Brushes.LimeGreen, 15, 13);
     }
 
     private void DrawWorldGrid(Graphics g, float centerX, float centerY)
@@ -1950,6 +1998,7 @@ public partial class BattleForm : Form
             {
                 Minerals -= cost;
                 _baseLevel++;
+                AudioManager.PlaySound("level_up");
                 
                 // Lv.10 分支：选择模块
                 if (_baseLevel == 10)
@@ -1998,6 +2047,7 @@ public partial class BattleForm : Form
             {
                 Minerals -= cost;
                 _workerLevel++;
+                AudioManager.PlaySound("level_up");
                 foreach (var r in _robots) if (r.ClassType == RobotClass.Worker) r.ApplyClassProperties();
                 UpdateUI();
             }
@@ -2008,6 +2058,7 @@ public partial class BattleForm : Form
             if (Gold >= realCost)
             {
                 Gold -= realCost;
+                AudioManager.PlaySound("purchase");
                 var r = SpawnRobot("采集者", -1, -1, RobotClass.Worker);
                 r.ApplyClassProperties();
                 _workerCost = (int)(_workerCost * 1.2f);
@@ -2025,6 +2076,7 @@ public partial class BattleForm : Form
             {
                 Minerals -= cost;
                 _healerLevel++;
+                AudioManager.PlaySound("level_up");
                 foreach (var r in _robots) if (r.ClassType == RobotClass.Healer) r.ApplyClassProperties();
                 UpdateUI();
             }
@@ -2035,6 +2087,7 @@ public partial class BattleForm : Form
             if (Gold >= realCost)
             {
                 Gold -= realCost;
+                AudioManager.PlaySound("purchase");
                 var r = SpawnRobot("守护者", -1, -1, RobotClass.Healer);
                 r.ApplyClassProperties();
                 _defenderCost = (int)(_defenderCost * 1.3f);
@@ -2052,6 +2105,7 @@ public partial class BattleForm : Form
             {
                 Minerals -= cost;
                 _shooterLevel++;
+                AudioManager.PlaySound("level_up");
                 foreach (var r in _robots) if (r.ClassType == RobotClass.Shooter) r.ApplyClassProperties();
                 UpdateUI();
             }
@@ -2062,6 +2116,7 @@ public partial class BattleForm : Form
             if (Gold >= realCost)
             {
                 Gold -= realCost;
+                AudioManager.PlaySound("purchase");
                 var r = SpawnRobot("游侠", -1, -1, RobotClass.Shooter);
                 r.ApplyClassProperties();
                 _shooterCost = (int)(_shooterCost * 1.25f);
@@ -2079,6 +2134,7 @@ public partial class BattleForm : Form
             {
                 Minerals -= cost;
                 _guardianLevel++;
+                AudioManager.PlaySound("level_up");
                 foreach (var r in _robots) if (r.ClassType == RobotClass.Guardian) r.ApplyClassProperties();
                 UpdateUI();
             }
@@ -2089,6 +2145,7 @@ public partial class BattleForm : Form
             if (Gold >= realCost)
             {
                 Gold -= realCost;
+                AudioManager.PlaySound("purchase");
                 var r = SpawnRobot("守卫者", -1, -1, RobotClass.Guardian);
                 r.ApplyClassProperties();
                 _guardianCost = (int)(_guardianCost * 1.35f);
@@ -2106,6 +2163,7 @@ public partial class BattleForm : Form
             {
                 Minerals -= cost;
                 _engineerLevel++;
+                AudioManager.PlaySound("level_up");
                 foreach (var r in _robots) if (r.ClassType == RobotClass.Engineer) r.ApplyClassProperties();
                 UpdateUI();
             }
@@ -2116,6 +2174,7 @@ public partial class BattleForm : Form
             if (Gold >= realCost)
             {
                 Gold -= realCost;
+                AudioManager.PlaySound("purchase");
                 var r = SpawnRobot("工程兵", -1, -1, RobotClass.Engineer);
                 r.ApplyClassProperties();
                 _engineerCost = (int)(_engineerCost * 1.4f);

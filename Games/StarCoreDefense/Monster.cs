@@ -287,6 +287,7 @@ public class Monster
 
         HP -= damage;
         HitFlashTimer = 10;
+        AudioManager.PlayHitSound();
         BattleForm.Instance?.AddFloatingText(X + Size / 2, Y - 10, $"-{damage}", Color.OrangeRed);
 
         if (HP <= 0)
@@ -301,6 +302,8 @@ public class Monster
         IsDead = true;
         IsActive = false;
         
+        AudioManager.PlayDeathSound();
+
         // 怪物死亡掉落金币 - 提高奖励
         if (BattleForm.Instance != null)
         {

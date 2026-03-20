@@ -171,12 +171,12 @@ public class Projectile
     {
         return type switch
         {
-            "LIGHTNING" => 30,
-            "CANNON" => 180,
-            "BLACK_HOLE" => 300,
-            "METEOR" => 120,
-            "DEATH_RAY" => 20,
-            _ => 150
+            "LIGHTNING" => 120,    // 闪电存活更久一点
+            "CANNON" => 600,       // 炮弹射程更远
+            "BLACK_HOLE" => 800,   // 黑洞极长
+            "METEOR" => 400,       // 陨石落点远
+            "DEATH_RAY" => 30,     // 射线由于速度极快且是线段，保持短促
+            _ => 500              // 对游侠子弹等普通子弹，极大幅度提升寿命
         };
     }
 }
