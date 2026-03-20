@@ -39,6 +39,13 @@ public class WallSegment
     public void TakeDamage(int damage)
     {
         if (!IsActive) return;
+
+        // --- 核心保护：外圈在合拢开机前处于“无敌”蓝图状态，不接受任何怪物伤害 ---
+        if (Layer == 1 && BattleForm.Instance != null && !BattleForm.Instance.IsLayer1Complete())
+        {
+            return;
+        }
+
         HP -= damage;
         HitFlashTimer = 10;
     }

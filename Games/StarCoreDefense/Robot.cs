@@ -71,6 +71,7 @@ public partial class Robot
     public Color SecondaryColor { get; set; }
     public Color EyeColor { get; set; }
     public float SpeedMultiplier { get; set; } = 1.0f;
+    public int SpeedBoostTimer { get; set; } = 0; // 快速换防/冲刺计时器
     public int Opacity { get; set; } = 255; // 透明度 0-255
 
     // 生命值
@@ -323,20 +324,24 @@ public partial class Robot
             Dy = 0;
         }
 
-        // 初始速度限制
+        // 动态速度限制：支持换防冲刺
         float currentSpeed = (float)Math.Sqrt(Dx * Dx + Dy * Dy);
-        if (currentSpeed > 5.0f)
+        float maxCap = 5.0f * (SpeedBoostTimer > 0 ? 3.0f : 1.0f);
+        if (currentSpeed > maxCap)
         {
-            Dx = (Dx / currentSpeed) * 5.0f;
-            Dy = (Dy / currentSpeed) * 5.0f;
+            Dx = (Dx / currentSpeed) * maxCap;
+            Dy = (Dy / currentSpeed) * maxCap;
         }
     }
+
 
     /// <summary>
     /// 游戏循环更新 - 全自动战斗
     /// </summary>
     public void Update(int screenWidth, int screenHeight, List<Robot> allRobots, List<Monster> allMonsters)
     {
+        if (SpeedBoostTimer > 0) SpeedBoostTimer--;
+        
         if (_targetUpdateCooldown > 0) _targetUpdateCooldown--; // Decrement cooldown
 
         if (!IsActive || IsDead) return;
@@ -642,7 +647,8 @@ public partial class Robot
         float dist = (float)Math.Sqrt(dx * dx + dy * dy);
 
         // 采集工速度随等级极快增长：基础 6.0 + (等级 * 1.5)
-        float maxSpeed = (6.0f + (BattleForm.Instance?._workerLevel ?? 1) * 1.5f) * SpeedMultiplier;
+        float boostMult = SpeedBoostTimer > 0 ? 3.0f : 1.0f;
+        float maxSpeed = (6.0f + (BattleForm.Instance?._workerLevel ?? 1) * 1.5f) * SpeedMultiplier * boostMult;
 
         if (dist > 15)
         {
@@ -1262,13 +1268,17 @@ public partial class Robot
             float dy = (baseRobot.Y + baseRobot.Size / 2) - (Y + Size / 2);
             float dist = (float)Math.Sqrt(dx * dx + dy * dy);
 
-            // 根据不同的兵种，设定不同的理想环绕半径
-            float idealRadius = 70;
-            if (ClassType == RobotClass.Guardian) idealRadius = 120;
-            else if (ClassType == RobotClass.Shooter) idealRadius = 80 + (Id % 4) * 15; // 射手在中圈错开
-            else if (ClassType == RobotClass.Healer) idealRadius = 50; // 治疗者紧贴基地
+            // --- AI 巡逻半径动态扩展：防线合拢后，机器人巡逻圈外推 ---
+            bool l1Active = BattleForm.Instance?.IsLayer1Complete() ?? false;
+            float baseRadius = l1Active ? 420f : 70f; // 外圈驻扎点在 450，所以驻守半径定在 420 附近
+            
+            float idealRadius = baseRadius;
+            if (ClassType == RobotClass.Guardian) idealRadius = baseRadius + (l1Active ? 30f : 50f);
+            else if (ClassType == RobotClass.Shooter) idealRadius = baseRadius + (l1Active ? 10f : 15f) + (Id % 4) * 12; 
+            else if (ClassType == RobotClass.Healer) idealRadius = l1Active ? 400f : 50f; // 治疗者随动
 
-            float maxSpeed = 2.5f * SpeedMultiplier;
+            float boostMult = SpeedBoostTimer > 0 ? 3.0f : 1.0f;
+            float maxSpeed = 2.5f * SpeedMultiplier * boostMult;
 
             if (dist > idealRadius + 15)
             {

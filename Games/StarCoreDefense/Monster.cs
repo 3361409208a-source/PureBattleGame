@@ -107,7 +107,7 @@ public class Monster
     /// <summary>
     /// 更新怪物状态
     /// </summary>
-    public void Update(int screenWidth, int screenHeight, List<Robot> robots)
+    public void Update(int screenWidth, int screenHeight, List<Robot> robots, bool isLayer1Active)
     {
         if (!IsActive || IsDead) return;
 
@@ -165,6 +165,15 @@ public class Monster
             foreach (var robot in robots)
             {
                 if (!robot.IsActive || robot.IsDead) continue;
+                
+                // --- 史诗修正：外圈未激活前，怪物无视所有在内圈外的机器人 ---
+                if (!isLayer1Active)
+                {
+                    // 假设内圈半径 150，我们划定 250 为有效警戒区
+                    float dxToBase = (robot.X + robot.Size/2) - (screenWidth/2);
+                    float dyToBase = (robot.Y + robot.Size/2) - (screenHeight/2);
+                    if (Math.Sqrt(dxToBase * dxToBase + dyToBase * dyToBase) > 250) continue;
+                }
                 
                 float dxTarget = (robot.X + robot.Size/2) - (X + Size/2);
                 float dyTarget = (robot.Y + robot.Size/2) - (Y + Size/2);
