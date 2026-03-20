@@ -287,6 +287,11 @@ public partial class CodeEditorForm : Form
             SelectionTabs = new int[] { 40 }
         };
 
+        // 启用双缓冲减少闪烁
+        typeof(RichTextBox).InvokeMember("DoubleBuffered",
+            System.Reflection.BindingFlags.SetProperty | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+            null, _codeEditor, new object[] { true });
+
         panel.Controls.Add(_codeEditor);
         _codeEditor.BringToFront();
 
@@ -436,8 +441,11 @@ public partial class CodeEditorForm : Form
             PrintTerminal("Type 'restart' to try again");
         }
 
-        // 渲染
-        RenderGame();
+        // 渲染 - 每3帧渲染一次，减少闪烁
+        if (_frameCount % 3 == 0)
+        {
+            RenderGame();
+        }
         UpdateStatusBar();
     }
 
