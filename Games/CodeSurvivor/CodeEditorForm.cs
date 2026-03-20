@@ -105,6 +105,54 @@ public partial class CodeEditorForm : Form
         this.KeyDown += CodeEditorForm_KeyDown;
     }
 
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        // Alt 快捷键
+        if ((keyData & Keys.Alt) == Keys.Alt)
+        {
+            Keys baseKey = keyData & ~Keys.Alt;
+
+            // Alt + Up: 增加透明度
+            if (baseKey == Keys.Up)
+            {
+                if (this.Opacity < 1.0) this.Opacity += 0.1;
+                if (this.Opacity > 1.0) this.Opacity = 1.0;
+                return true;
+            }
+            // Alt + Down: 减少透明度
+            else if (baseKey == Keys.Down)
+            {
+                if (this.Opacity > 0.1) this.Opacity -= 0.1;
+                if (this.Opacity < 0.1) this.Opacity = 0.1;
+                return true;
+            }
+            // Alt + Space: 老板键
+            else if (baseKey == Keys.Space)
+            {
+                if (this.Opacity > 0.0)
+                {
+                    this.Tag = this.Opacity;
+                    this.Opacity = 0.0;
+                    this.ShowInTaskbar = false;
+                }
+                else
+                {
+                    this.Opacity = (this.Tag is double op) ? op : 0.1;
+                    this.ShowInTaskbar = true;
+                }
+                return true;
+            }
+            // Alt + Q: 返回主页
+            else if (baseKey == Keys.Q)
+            {
+                ReturnToHome();
+                return true;
+            }
+        }
+
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
+
     private Panel CreateMenuBar()
     {
         var panel = new Panel
@@ -310,6 +358,7 @@ public partial class CodeEditorForm : Form
         UpdateFileTree();
         RenderGame();
         PrintTerminal("Welcome to CodeSurvivor v1.0.0");
+        PrintTerminal("Shortcuts: ↑↓←→ Move | Alt+↑↓ Opacity | Alt+Space BossKey | Alt+Q Home");
         PrintTerminal("Type 'help' for available commands");
         PrintTerminal("");
         UpdateStatusBar();
@@ -1065,49 +1114,35 @@ public partial class CodeEditorForm : Form
 
     private void CodeEditorForm_KeyDown(object? sender, KeyEventArgs e)
     {
-        // Alt+Space 老板键
-        if (e.Alt && e.KeyCode == Keys.Space)
+        // 方向键移动（不加 Alt，因为 Alt+方向键是透明度控制）
+        switch (e.KeyCode)
         {
-            this.Opacity = this.Opacity > 0.1 ? 0.0 : 0.1;
-            e.Handled = true;
+            case Keys.Up:
+                MovePlayer("up");
+                RenderGame();
+                UpdateStatusBar();
+                e.Handled = true;
+                break;
+            case Keys.Down:
+                MovePlayer("down");
+                RenderGame();
+                UpdateStatusBar();
+                e.Handled = true;
+                break;
+            case Keys.Left:
+                MovePlayer("left");
+                RenderGame();
+                UpdateStatusBar();
+                e.Handled = true;
+                break;
+            case Keys.Right:
+                MovePlayer("right");
+                RenderGame();
+                UpdateStatusBar();
+                e.Handled = true;
+                break;
         }
-        // Alt+Q 返回主页
-        else if (e.Alt && e.KeyCode == Keys.Q)
-        {
-            ReturnToHome();
-            e.Handled = true;
-        }
-        // Alt+方向键快速移动
-        else if (e.Alt)
-        {
-            switch (e.KeyCode)
-            {
-                case Keys.Up:
-                    MovePlayer("up");
-                    RenderGame();
-                    UpdateStatusBar();
-                    e.Handled = true;
-                    break;
-                case Keys.Down:
-                    MovePlayer("down");
-                    RenderGame();
-                    UpdateStatusBar();
-                    e.Handled = true;
-                    break;
-                case Keys.Left:
-                    MovePlayer("left");
-                    RenderGame();
-                    UpdateStatusBar();
-                    e.Handled = true;
-                    break;
-                case Keys.Right:
-                    MovePlayer("right");
-                    RenderGame();
-                    UpdateStatusBar();
-                    e.Handled = true;
-                    break;
-            }
-        }
+    }
     }
 
     private void ReturnToHome()
