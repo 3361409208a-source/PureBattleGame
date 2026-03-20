@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Windows.Forms;
 
 using PureBattleGame.Games.StarCoreDefense;
+using PureBattleGame.Games.CodeSurvivor;
 
 namespace PureBattleGame.Core;
 
@@ -10,6 +11,7 @@ public partial class MoyuLauncher : Form
 {
     public static MoyuLauncher? Instance { get; private set; }
     private BattleForm? _gameInstance;
+    private CodeEditorForm? _game2Instance;
 
     public MoyuLauncher()
     {
@@ -50,8 +52,17 @@ public partial class MoyuLauncher : Form
         };
         this.Controls.Add(btnGame1);
 
-        Button btnGame2 = CreateBtn("BtnGame2", "🔒 更多办公功能开发中...", 100, 160);
-        btnGame2.Enabled = false;
+        Button btnGame2 = CreateBtn("BtnGame2", "💻 CodeSurvivor (代码Roguelike)", 100, 160);
+        btnGame2.Click += (s, e) => {
+            if (_game2Instance == null || _game2Instance.IsDisposed)
+            {
+                _game2Instance = new CodeEditorForm();
+            }
+            this.Hide();
+            _game2Instance.Show();
+            _game2Instance.BringToFront();
+            _game2Instance.Focus();
+        };
         this.Controls.Add(btnGame2);
         
         Label tip = new Label
