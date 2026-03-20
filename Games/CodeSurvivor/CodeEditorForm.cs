@@ -18,7 +18,7 @@ public partial class CodeEditorForm : Form
 
     // UI组件
     private TreeView _fileTree = null!;
-    private RichTextBox _codeEditor = null!;
+    private Panel _gamePanel = null!;
     private Panel _terminalPanel = null!;
     private RichTextBox _terminalOutput = null!;
     private TextBox _terminalInput = null!;
@@ -274,26 +274,17 @@ public partial class CodeEditorForm : Form
         tabPanel.Controls.Add(_fileTab);
         panel.Controls.Add(tabPanel);
 
-        // 代码编辑器
-        _codeEditor = new RichTextBox
+        // 游戏渲染面板（替代 RichTextBox 以获得更好性能）
+        _gamePanel = new Panel
         {
             Dock = DockStyle.Fill,
             BackColor = Color.FromArgb(30, 30, 30),
-            ForeColor = Color.FromArgb(212, 212, 212),
-            Font = new Font("Consolas", 11),
-            BorderStyle = BorderStyle.None,
-            ReadOnly = true,
-            WordWrap = false,
-            SelectionTabs = new int[] { 40 }
+            BorderStyle = BorderStyle.None
         };
+        _gamePanel.Paint += GamePanel_Paint;
 
-        // 启用双缓冲减少闪烁
-        typeof(RichTextBox).InvokeMember("DoubleBuffered",
-            System.Reflection.BindingFlags.SetProperty | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
-            null, _codeEditor, new object[] { true });
-
-        panel.Controls.Add(_codeEditor);
-        _codeEditor.BringToFront();
+        panel.Controls.Add(_gamePanel);
+        _gamePanel.BringToFront();
 
         return panel;
     }
@@ -520,142 +511,73 @@ public partial class CodeEditorForm : Form
         PrintTerminal($"");
     }
 
-    private string _lastRenderedText = "";
-
     private void RenderGame()
     {
-        var sb = new StringBuilder();
+        // 使用 Panel 的 Invalidate 触发重绘，避免 RichTextBox 的闪烁问题
+        _gamePanel?.Invalidate();
+    }
+
+    private void GamePanel_Paint(object? sender, PaintEventArgs e)
+    {
+        var g = e.Graphics;
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None;
+        g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
+
         float camX = _world.CameraX;
+        var font = new Font("Consolas", 10);
+        var brushWhite = new SolidBrush(Color.FromArgb(212, 212, 212));
+        var brushGreen = new SolidBrush(Color.FromArgb(106, 153, 85));
+        var brushBlue = new SolidBrush(Color.FromArgb(86, 156, 214));
+        var brushOrange = new SolidBrush(Color.FromArgb(206, 145, 120));
 
-        // 文件头注释
-        sb.AppendLine("/**");
-        sb.AppendLine($" * Level: {_world.CurrentLevel} | FPS: {1000 / 16}");
-        sb.AppendLine($" * Camera: ({camX:F0}, 0)");
-        sb.AppendLine($" * Player: ({_world.Player.X:F0}, {_world.Player.Y:F0})");
-        sb.AppendLine(" */");
-        sb.AppendLine();
+        int y = 10;
 
-        // 代码样式声明
-        sb.AppendLine("const level = {");
-        sb.AppendLine($"    width: {_world.LevelWidth},");
-        sb.AppendLine($"    camera: {{ x: {camX:F0} }},");
-        sb.AppendLine();
+        // 头部信息
+        g.DrawString($"/** Level: {_world.CurrentLevel} | Camera: ({camX:F0}, 0)", font, brushGreen, 10, y);
+        y += 18;
+        g.DrawString($"  * Player: ({_world.Player.X:F0}, {_world.Player.Y:F0}) HP: {_world.Player.HP}/{_world.Player.MaxHP}", font, brushGreen, 10, y);
+        y += 18;
+        g.DrawString("  */", font, brushGreen, 10, y);
+        y += 25;
 
-        // 渲染平台
-        sb.AppendLine("    // Platforms");
-        sb.AppendLine("    platforms: [");
-        foreach (var platform in _world.Platforms)
-        {
-            if (_world.IsOnScreen(platform.X, platform.Width))
-            {
-                int screenX = (int)(platform.X - camX);
-                string type = platform.Type switch
-                {
-                    PlatformType.Moving => "moving",
-                    PlatformType.Breaking => "breaking",
-                    PlatformType.Spring => "spring",
-                    _ => "static"
-                };
-                sb.AppendLine($"        {{ x: {screenX}, y: {(int)platform.Y}, w: {(int)platform.Width}, type: '{type}' }}, " +
-                             $"// at ({platform.X:F0}, {platform.Y:F0})");
-            }
-        }
-        sb.AppendLine("    ],");
-        sb.AppendLine();
-
-        // 渲染收集品
-        sb.AppendLine("    // Collectibles");
-        sb.AppendLine("    collectibles: [");
-        foreach (var item in _world.Collectibles.Where(c => !c.IsCollected))
-        {
-            if (_world.IsOnScreen(item.X, item.Width))
-            {
-                int screenX = (int)(item.X - camX);
-                string type = item.Type switch
-                {
-                    CollectibleType.Coin => "coin",
-                    CollectibleType.PowerUp => "powerup",
-                    CollectibleType.Flag => "flag",
-                    _ => "unknown"
-                };
-                sb.AppendLine($"        {{ x: {screenX}, y: {(int)item.Y}, type: '{type}', icon: '{item.DisplayChar}' }}, " +
-                             $"// at ({item.X:F0}, {item.Y:F0})");
-            }
-        }
-        sb.AppendLine("    ],");
-        sb.AppendLine();
-
-        // 渲染敌人
-        sb.AppendLine("    // Enemies");
-        sb.AppendLine("    enemies: [");
-        foreach (var enemy in _world.Enemies.Where(e => !e.IsDead))
-        {
-            if (_world.IsOnScreen(enemy.X, enemy.Width))
-            {
-                int screenX = (int)(enemy.X - camX);
-                string direction = enemy.MovingRight ? "right" : "left";
-                sb.AppendLine($"        {{ x: {screenX}, y: {(int)enemy.Y}, type: '{enemy.Name}', " +
-                             $"hp: {enemy.HP}/{enemy.MaxHP}, dir: '{direction}', icon: '{enemy.DisplayChar}' }}, " +
-                             $"// at ({enemy.X:F0}, {enemy.Y:F0})");
-            }
-        }
-        sb.AppendLine("    ],");
-        sb.AppendLine();
-
-        // 渲染玩家
-        sb.AppendLine("    // Player");
-        int playerScreenX = (int)(_world.Player.X - camX);
-        string playerFacing = _world.Player.FacingRight ? "right" : "left";
-        string playerState = _world.Player.IsGrounded ? "grounded" : "air";
-        sb.AppendLine($"    player: {{");
-        sb.AppendLine($"        x: {playerScreenX},");
-        sb.AppendLine($"        y: {(int)_world.Player.Y},");
-        sb.AppendLine($"        facing: '{playerFacing}',");
-        sb.AppendLine($"        state: '{playerState}',");
-        sb.AppendLine($"        hp: {_world.Player.HP}/{_world.Player.MaxHP},");
-        sb.AppendLine($"        coins: {_world.Player.Coins},");
-        sb.AppendLine($"        vel: {{ x: {_world.Player.VelX:F1}, y: {_world.Player.VelY:F1} }},");
-        sb.AppendLine($"        icon: '👨‍💻'");
-        sb.AppendLine($"    }},");
-        sb.AppendLine();
-
-        // 渲染地图可视化（ASCII艺术风格）
-        sb.AppendLine("    // Map visualization (camera view)");
-        sb.AppendLine("    view: [");
-
-        // 简化渲染：用字符表示游戏画面
-        int viewWidth = 50;
-        int viewHeight = 12;
+        // 绘制 ASCII 地图
+        int viewWidth = 60;
+        int viewHeight = 14;
+        float charWidth = 9;
+        float charHeight = 14;
 
         for (int row = 0; row < viewHeight; row++)
         {
-            sb.Append("        \"");
-            float worldY = _world.GroundY - (viewHeight - row) * 40;
+            float worldY = _world.GroundY - (viewHeight - row) * 35;
+            int x = 10;
 
             for (int col = 0; col < viewWidth; col++)
             {
-                float worldX = camX + col * 20;
-                char display = ' ';
+                float worldX = camX + col * 35;
+                string display = " ";
+                Brush brush = brushWhite;
 
-                // 检查玩家
-                if (Math.Abs(worldX - _world.Player.X) < 15 && Math.Abs(worldY - _world.Player.Y) < 20)
+                // 玩家
+                if (Math.Abs(worldX - _world.Player.X) < 18 && Math.Abs(worldY - _world.Player.Y) < 18)
                 {
-                    display = _world.Player.FacingRight ? '>' : '<';
+                    display = _world.Player.FacingRight ? ">" : "<";
+                    brush = brushBlue;
                     if (_world.Player.InvincibleTime > 0 && _frameCount % 4 < 2)
-                        display = ' '; // 闪烁效果
+                        display = " ";
                 }
-                // 检查敌人
+                // 敌人
                 else
                 {
-                    var enemy = _world.Enemies.FirstOrDefault(e =>
-                        !e.IsDead &&
-                        Math.Abs(worldX - e.X) < 14 &&
-                        Math.Abs(worldY - e.Y) < 14);
+                    var enemy = _world.Enemies.FirstOrDefault(en =>
+                        !en.IsDead &&
+                        Math.Abs(worldX - en.X) < 16 &&
+                        Math.Abs(worldY - en.Y) < 16);
                     if (enemy != null)
                     {
-                        display = enemy.DisplayChar[0];
+                        display = enemy.DisplayChar;
+                        brush = Brushes.Red;
                     }
-                    // 检查平台
+                    // 平台
                     else
                     {
                         var platform = _world.Platforms.FirstOrDefault(p =>
@@ -663,95 +585,44 @@ public partial class CodeEditorForm : Form
                             Math.Abs(worldY - p.Y) < 10);
                         if (platform != null)
                         {
-                            display = '=';
+                            display = "=";
+                            brush = brushOrange;
                         }
-                        // 检查收集品
+                        // 收集品
                         else
                         {
                             var item = _world.Collectibles.FirstOrDefault(c =>
                                 !c.IsCollected &&
-                                Math.Abs(worldX - c.X) < 10 &&
-                                Math.Abs(worldY - c.Y) < 10);
+                                Math.Abs(worldX - c.X) < 15 &&
+                                Math.Abs(worldY - c.Y) < 15);
                             if (item != null)
                             {
-                                display = item.DisplayChar[0];
+                                display = item.DisplayChar;
+                                brush = Brushes.Yellow;
                             }
                         }
                     }
                 }
 
-                sb.Append(display);
+                if (display != " ")
+                {
+                    g.DrawString(display, font, brush, x, y);
+                }
+                x += (int)charWidth;
             }
-            sb.AppendLine("\",");
-        }
-        sb.AppendLine("    ],");
-        sb.AppendLine("};");
-
-        // 游戏提示
-        sb.AppendLine();
-        sb.AppendLine("// Tips:");
-        sb.AppendLine("// - Use Arrow Keys to move left/right");
-        sb.AppendLine("// - Press SPACE to jump");
-        sb.AppendLine("// - Jump on enemies to defeat them");
-        sb.AppendLine($"// - Reach the flag to complete the level");
-
-        string newText = sb.ToString();
-
-        // 只在文本变化时更新，避免闪烁
-        if (newText != _lastRenderedText)
-        {
-            _lastRenderedText = newText;
-            _codeEditor.Text = newText;
-            ApplySyntaxHighlighting();
-        }
-    }
-
-    private void ApplySyntaxHighlighting()
-    {
-        // 简单语法高亮
-        string text = _codeEditor.Text;
-
-        // 高亮注释
-        for (int i = 0; i < text.Length - 1; i++)
-        {
-            if (text[i] == '/' && text[i + 1] == '/')
-            {
-                int end = text.IndexOf('\n', i);
-                if (end == -1) end = text.Length;
-                _codeEditor.Select(i, end - i);
-                _codeEditor.SelectionColor = Color.FromArgb(106, 153, 85);
-            }
+            y += (int)charHeight;
         }
 
-        // 高亮关键字
-        string[] keywords = { "const", "var", "let", "function", "class", "if", "else" };
-        foreach (var keyword in keywords)
-        {
-            int index = 0;
-            while ((index = text.IndexOf(keyword, index)) != -1)
-            {
-                _codeEditor.Select(index, keyword.Length);
-                _codeEditor.SelectionColor = Color.FromArgb(86, 156, 214);
-                index += keyword.Length;
-            }
-        }
+        // 底部提示
+        y += 10;
+        g.DrawString("// ← → Move | SPACE Jump | Jump on enemies to defeat them", font, brushGreen, 10, y);
 
-        // 高亮字符串
-        int strIndex = 0;
-        while (strIndex < text.Length)
-        {
-            int quoteStart = text.IndexOf('"', strIndex);
-            if (quoteStart == -1) break;
-            int quoteEnd = text.IndexOf('"', quoteStart + 1);
-            if (quoteEnd == -1) break;
-            _codeEditor.Select(quoteStart, quoteEnd - quoteStart + 1);
-            _codeEditor.SelectionColor = Color.FromArgb(206, 145, 120);
-            strIndex = quoteEnd + 1;
-        }
-
-        // 滚动到玩家位置
-        _codeEditor.SelectionStart = _codeEditor.Text.Length;
-        _codeEditor.ScrollToCaret();
+        // 清理资源
+        font.Dispose();
+        brushWhite.Dispose();
+        brushGreen.Dispose();
+        brushBlue.Dispose();
+        brushOrange.Dispose();
     }
 
     private void TerminalInput_KeyDown(object? sender, KeyEventArgs e)

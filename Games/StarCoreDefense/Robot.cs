@@ -105,6 +105,9 @@ public partial class Robot
     public string SpecialState { get; set; } = "NORMAL";
     public int SpecialStateTimer { get; set; } = 0;
 
+    // 驻扎锁定 (防卫点)
+    public WallSegment? AssignedWall { get; set; }
+
     // 反馈
     public string? LastDamageText { get; set; }
     public int DamageTextTimer { get; set; } = 0;
@@ -719,8 +722,15 @@ public partial class Robot
     {
         if (TargetMineral != null && TargetMineral.LockingRobot == this) TargetMineral.LockingRobot = null;
         if (TargetWall != null && TargetWall.LockingRobot == this) TargetWall.LockingRobot = null;
+        
+        // 关键：释放驻扎位锁定
+        if (AssignedWall != null && AssignedWall.GarrisonRobot == this) AssignedWall.GarrisonRobot = null;
+        
+        BattleForm.Instance?.ReleaseGarrison(this); // 二次保险
+        
         TargetMineral = null;
         TargetWall = null;
+        AssignedWall = null;
     }
 
 
@@ -804,115 +814,98 @@ public partial class Robot
 
     private void UpdateGuardianLogic(List<Monster> allMonsters)
     {
-        // 寻找基地
-        Robot? baseTarget = null;
-        if (BattleForm.Instance != null)
-        {
-            baseTarget = BattleForm.Instance.GetBaseRobot();
-        }
-
+        Robot? baseTarget = BattleForm.Instance?.GetBaseRobot();
         if (baseTarget == null || !baseTarget.IsActive || baseTarget.IsDead)
         {
             UpdateRandomMovement();
             return;
         }
 
-        // 寻找距离基地最近的怪物（保护半径 150）
-        float protectionRadius = 150.0f;
+        // 寻找离基地最近的威胁
+        float aggroRange = 350.0f;
         Monster? targetMonster = null;
-        float minBaseDist = float.MaxValue;
+        float minDist = float.MaxValue;
 
         foreach (var m in allMonsters)
         {
             if (!m.IsActive || m.IsDead) continue;
-            float dxBase = (m.X + m.Size / 2) - (baseTarget.X + baseTarget.Size / 2);
-            float dyBase = (m.Y + m.Size / 2) - (baseTarget.Y + baseTarget.Size / 2);
-            float distToBase = (float)Math.Sqrt(dxBase * dxBase + dyBase * dyBase);
-
-            if (distToBase < protectionRadius && distToBase < minBaseDist)
-            {
-                minBaseDist = distToBase;
-                targetMonster = m;
-            }
+            float dx = m.X - X, dy = m.Y - Y;
+            float d = (float)Math.Sqrt(dx * dx + dy * dy);
+            if (d < aggroRange && d < minDist) { minDist = d; targetMonster = m; }
         }
-
-        float maxSpeed = 4.0f * SpeedMultiplier;
 
         if (targetMonster != null)
         {
-            // 有怪物在保护范围内，冲向该怪物
-            var (monsterX, monsterY) = targetMonster.GetCenter();
-            float dx = monsterX - (X + Size / 2);
-            float dy = monsterY - (Y + Size / 2);
-            float dist = (float)Math.Sqrt(dx * dx + dy * dy);
+            var (mx, my) = targetMonster.GetCenter();
+            float dx = mx - X, dy = my - Y;
+            float d = (float)Math.Sqrt(dx * dx + dy * dy);
+            if (d < 1) d = 1;
 
-            if (dist < 1f) dist = 1f;
+            float maxSpeed = 5.0f * SpeedMultiplier;
 
-            Dx = Dx * 0.9f + (dx / dist) * maxSpeed * 0.3f;
-            Dy = Dy * 0.9f + (dy / dist) * maxSpeed * 0.3f;
-
-            // 如果距离足够近，触发撞击技能
-            if (dist < Size / 2 + targetMonster.Size / 2 + 15) // 攻击距离稍大于碰撞距离
+            // 守卫者特色逻辑：【引力跳跃】+【等离子旋风】
+            if (ShootCooldown <= 0 && d > 120 && d < 300)
             {
-                if (ShootCooldown <= 0)
+                // 距离中等，发起跳跃
+                ShootCooldown = 120; // 较长CD，极具爆发力
+                SpecialState = "LEAPING";
+                SpecialStateTimer = 15;
+                Dx += (dx / d) * 35.0f; // 瞬间爆发初速度
+                Dy += (dy / d) * 35.0f;
+                BattleForm.Instance?.AddExplosion(X, Y, Color.OrangeRed, 10, "SPARK");
+            }
+            else if (SpecialState != "WHIRLWIND" && d < 60)
+            {
+                // 到达中心，开启旋风打击
+                SpecialState = "WHIRLWIND";
+                SpecialStateTimer = 60; // 持续1秒的旋风
+                Dx *= 0.2f; Dy *= 0.2f; // 旋风期间移速变慢但更稳健
+            }
+
+            if (SpecialState == "WHIRLWIND")
+            {
+                // 旋风逻辑：每帧对周围怪物进行小幅度击退和中等伤害
+                if (SpecialStateTimer % 4 == 0) // 每隔几帧攻击一次
                 {
-                    // 施放撞击技能
-                    ShootCooldown = 60; // 1秒冷却
-                    SpecialState = "SHAKING";
-                    SpecialStateTimer = 20;
-
-                    // 造成伤害
-                    int levelBonus = BattleForm.Instance?._guardianLevel - 1 ?? 0;
-                    int damage = (int)(40 * (1 + levelBonus * 0.2f));
-                    targetMonster.TakeDamage(damage);
-
-                    // 施加击退效果 (将怪物往基地反方向推开)
-                    float pushForce = 20.0f; // 击退力度
-                    float pushDx = (targetMonster.X + targetMonster.Size / 2) - (baseTarget.X + baseTarget.Size / 2);
-                    float pushDy = (targetMonster.Y + targetMonster.Size / 2) - (baseTarget.Y + baseTarget.Size / 2);
-                    float pushDist = (float)Math.Sqrt(pushDx * pushDx + pushDy * pushDy);
-                    if (pushDist > 0)
+                    float aoe = 120f;
+                    var hits = BattleForm.Instance?.GetAllMonsters().Where(m => m.IsActive && !m.IsDead && 
+                        Math.Sqrt(Math.Pow(m.X - X, 2) + Math.Pow(m.Y - Y, 2)) < aoe).ToList();
+                    
+                    int dmg = (int)(30 * (1 + (BattleForm.Instance?._guardianLevel - 1 ?? 0) * 0.2f));
+                    if (hits != null)
                     {
-                        targetMonster.Dx += (pushDx / pushDist) * pushForce;
-                        targetMonster.Dy += (pushDy / pushDist) * pushForce;
+                        foreach (var m in hits)
+                        {
+                            m.TakeDamage(dmg);
+                            float mDx = m.X - X, mDy = m.Y - Y;
+                            float mD = (float)Math.Sqrt(mDx*mDx + mDy*mDy);
+                            if (mD > 0) { m.Dx += (mDx/mD)*6.0f; m.Dy += (mDy/mD)*6.0f; } // 持续排斥
+                        }
                     }
-
-                    // 视觉反馈
-                    BattleForm.Instance?.AddExplosion(monsterX, monsterY, Color.White, 8, "SPARK");
+                    // 旋风火花
+                    if (Rand.Next(5) < 2) BattleForm.Instance?.AddExplosion(X, Y, Color.FromArgb(150, 255, 165, 0), 2, "SPARK");
                 }
+                RotationAngle += 45f; // 高速自旋
+            }
+            else if (SpecialState != "LEAPING")
+            {
+                // 常规追逐
+                Dx = Dx * 0.85f + (dx / d) * maxSpeed * 0.25f;
+                Dy = Dy * 0.85f + (dy / d) * maxSpeed * 0.25f;
             }
         }
         else
         {
-            // 保护范围内没有怪物，在基地周围巡逻
-            float dx = (baseTarget.X + baseTarget.Size / 2) - (X + Size / 2);
-            float dy = (baseTarget.Y + baseTarget.Size / 2) - (Y + Size / 2);
-            float dist = (float)Math.Sqrt(dx * dx + dy * dy);
-
-            if (dist > 80) // 离基地太远，靠近基地
-            {
-                Dx = Dx * 0.9f + (dx / dist) * maxSpeed * 0.1f;
-                Dy = Dy * 0.9f + (dy / dist) * maxSpeed * 0.1f;
-            }
-            else // 在基地附近随机游走
-            {
-                if (Rand.Next(100) < 5)
-                {
-                    double angle = Rand.NextDouble() * Math.PI * 2;
-                    float speed = (float)Rand.NextDouble() * maxSpeed * 0.5f;
-                    Dx = (float)Math.Cos(angle) * speed;
-                    Dy = (float)Math.Sin(angle) * speed;
-                }
-            }
+            // 回归基地巡逻
+            float dx = (baseTarget.X + baseTarget.Size / 2) - X;
+            float dy = (baseTarget.Y + baseTarget.Size / 2) - Y;
+            float d = (float)Math.Sqrt(dx * dx + dy * dy);
+            if (d > 100) { Dx = Dx * 0.9f + (dx / d) * 0.5f; Dy = Dy * 0.9f + (dy / d) * 0.5f; }
+            else UpdateRandomMovement();
         }
 
-        // 限制最大速度
-        float currentSpeed = (float)Math.Sqrt(Dx * Dx + Dy * Dy);
-        if (currentSpeed > maxSpeed)
-        {
-            Dx = (Dx / currentSpeed) * maxSpeed;
-            Dy = (Dy / currentSpeed) * maxSpeed;
-        }
+        // 摩擦阻力
+        Dx *= 0.95f; Dy *= 0.95f;
     }
 
     private void FollowTeammates(List<Robot> targets)
@@ -967,30 +960,42 @@ public partial class Robot
         }
         else if (ClassType == RobotClass.Shooter)
         {
-            // 输出型：保持距离 (120-200) 环绕射击
-            float idealDistance = 120 + (Id * 37 % 80);
+            // 输出型：不再无脑追，而是寻找敌人前方的城墙点驻扎防守 (Man the Walls)
+            // 只有当 AssignedWall 被解除、目标失效或 AssignedWall 被其他机器人占用（虽然 GarrisonRobot 会尽量避免）时刷新
+            if (AssignedWall == null || (AssignedWall.GarrisonRobot != null && AssignedWall.GarrisonRobot != this))
+            {
+                UnlockTargets();
+                AssignedWall = BattleForm.Instance?.GetGarrisonWall(this, MonsterTarget);
+            }
 
-            if (dist > idealDistance + 20)
+            if (AssignedWall != null)
             {
-                // 距离太远，全速靠近
-                Dx = (dx / dist) * maxSpeed;
-                Dy = (dy / dist) * maxSpeed;
+                var br = BattleForm.Instance?.GetBaseRobot();
+                var wp = AssignedWall.GetWorldPosition(br?.X ?? 0, br?.Y ?? 0);
+                float wDx = wp.X - X, wDy = wp.Y - Y;
+                float wDist = (float)Math.Sqrt(wDx * wDx + wDy * wDy);
+
+                if (wDist > 15) // 向墙上预定点移动
+                {
+                    float wallSpeed = 4.0f * SpeedMultiplier;
+                    Dx = Dx * 0.8f + (wDx / wDist) * wallSpeed * 0.2f;
+                    Dy = Dy * 0.8f + (wDy / wDist) * wallSpeed * 0.2f;
+                }
+                else // 已驻守，原地锁定并开火
+                {
+                    Dx *= 0.7f; Dy *= 0.7f;
+                }
             }
-            else if (dist < idealDistance - 20)
+            else // 极端情况：没找到城墙驻点 (如全部被毁)，则维持距离射击
             {
-                // 距离太近，后退
-                Dx -= (dx / dist) * 0.3f;
-                Dy -= (dy / dist) * 0.3f;
-            }
-            else
-            {
-                // 在理想攻击范围内，停止移动（大幅增加摩擦力），全力攻击
-                Dx *= 0.8f;
-                Dy *= 0.8f;
+                float idealDistance = 150f;
+                if (dist > idealDistance + 30) { Dx += (dx / dist) * 0.2f; Dy += (dy / dist) * 0.2f; }
+                else if (dist < idealDistance - 30) { Dx -= (dx / dist) * 0.4f; Dy -= (dy / dist) * 0.4f; }
+                else { Dx *= 0.9f; Dy *= 0.9f; }
             }
 
             // 发射攻击 (只要在一定范围内就可以攻击)
-            if (ShootCooldown == 0 && dist <= idealDistance + 40 && Rand.Next(100) < 60)
+            if (ShootCooldown == 0 && dist <= 400 && Rand.Next(100) < 60)
             {
                 LaunchAttackAtMonster(MonsterTarget);
             }

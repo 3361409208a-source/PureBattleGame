@@ -2308,6 +2308,20 @@ public partial class BattleForm : Form
                 }
             }
 
+            // 特殊效果：守卫者等离子旋风
+            if (robot.SpecialState == "WHIRLWIND")
+            {
+                using var p = new Pen(Color.FromArgb(180, Color.Orange), 3);
+                float rot = (Environment.TickCount / 25f);
+                for (int i = 0; i < 3; i++)
+                {
+                    float angle = (rot + i * (float)Math.PI * 2 / 3f) * 180 / (float)Math.PI;
+                    g.DrawArc(p, centerX - 60, centerY - 60, 120, 120, angle, 90);
+                }
+                using var glowB = new SolidBrush(Color.FromArgb(40, Color.Yellow));
+                g.FillEllipse(glowB, centerX - 60, centerY - 60, 120, 120);
+            }
+
             Draw3DOrbiters(g, robot, centerX, centerY, size, false);
         }
 
@@ -2799,11 +2813,34 @@ public partial class BattleForm : Form
     {
         // 优先寻找：当前没被锁定的、血量不满或处于蓝图阶段（HP=0）的墙体
         var best = _walls.Where(w => (w.LockingRobot == null || w.LockingRobot == caller) && w.HP < w.MaxHP)
-                         .OrderBy(w => w.HP) // 优先修最破的（蓝图第一优先）
+                         .OrderBy(w => w.HP)
                          .FirstOrDefault();
 
         if (best != null) best.LockingRobot = caller;
         return best;
+    }
+
+    public WallSegment? GetGarrisonWall(Robot caller, Monster threat)
+    {
+        // 寻找离当前威胁最近且未被占用的驻扎位
+        var br = GetBaseRobot();
+        var best = _walls.Where(w => w.IsActive && (w.GarrisonRobot == null || w.GarrisonRobot == caller))
+                         .OrderBy(w => {
+                             var wp = w.GetWorldPosition(br?.X ?? 0, br?.Y ?? 0);
+                             return Math.Pow(wp.X - threat.X, 2) + Math.Pow(wp.Y - threat.Y, 2);
+                         })
+                         .FirstOrDefault();
+
+        if (best != null) best.GarrisonRobot = caller;
+        return best;
+    }
+
+    public void ReleaseGarrison(Robot caller)
+    {
+        foreach (var w in _walls)
+        {
+            if (w.GarrisonRobot == caller) w.GarrisonRobot = null;
+        }
     }
 
     private void RenderWalls(Graphics g, float bx, float by)
@@ -2890,6 +2927,8 @@ public partial class BattleForm : Form
             }
         }
     }
+
+    public List<Monster> GetAllMonsters() => _monsters;
 }
 
 /// <summary>
