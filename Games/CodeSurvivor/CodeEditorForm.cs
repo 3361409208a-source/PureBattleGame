@@ -2,12 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
+using System.Text;
 using System.Windows.Forms;
 
 namespace PureBattleGame.Games.CodeSurvivor;
 
 /// <summary>
-/// 伪装IDE主窗口 - 看起来像VS Code，实际上是Roguelike游戏
+/// 伪装IDE主窗口 - 看起来像VS Code，实际上是横版过关游戏
 /// </summary>
 public partial class CodeEditorForm : Form
 {
@@ -24,10 +25,14 @@ public partial class CodeEditorForm : Form
     private Label _statusBar = null!;
     private Label _fileTab = null!;
 
+    // 游戏循环
+    private System.Windows.Forms.Timer _gameTimer = null!;
+    private HashSet<Keys> _pressedKeys = new();
+
     // 游戏状态
     private bool _gameOver = false;
-    private List<string> _combatLog = new();
-    private int _turnCount = 0;
+    private bool _levelComplete = false;
+    private int _frameCount = 0;
 
     public CodeEditorForm()
     {
@@ -37,12 +42,12 @@ public partial class CodeEditorForm : Form
 
     private void InitializeComponent()
     {
-        this.Text = "Visual Studio Code - project/src/player.js";
+        this.Text = "Visual Studio Code - project/src/level1.js";
         this.Size = new Size(1200, 800);
         this.StartPosition = FormStartPosition.CenterScreen;
         this.BackColor = Color.FromArgb(30, 30, 30);
         this.ForeColor = Color.FromArgb(212, 212, 212);
-        this.Opacity = 0.1;
+        this.Opacity = 0.95;
         this.MinimumSize = new Size(800, 600);
 
         // 主布局面板
@@ -98,11 +103,19 @@ public partial class CodeEditorForm : Form
             _terminalPanel.Width = this.ClientSize.Width - 248;
             _statusBar.Location = new Point(0, this.ClientSize.Height - 25);
             _statusBar.Width = this.ClientSize.Width;
+
+            // 更新游戏屏幕尺寸
+            if (_world != null)
+            {
+                _world.ScreenWidth = this.ClientSize.Width - 280;
+                _world.ScreenHeight = this.ClientSize.Height - 250;
+            }
         };
 
-        // 键盘快捷键
+        // 键盘处理
         this.KeyPreview = true;
         this.KeyDown += CodeEditorForm_KeyDown;
+        this.KeyUp += CodeEditorForm_KeyUp;
     }
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -137,7 +150,7 @@ public partial class CodeEditorForm : Form
                 }
                 else
                 {
-                    this.Opacity = (this.Tag is double op) ? op : 0.1;
+                    this.Opacity = (this.Tag is double op) ? op : 0.95;
                     this.ShowInTaskbar = true;
                 }
                 return true;
@@ -249,7 +262,7 @@ public partial class CodeEditorForm : Form
 
         _fileTab = new Label
         {
-            Text = "  📝 player.js",
+            Text = "  📝 level1.js",
             ForeColor = Color.White,
             BackColor = Color.FromArgb(30, 30, 30),
             Font = new Font("Microsoft YaHei", 9),
@@ -267,7 +280,7 @@ public partial class CodeEditorForm : Form
             Dock = DockStyle.Fill,
             BackColor = Color.FromArgb(30, 30, 30),
             ForeColor = Color.FromArgb(212, 212, 212),
-            Font = new Font("Consolas", 12),
+            Font = new Font("Consolas", 11),
             BorderStyle = BorderStyle.None,
             ReadOnly = true,
             WordWrap = false,
@@ -355,13 +368,104 @@ public partial class CodeEditorForm : Form
     private void InitializeGame()
     {
         _world = new GameWorld();
+        _world.ScreenWidth = this.ClientSize.Width - 280;
+        _world.ScreenHeight = this.ClientSize.Height - 250;
+
+        // 创建游戏循环计时器
+        _gameTimer = new System.Windows.Forms.Timer();
+        _gameTimer.Interval = 16; // ~60 FPS
+        _gameTimer.Tick += GameLoop;
+        _gameTimer.Start();
+
         UpdateFileTree();
         RenderGame();
-        PrintTerminal("Welcome to CodeSurvivor v1.0.0");
-        PrintTerminal("Shortcuts: ↑↓←→ Move | Alt+↑↓ Opacity | Alt+Space BossKey | Alt+Q Home");
-        PrintTerminal("Type 'help' for available commands");
+        PrintTerminal("Welcome to CodeSurvivor - Platformer Mode!");
+        PrintTerminal("Controls: ← → Move | SPACE Jump | Alt+↑↓ Opacity | Alt+Space BossKey | Alt+Q Home");
+        PrintTerminal("Jump on enemies to defeat them! Reach the flag 🚩 to complete the level.");
         PrintTerminal("");
         UpdateStatusBar();
+    }
+
+    private void GameLoop(object? sender, EventArgs e)
+    {
+        if (_gameOver) return;
+
+        _frameCount++;
+
+        // 处理输入
+        UpdateInput();
+
+        // 更新物理
+        _world.UpdatePhysics();
+
+        // 检查关卡完成
+        if (_world.IsLevelComplete() && !_levelComplete)
+        {
+            _levelComplete = true;
+            PrintTerminal("");
+            PrintTerminal("🎉 Level Complete!");
+            PrintTerminal($"💰 Coins collected: {_world.Player.Coins}");
+            PrintTerminal($"⭐ Score: {_world.Player.Score}");
+            PrintTerminal("Loading next level...");
+
+            // 延迟进入下一关
+            var delayTimer = new System.Windows.Forms.Timer();
+            delayTimer.Interval = 2000;
+            delayTimer.Tick += (s, evt) => {
+                delayTimer.Stop();
+                _world.NextLevel();
+                _levelComplete = false;
+                _fileTab.Text = $"  📝 level{_world.CurrentLevel}.js";
+                this.Text = $"Visual Studio Code - project/src/level{_world.CurrentLevel}.js";
+                PrintTerminal($"");
+                PrintTerminal($"📂 Level {_world.CurrentLevel} Loaded!");
+            };
+            delayTimer.Start();
+        }
+
+        // 检查玩家死亡
+        if (_world.Player.HP <= 0 && !_gameOver)
+        {
+            _gameOver = true;
+            PrintTerminal("");
+            PrintTerminal("╔═══════════════════════════════════════╗");
+            PrintTerminal("║            GAME OVER                  ║");
+            PrintTerminal($"║    Level: {_world.CurrentLevel} | Score: {_world.Player.Score}         ║");
+            PrintTerminal("╚═══════════════════════════════════════╝");
+            PrintTerminal("");
+            PrintTerminal("Type 'restart' to try again");
+        }
+
+        // 渲染
+        RenderGame();
+        UpdateStatusBar();
+    }
+
+    private void UpdateInput()
+    {
+        // 左右移动
+        if (_pressedKeys.Contains(Keys.Left))
+        {
+            _world.Player.VelX = -_world.Player.Speed;
+        }
+        else if (_pressedKeys.Contains(Keys.Right))
+        {
+            _world.Player.VelX = _world.Player.Speed;
+        }
+        else
+        {
+            _world.Player.VelX *= 0.8f; // 摩擦力
+            if (Math.Abs(_world.Player.VelX) < 0.1f) _world.Player.VelX = 0;
+        }
+
+        // 跳跃
+        if (_pressedKeys.Contains(Keys.Space))
+        {
+            if (_world.Player.IsGrounded)
+            {
+                _world.Player.Jump();
+            }
+        }
     }
 
     private void UpdateFileTree()
@@ -378,17 +482,23 @@ public partial class CodeEditorForm : Form
             node.ToolTipText = skill.Description;
         }
 
-        var equipNode = root.Nodes.Add("📁 equipment");
-        if (_world.Player.Weapon != null)
-            equipNode.Nodes.Add($"⚔️ {_world.Player.Weapon.Name}");
-        if (_world.Player.Armor != null)
-            equipNode.Nodes.Add($"🛡️ {_world.Player.Armor.Name}");
-
-        var itemNode = root.Nodes.Add($"📦 inventory ({_world.Player.Inventory.Count})");
-        foreach (var item in _world.Player.Inventory.Take(5))
+        var levelNode = root.Nodes.Add("📁 levels");
+        for (int i = 1; i <= 5; i++)
         {
-            itemNode.Nodes.Add($"• {item.Name}");
+            var node = levelNode.Nodes.Add($"📄 level{i}.js");
+            if (i <= _world.CurrentLevel)
+            {
+                node.ForeColor = Color.FromArgb(212, 212, 212);
+            }
+            else
+            {
+                node.ForeColor = Color.Gray;
+            }
         }
+
+        var itemNode = root.Nodes.Add($"📦 inventory ({_world.Player.Coins} coins)");
+        itemNode.Nodes.Add($"💰 Coins: {_world.Player.Coins}");
+        itemNode.Nodes.Add($"⭐ Score: {_world.Player.Score}");
 
         root.ExpandAll();
     }
@@ -398,7 +508,6 @@ public partial class CodeEditorForm : Form
         PrintTerminal($"");
         PrintTerminal($"// Skill: {skill.Name}");
         PrintTerminal($"// Type: {skill.Type}");
-        PrintTerminal($"// MP Cost: {skill.MPCost}");
         PrintTerminal($"// Description: {skill.Description}");
         PrintTerminal($"");
     }
@@ -407,100 +516,227 @@ public partial class CodeEditorForm : Form
     {
         _codeEditor.Clear();
 
-        var sb = new System.Text.StringBuilder();
+        var sb = new StringBuilder();
+        float camX = _world.CameraX;
 
-        // 顶部状态注释
+        // 文件头注释
         sb.AppendLine("/**");
-        sb.AppendLine($" * Floor: {_world.CurrentFloor} | Turn: {_turnCount}");
-        sb.AppendLine($" * Position: ({_world.Player.X}, {_world.Player.Y})");
-        sb.AppendLine($" * HP: {GetBar(_world.Player.HP, _world.Player.MaxHP)} {_world.Player.HP}/{_world.Player.MaxHP}");
-        sb.AppendLine($" * MP: {GetBar(_world.Player.MP, _world.Player.MaxMP)} {_world.Player.MP}/{_world.Player.MaxMP}");
-        sb.AppendLine($" * Level: {_world.Player.Level} [EXP: {_world.Player.EXP}/{_world.Player.EXPToNext}]");
-        sb.AppendLine($" * ATK: {_world.Player.Attack} | DEF: {_world.Player.Defense} | 💰: {_world.Player.Gold}");
+        sb.AppendLine($" * Level: {_world.CurrentLevel} | FPS: {1000 / 16}");
+        sb.AppendLine($" * Camera: ({camX:F0}, 0)");
+        sb.AppendLine($" * Player: ({_world.Player.X:F0}, {_world.Player.Y:F0})");
         sb.AppendLine(" */");
         sb.AppendLine();
 
-        // 代码样式注释
-        sb.AppendLine("const world = {");
-        sb.AppendLine("    // Map representation");
-        sb.AppendLine("    grid: [");
+        // 代码样式声明
+        sb.AppendLine("const level = {");
+        sb.AppendLine($"    width: {_world.LevelWidth},");
+        sb.AppendLine($"    camera: {{ x: {camX:F0} }},");
+        sb.AppendLine();
 
-        // 渲染地图
-        for (int y = 0; y < _world.Height; y++)
+        // 渲染平台
+        sb.AppendLine("    // Platforms");
+        sb.AppendLine("    platforms: [");
+        foreach (var platform in _world.Platforms)
+        {
+            if (_world.IsOnScreen(platform.X, platform.Width))
+            {
+                int screenX = (int)(platform.X - camX);
+                string type = platform.Type switch
+                {
+                    PlatformType.Moving => "moving",
+                    PlatformType.Breaking => "breaking",
+                    PlatformType.Spring => "spring",
+                    _ => "static"
+                };
+                sb.AppendLine($"        {{ x: {screenX}, y: {(int)platform.Y}, w: {(int)platform.Width}, type: '{type}' }}, " +
+                             $"// at ({platform.X:F0}, {platform.Y:F0})");
+            }
+        }
+        sb.AppendLine("    ],");
+        sb.AppendLine();
+
+        // 渲染收集品
+        sb.AppendLine("    // Collectibles");
+        sb.AppendLine("    collectibles: [");
+        foreach (var item in _world.Collectibles.Where(c => !c.IsCollected))
+        {
+            if (_world.IsOnScreen(item.X, item.Width))
+            {
+                int screenX = (int)(item.X - camX);
+                string type = item.Type switch
+                {
+                    CollectibleType.Coin => "coin",
+                    CollectibleType.PowerUp => "powerup",
+                    CollectibleType.Flag => "flag",
+                    _ => "unknown"
+                };
+                sb.AppendLine($"        {{ x: {screenX}, y: {(int)item.Y}, type: '{type}', icon: '{item.DisplayChar}' }}, " +
+                             $"// at ({item.X:F0}, {item.Y:F0})");
+            }
+        }
+        sb.AppendLine("    ],");
+        sb.AppendLine();
+
+        // 渲染敌人
+        sb.AppendLine("    // Enemies");
+        sb.AppendLine("    enemies: [");
+        foreach (var enemy in _world.Enemies.Where(e => !e.IsDead))
+        {
+            if (_world.IsOnScreen(enemy.X, enemy.Width))
+            {
+                int screenX = (int)(enemy.X - camX);
+                string direction = enemy.MovingRight ? "right" : "left";
+                sb.AppendLine($"        {{ x: {screenX}, y: {(int)enemy.Y}, type: '{enemy.Name}', " +
+                             $"hp: {enemy.HP}/{enemy.MaxHP}, dir: '{direction}', icon: '{enemy.DisplayChar}' }}, " +
+                             $"// at ({enemy.X:F0}, {enemy.Y:F0})");
+            }
+        }
+        sb.AppendLine("    ],");
+        sb.AppendLine();
+
+        // 渲染玩家
+        sb.AppendLine("    // Player");
+        int playerScreenX = (int)(_world.Player.X - camX);
+        string playerFacing = _world.Player.FacingRight ? "right" : "left";
+        string playerState = _world.Player.IsGrounded ? "grounded" : "air";
+        sb.AppendLine($"    player: {{");
+        sb.AppendLine($"        x: {playerScreenX},");
+        sb.AppendLine($"        y: {(int)_world.Player.Y},");
+        sb.AppendLine($"        facing: '{playerFacing}',");
+        sb.AppendLine($"        state: '{playerState}',");
+        sb.AppendLine($"        hp: {_world.Player.HP}/{_world.Player.MaxHP},");
+        sb.AppendLine($"        coins: {_world.Player.Coins},");
+        sb.AppendLine($"        vel: {{ x: {_world.Player.VelX:F1}, y: {_world.Player.VelY:F1} }},");
+        sb.AppendLine($"        icon: '👨‍💻'");
+        sb.AppendLine($"    }},");
+        sb.AppendLine();
+
+        // 渲染地图可视化（ASCII艺术风格）
+        sb.AppendLine("    // Map visualization (camera view)");
+        sb.AppendLine("    view: [");
+
+        // 简化渲染：用字符表示游戏画面
+        int viewWidth = 50;
+        int viewHeight = 12;
+
+        for (int row = 0; row < viewHeight; row++)
         {
             sb.Append("        \"");
-            for (int x = 0; x < _world.Width; x++)
+            float worldY = _world.GroundY - (viewHeight - row) * 40;
+
+            for (int col = 0; col < viewWidth; col++)
             {
-                if (x == _world.Player.X && y == _world.Player.Y)
+                float worldX = camX + col * 20;
+                char display = ' ';
+
+                // 检查玩家
+                if (Math.Abs(worldX - _world.Player.X) < 15 && Math.Abs(worldY - _world.Player.Y) < 20)
                 {
-                    sb.Append("👨‍💻"); // 玩家
+                    display = _world.Player.FacingRight ? '>' : '<';
+                    if (_world.Player.InvincibleTime > 0 && _frameCount % 4 < 2)
+                        display = ' '; // 闪烁效果
                 }
+                // 检查敌人
                 else
                 {
-                    var enemy = _world.GetEnemyAt(x, y);
-                    if (enemy != null && !enemy.IsDead)
+                    var enemy = _world.Enemies.FirstOrDefault(e =>
+                        !e.IsDead &&
+                        Math.Abs(worldX - e.X) < 14 &&
+                        Math.Abs(worldY - e.Y) < 14);
+                    if (enemy != null)
                     {
-                        sb.Append(enemy.DisplayChar);
+                        display = enemy.DisplayChar[0];
                     }
+                    // 检查平台
                     else
                     {
-                        switch (_world.Map[x, y])
+                        var platform = _world.Platforms.FirstOrDefault(p =>
+                            worldX >= p.X && worldX < p.X + p.Width &&
+                            Math.Abs(worldY - p.Y) < 10);
+                        if (platform != null)
                         {
-                            case 0: sb.Append("  "); break; // 空地
-                            case 1: sb.Append("██"); break; // 墙
-                            case 2: sb.Append("🚪"); break; // 门
-                            case 3: sb.Append("📦"); break; // 宝箱
-                            default: sb.Append("  "); break;
+                            display = '=';
+                        }
+                        // 检查收集品
+                        else
+                        {
+                            var item = _world.Collectibles.FirstOrDefault(c =>
+                                !c.IsCollected &&
+                                Math.Abs(worldX - c.X) < 10 &&
+                                Math.Abs(worldY - c.Y) < 10);
+                            if (item != null)
+                            {
+                                display = item.DisplayChar[0];
+                            }
                         }
                     }
                 }
+
+                sb.Append(display);
             }
             sb.AppendLine("\",");
         }
-
         sb.AppendLine("    ],");
-        sb.AppendLine();
-
-        // 敌人信息
-        sb.AppendLine("    // Active enemies");
-        sb.AppendLine("    enemies: [");
-        foreach (var enemy in _world.Enemies.Where(e => !e.IsDead).Take(5))
-        {
-            double dist = Math.Sqrt(Math.Pow(enemy.X - _world.Player.X, 2) + Math.Pow(enemy.Y - _world.Player.Y, 2));
-            sb.AppendLine($"        {{ name: \"{enemy.Name}\", hp: {enemy.HP}/{enemy.MaxHP}, dist: {dist:F1} }}, " +
-                         $"// at ({enemy.X}, {enemy.Y})");
-        }
-        sb.AppendLine("    ],");
-        sb.AppendLine();
-
-        // 最近战斗日志
-        sb.AppendLine("    // Recent combat log");
-        sb.AppendLine("    log: [");
-        foreach (var log in _combatLog.Take(5))
-        {
-            sb.AppendLine($"        \"{log}\",");
-        }
-        sb.AppendLine("    ]");
         sb.AppendLine("};");
 
-        // 设置彩色文本
+        // 游戏提示
+        sb.AppendLine();
+        sb.AppendLine("// Tips:");
+        sb.AppendLine("// - Use Arrow Keys to move left/right");
+        sb.AppendLine("// - Press SPACE to jump");
+        sb.AppendLine("// - Jump on enemies to defeat them");
+        sb.AppendLine($"// - Reach the flag to complete the level");
+
         _codeEditor.Text = sb.ToString();
         ApplySyntaxHighlighting();
     }
 
-    private string GetBar(int current, int max)
-    {
-        int bars = (int)((double)current / max * 10);
-        return new string('█', bars) + new string('░', 10 - bars);
-    }
-
     private void ApplySyntaxHighlighting()
     {
-        // 简单的语法高亮
-        string[] keywords = { "const", "var", "let", "function", "class" };
-        string[] comments = { "//", "/*", "*/" };
+        // 简单语法高亮
+        string text = _codeEditor.Text;
 
-        // 这里简化处理，实际可以做得更复杂
+        // 高亮注释
+        for (int i = 0; i < text.Length - 1; i++)
+        {
+            if (text[i] == '/' && text[i + 1] == '/')
+            {
+                int end = text.IndexOf('\n', i);
+                if (end == -1) end = text.Length;
+                _codeEditor.Select(i, end - i);
+                _codeEditor.SelectionColor = Color.FromArgb(106, 153, 85);
+            }
+        }
+
+        // 高亮关键字
+        string[] keywords = { "const", "var", "let", "function", "class", "if", "else" };
+        foreach (var keyword in keywords)
+        {
+            int index = 0;
+            while ((index = text.IndexOf(keyword, index)) != -1)
+            {
+                _codeEditor.Select(index, keyword.Length);
+                _codeEditor.SelectionColor = Color.FromArgb(86, 156, 214);
+                index += keyword.Length;
+            }
+        }
+
+        // 高亮字符串
+        int strIndex = 0;
+        while (strIndex < text.Length)
+        {
+            int quoteStart = text.IndexOf('"', strIndex);
+            if (quoteStart == -1) break;
+            int quoteEnd = text.IndexOf('"', quoteStart + 1);
+            if (quoteEnd == -1) break;
+            _codeEditor.Select(quoteStart, quoteEnd - quoteStart + 1);
+            _codeEditor.SelectionColor = Color.FromArgb(206, 145, 120);
+            strIndex = quoteEnd + 1;
+        }
+
+        // 滚动到玩家位置
+        _codeEditor.SelectionStart = _codeEditor.Text.Length;
+        _codeEditor.ScrollToCaret();
     }
 
     private void TerminalInput_KeyDown(object? sender, KeyEventArgs e)
@@ -556,40 +792,19 @@ public partial class CodeEditorForm : Form
             case "?":
                 ShowHelp();
                 break;
-            case "go":
-            case "move":
-                if (parts.Length > 1) MovePlayer(parts[1]);
-                else PrintTerminal("Usage: go [up/down/left/right/north/south/east/west]");
-                break;
-            case "attack":
-            case "atk":
-                if (parts.Length > 1) AttackDirection(parts[1]);
-                else AttackTarget();
-                break;
-            case "cast":
-            case "use":
-                if (parts.Length > 1) CastSkill(parts[1]);
-                else PrintTerminal("Usage: cast [skillname]");
+            case "restart":
+                RestartGame();
                 break;
             case "status":
             case "st":
                 ShowStatus();
                 break;
-            case "inventory":
-            case "inv":
-                ShowInventory();
-                break;
-            case "skills":
-                ShowSkills();
-                break;
-            case "rest":
-                Rest();
-                break;
-            case "floor":
-                GoToNextFloor();
-                break;
-            case "map":
-                ShowMiniMap();
+            case "next":
+            case "level":
+                if (_levelComplete)
+                    _world.NextLevel();
+                else
+                    PrintTerminal("Complete the current level first!");
                 break;
             case "clear":
             case "cls":
@@ -603,7 +818,7 @@ public partial class CodeEditorForm : Form
                 break;
             case "ls":
             case "dir":
-                PrintTerminal("player.js  utils.js  enemy.js  items.json");
+                PrintTerminal("level1.js  level2.js  player.js  utils.js");
                 break;
             case "cat":
             case "type":
@@ -615,11 +830,6 @@ public partial class CodeEditorForm : Form
                 break;
         }
 
-        // 检查游戏状态
-        CheckGameState();
-
-        // 更新界面
-        RenderGame();
         UpdateFileTree();
         UpdateStatusBar();
     }
@@ -629,22 +839,18 @@ public partial class CodeEditorForm : Form
         PrintTerminal("");
         PrintTerminal("=== Available Commands ===");
         PrintTerminal("");
-        PrintTerminal("MOVEMENT:");
-        PrintTerminal("  go [dir]     - Move (up/down/left/right/n/s/e/w)");
-        PrintTerminal("  rest         - Rest and recover HP/MP");
-        PrintTerminal("");
-        PrintTerminal("COMBAT:");
-        PrintTerminal("  attack       - Attack adjacent enemy");
-        PrintTerminal("  cast [skill] - Use skill (attack, heal, etc.)");
-        PrintTerminal("");
-        PrintTerminal("INFO:");
+        PrintTerminal("GAME:");
+        PrintTerminal("  restart      - Restart the game");
         PrintTerminal("  status       - Show player status");
-        PrintTerminal("  inventory    - Show inventory");
-        PrintTerminal("  skills       - Show learned skills");
-        PrintTerminal("  map          - Show mini map");
+        PrintTerminal("");
+        PrintTerminal("CONTROLS:");
+        PrintTerminal("  ← →          - Move left/right");
+        PrintTerminal("  SPACE        - Jump");
+        PrintTerminal("  Alt+↑↓       - Adjust opacity");
+        PrintTerminal("  Alt+Space    - Boss key (hide)");
+        PrintTerminal("  Alt+Q        - Return to home");
         PrintTerminal("");
         PrintTerminal("MISC:");
-        PrintTerminal("  floor        - Go to next floor (at 🚪)");
         PrintTerminal("  git [cmd]    - Pretend to use git");
         PrintTerminal("  npm [cmd]    - Pretend to use npm");
         PrintTerminal("  clear        - Clear terminal");
@@ -652,347 +858,29 @@ public partial class CodeEditorForm : Form
         PrintTerminal("");
     }
 
-    private void MovePlayer(string dir)
+    private void RestartGame()
     {
-        int dx = 0, dy = 0;
-        switch (dir)
-        {
-            case "up":
-            case "north":
-            case "n": dy = -1; break;
-            case "down":
-            case "south":
-            case "s": dy = 1; break;
-            case "left":
-            case "west":
-            case "w": dx = -1; break;
-            case "right":
-            case "east":
-            case "e": dx = 1; break;
-        }
-
-        int newX = _world.Player.X + dx;
-        int newY = _world.Player.Y + dy;
-
-        // 检查是否是门
-        if (_world.Map[newX, newY] == 2)
-        {
-            PrintTerminal("You found the exit door! Type 'floor' to go to next floor.");
-            return;
-        }
-
-        // 检查是否有敌人
-        var enemy = _world.GetEnemyAt(newX, newY);
-        if (enemy != null)
-        {
-            PrintTerminal($"⚔️ Blocked by {enemy.Name}! Use 'attack' to fight.");
-            return;
-        }
-
-        // 检查是否是宝箱
-        if (_world.Map[newX, newY] == 3)
-        {
-            OpenChest(newX, newY);
-        }
-
-        if (_world.CanMoveTo(newX, newY))
-        {
-            _world.Player.X = newX;
-            _world.Player.Y = newY;
-            _turnCount++;
-
-            // 敌人回合
-            _world.UpdateEnemies();
-
-            // 检查是否被敌人攻击
-            CheckEnemyAttacks();
-        }
-        else
-        {
-            PrintTerminal("💥 Can't move there! (Wall or boundary)");
-        }
-    }
-
-    private void OpenChest(int x, int y)
-    {
-        _world.Map[x, y] = 0; // 移除宝箱
-        var rand = new Random();
-        int reward = rand.Next(3);
-
-        switch (reward)
-        {
-            case 0:
-                int gold = 20 + rand.Next(30);
-                _world.Player.Gold += gold;
-                PrintTerminal($"📦 You found {gold} gold!");
-                break;
-            case 1:
-                int exp = 30 + rand.Next(20);
-                _world.Player.GainEXP(exp);
-                PrintTerminal($"📦 You found a skill book! +{exp} EXP");
-                break;
-            case 2:
-                PrintTerminal("📦 You found a potion! (Auto-used)");
-                _world.Player.Heal(30);
-                break;
-        }
-    }
-
-    private void AttackTarget()
-    {
-        // 寻找相邻的敌人
-        var adjacent = _world.Enemies.Where(e => !e.IsDead && Math.Abs(e.X - _world.Player.X) <= 1 && Math.Abs(e.Y - _world.Player.Y) <= 1).FirstOrDefault();
-
-        if (adjacent != null)
-        {
-            PerformAttack(adjacent);
-        }
-        else
-        {
-            PrintTerminal("❌ No enemy in range!");
-        }
-    }
-
-    private void AttackDirection(string dir)
-    {
-        int dx = 0, dy = 0;
-        switch (dir)
-        {
-            case "up":
-            case "north":
-            case "n": dy = -1; break;
-            case "down":
-            case "south":
-            case "s": dy = 1; break;
-            case "left":
-            case "west":
-            case "w": dx = -1; break;
-            case "right":
-            case "east":
-            case "e": dx = 1; break;
-        }
-
-        int targetX = _world.Player.X + dx;
-        int targetY = _world.Player.Y + dy;
-
-        var enemy = _world.GetEnemyAt(targetX, targetY);
-        if (enemy != null)
-        {
-            PerformAttack(enemy);
-        }
-        else
-        {
-            PrintTerminal("❌ No enemy in that direction!");
-        }
-    }
-
-    private void PerformAttack(Enemy enemy)
-    {
-        int damage = _world.Player.Attack + new Random().Next(5);
-        enemy.TakeDamage(damage);
-        PrintTerminal($"⚔️ You hit {enemy.Name} for {damage} damage!");
-
-        if (enemy.IsDead)
-        {
-            PrintTerminal($"💀 {enemy.Name} defeated! +{enemy.EXP} EXP, +{enemy.Gold} Gold");
-            _world.Player.GainEXP(enemy.EXP);
-            _world.Player.Gold += enemy.Gold;
-            _combatLog.Add($"Killed {enemy.Name}");
-        }
-
-        // 敌人反击
-        EnemyCounterAttack(enemy);
-
-        // 敌人回合
-        _world.UpdateEnemies();
-        _turnCount++;
-    }
-
-    private void EnemyCounterAttack(Enemy enemy)
-    {
-        if (enemy.IsDead) return;
-
-        int damage = enemy.Attack;
-        _world.Player.TakeDamage(damage);
-        PrintTerminal($"🩸 {enemy.Name} hits you for {damage} damage!");
-
-        if (_world.Player.HP <= 0)
-        {
-            _gameOver = true;
-        }
-    }
-
-    private void CheckEnemyAttacks()
-    {
-        var adjacent = _world.Enemies.Where(e => !e.IsDead && Math.Abs(e.X - _world.Player.X) <= 1 && Math.Abs(e.Y - _world.Player.Y) <= 1);
-        foreach (var enemy in adjacent)
-        {
-            EnemyCounterAttack(enemy);
-        }
-    }
-
-    private void CastSkill(string skillName)
-    {
-        var skill = _world.Player.Skills.FirstOrDefault(s => s.Id == skillName && s.IsUnlocked);
-        if (skill == null)
-        {
-            PrintTerminal($"❌ Skill '{skillName}' not found!");
-            return;
-        }
-
-        if (!_world.Player.CanCast(skill))
-        {
-            PrintTerminal($"❌ Not enough MP! (Need {skill.MPCost}, Have {_world.Player.MP})");
-            return;
-        }
-
-        _world.Player.Cast(skill);
-
-        switch (skill.Id)
-        {
-            case "attack":
-                AttackTarget();
-                break;
-            case "heal":
-                _world.Player.Heal(30 + _world.Player.Level * 5);
-                PrintTerminal("💚 Heal cast! HP restored.");
-                break;
-            case "fireball":
-                CastFireball();
-                break;
-            default:
-                PrintTerminal($"✨ Cast {skill.Name}!");
-                break;
-        }
-
-        _turnCount++;
-        _world.UpdateEnemies();
-    }
-
-    private void CastFireball()
-    {
-        PrintTerminal("🔥 Fireball explodes!");
-        // 伤害周围所有敌人
-        var nearby = _world.Enemies.Where(e => !e.IsDead && Math.Sqrt(Math.Pow(e.X - _world.Player.X, 2) + Math.Pow(e.Y - _world.Player.Y, 2)) <= 2);
-        foreach (var enemy in nearby)
-        {
-            int damage = (int)(_world.Player.Attack * 1.5);
-            enemy.TakeDamage(damage);
-            PrintTerminal($"  {enemy.Name} takes {damage} fire damage!");
-        }
+        _gameOver = false;
+        _levelComplete = false;
+        _world = new GameWorld();
+        _world.ScreenWidth = this.ClientSize.Width - 280;
+        _world.ScreenHeight = this.ClientSize.Height - 250;
+        PrintTerminal("Game restarted!");
+        UpdateFileTree();
+        RenderGame();
     }
 
     private void ShowStatus()
     {
         PrintTerminal("");
         PrintTerminal("=== Player Status ===");
-        PrintTerminal($"Level: {_world.Player.Level}");
-        PrintTerminal($"EXP: {_world.Player.EXP}/{_world.Player.EXPToNext}");
+        PrintTerminal($"Level: {_world.CurrentLevel}");
         PrintTerminal($"HP: {_world.Player.HP}/{_world.Player.MaxHP}");
-        PrintTerminal($"MP: {_world.Player.MP}/{_world.Player.MaxMP}");
-        PrintTerminal($"Attack: {_world.Player.Attack}");
-        PrintTerminal($"Defense: {_world.Player.Defense}");
-        PrintTerminal($"Gold: {_world.Player.Gold}");
-        PrintTerminal($"Position: ({_world.Player.X}, {_world.Player.Y})");
-        PrintTerminal($"Floor: {_world.CurrentFloor}");
-        PrintTerminal("");
-    }
-
-    private void ShowInventory()
-    {
-        PrintTerminal("");
-        PrintTerminal("=== Inventory ===");
-        if (_world.Player.Inventory.Count == 0)
-        {
-            PrintTerminal("(Empty)");
-        }
-        else
-        {
-            foreach (var item in _world.Player.Inventory)
-            {
-                PrintTerminal($"  • {item.Name} ({item.Type})");
-            }
-        }
-        PrintTerminal($"\nGold: {_world.Player.Gold}");
-        PrintTerminal("");
-    }
-
-    private void ShowSkills()
-    {
-        PrintTerminal("");
-        PrintTerminal("=== Skills ===");
-        foreach (var skill in _world.Player.Skills)
-        {
-            PrintTerminal($"  • {skill.Id} - {skill.Name} (MP: {skill.MPCost})");
-            PrintTerminal($"    {skill.Description}");
-        }
-        PrintTerminal("");
-    }
-
-    private void Rest()
-    {
-        // 检查周围是否有敌人
-        var nearby = _world.Enemies.Where(e => !e.IsDead && Math.Sqrt(Math.Pow(e.X - _world.Player.X, 2) + Math.Pow(e.Y - _world.Player.Y, 2)) <= 5);
-        if (nearby.Any())
-        {
-            PrintTerminal("❌ Can't rest! Enemies are nearby.");
-            return;
-        }
-
-        _world.Player.HP = Math.Min(_world.Player.MaxHP, _world.Player.HP + 20);
-        _world.Player.MP = _world.Player.MaxMP;
-        PrintTerminal("💤 You rest for a while. HP and MP restored.");
-        _turnCount += 5;
-        _world.UpdateEnemies();
-    }
-
-    private void GoToNextFloor()
-    {
-        if (_world.Map[_world.Player.X, _world.Player.Y] == 2)
-        {
-            PrintTerminal($"🚪 Descending to floor {_world.CurrentFloor + 1}...");
-            _world.NextFloor();
-            PrintTerminal("✨ New area discovered!");
-        }
-        else
-        {
-            PrintTerminal("❌ You need to find the door (🚪) first!");
-        }
-    }
-
-    private void ShowMiniMap()
-    {
-        PrintTerminal("");
-        PrintTerminal("=== Map ===");
-        for (int y = 0; y < _world.Height; y++)
-        {
-            var line = "";
-            for (int x = 0; x < _world.Width; x++)
-            {
-                if (x == _world.Player.X && y == _world.Player.Y)
-                    line += "@";
-                else
-                {
-                    var enemy = _world.GetEnemyAt(x, y);
-                    if (enemy != null)
-                        line += "E";
-                    else
-                    {
-                        switch (_world.Map[x, y])
-                        {
-                            case 0: line += "."; break;
-                            case 1: line += "#"; break;
-                            case 2: line += "D"; break;
-                            case 3: line += "C"; break;
-                            default: line += "?"; break;
-                        }
-                    }
-                }
-            }
-            PrintTerminal(line);
-        }
-        PrintTerminal("");
-        PrintTerminal("@ = You, E = Enemy, # = Wall, D = Door, C = Chest, . = Empty");
+        PrintTerminal($"Coins: {_world.Player.Coins}");
+        PrintTerminal($"Score: {_world.Player.Score}");
+        PrintTerminal($"Position: ({_world.Player.X:F1}, {_world.Player.Y:F1})");
+        PrintTerminal($"Velocity: ({_world.Player.VelX:F1}, {_world.Player.VelY:F1})");
+        PrintTerminal($"State: {(_world.Player.IsGrounded ? "grounded" : "air")}");
         PrintTerminal("");
     }
 
@@ -1007,16 +895,15 @@ public partial class CodeEditorForm : Form
         switch (parts[1])
         {
             case "status":
-                PrintTerminal("On floor " + _world.CurrentFloor);
-                PrintTerminal($"Changes not staged: {_world.Enemies.Count(e => !e.IsDead)} enemies remaining");
+                PrintTerminal($"On level {_world.CurrentLevel}");
+                PrintTerminal($"Changes: {_world.Enemies.Count} enemies remaining");
+                PrintTerminal($"Staged: {_world.Collectibles.Count(c => c.IsCollected)} collectibles found");
                 break;
             case "commit":
-                PrintTerminal($"[{_world.CurrentFloor}] feat: cleared floor {_world.CurrentFloor - 1}");
-                PrintTerminal(" 1 file changed, 0 insertions(+), " + _world.Enemies.Count(e => e.IsDead) + " deletions(-)");
+                PrintTerminal($"[{_world.CurrentLevel}] feat: jumped over {_world.Player.Score / 10} bugs");
                 break;
             case "push":
                 PrintTerminal("Enumerating objects... Done.");
-                PrintTerminal("Writing objects... Done.");
                 PrintTerminal("remote: This is a game, not a real git repo! 😄");
                 break;
             case "log":
@@ -1024,7 +911,7 @@ public partial class CodeEditorForm : Form
                 PrintTerminal($"Author: Player <player@codesurvivor.game>");
                 PrintTerminal($"Date: {DateTime.Now}");
                 PrintTerminal("");
-                PrintTerminal("    Defeated enemies on floor " + _world.CurrentFloor);
+                PrintTerminal($"    Platformer adventure on level {_world.CurrentLevel}");
                 break;
             default:
                 PrintTerminal($"git: '{parts[1]}' is not a git command.");
@@ -1044,8 +931,8 @@ public partial class CodeEditorForm : Form
         {
             case "install":
                 PrintTerminal("📦 Installing dependencies...");
-                PrintTerminal("added 1 package: vitality-potion");
-                _world.Player.Inventory.Add(new Item("potion", "Vitality Potion", "consumable", "common", "Restores 50 HP"));
+                PrintTerminal("added 1 package: extra-life");
+                _world.Player.Heal(30);
                 break;
             case "run":
                 PrintTerminal("> codesurvivor@1.0.0 start");
@@ -1054,8 +941,8 @@ public partial class CodeEditorForm : Form
             case "build":
                 PrintTerminal("> Building project...");
                 PrintTerminal("> ✓ Build complete!");
-                PrintTerminal("> 💪 Attack temporarily boosted!");
-                _world.Player.Attack += 5;
+                _world.Player.Score += 25;
+                PrintTerminal("> ⭐ Score boosted!");
                 break;
             default:
                 PrintTerminal($"npm: Unknown command '{parts[1]}'");
@@ -1071,14 +958,18 @@ public partial class CodeEditorForm : Form
                 PrintTerminal("class Player {");
                 PrintTerminal("  constructor() {");
                 PrintTerminal($"    this.hp = {_world.Player.HP};");
-                PrintTerminal($"    this.level = {_world.Player.Level};");
+                PrintTerminal($"    this.x = {_world.Player.X:F0};");
+                PrintTerminal($"    this.y = {_world.Player.Y:F0};");
                 PrintTerminal("  }");
+                PrintTerminal("  jump() { this.vy = -12; }");
                 PrintTerminal("}");
                 break;
-            case "enemy.js":
-                PrintTerminal("class Enemy {");
-                PrintTerminal("  // TODO: Implement AI");
-                PrintTerminal("}");
+            case "level1.js":
+                PrintTerminal("const level = {");
+                PrintTerminal($"  width: {_world.LevelWidth},");
+                PrintTerminal($"  platforms: {_world.Platforms.Count},");
+                PrintTerminal($"  enemies: {_world.Enemies.Count}");
+                PrintTerminal("};");
                 break;
             default:
                 PrintTerminal($"cat: {filename}: No such file or directory");
@@ -1086,18 +977,20 @@ public partial class CodeEditorForm : Form
         }
     }
 
-    private void CheckGameState()
+    private void CodeEditorForm_KeyDown(object? sender, KeyEventArgs e)
     {
-        if (_gameOver)
+        _pressedKeys.Add(e.KeyCode);
+
+        // 确保焦点在窗体上而不是输入框上
+        if (e.KeyCode == Keys.Left || e.KeyCode == Keys.Right || e.KeyCode == Keys.Space)
         {
-            PrintTerminal("");
-            PrintTerminal("╔═══════════════════════════════════════╗");
-            PrintTerminal("║            GAME OVER                  ║");
-            PrintTerminal($"║    You survived {_world.CurrentFloor} floors!            ║");
-            PrintTerminal("╚═══════════════════════════════════════╝");
-            PrintTerminal("");
-            PrintTerminal("Type 'restart' to play again (or close window)");
+            this.Focus();
         }
+    }
+
+    private void CodeEditorForm_KeyUp(object? sender, KeyEventArgs e)
+    {
+        _pressedKeys.Remove(e.KeyCode);
     }
 
     private void PrintTerminal(string text)
@@ -1108,48 +1001,27 @@ public partial class CodeEditorForm : Form
 
     private void UpdateStatusBar()
     {
-        string status = $"  Ln {_world.Player.Y}, Col {_world.Player.X}  |  UTF-8  |  JavaScript  |  🎮 Floor: {_world.CurrentFloor}  |  ❤️ {_world.Player.HP}/{_world.Player.MaxHP}  |  ✨ {_world.Player.MP}/{_world.Player.MaxMP}  |  🏆 Lv.{_world.Player.Level}";
+        string status = $"  Ln {(int)_world.Player.Y}, Col {(int)_world.Player.X}  |  UTF-8  |  JavaScript  |  " +
+                       $"🎮 Level: {_world.CurrentLevel}  |  " +
+                       $"❤️ {_world.Player.HP}/{_world.Player.MaxHP}  |  " +
+                       $"💰 {_world.Player.Coins}  |  " +
+                       $"⭐ {_world.Player.Score}";
         _statusBar.Text = status;
-    }
-
-    private void CodeEditorForm_KeyDown(object? sender, KeyEventArgs e)
-    {
-        // 方向键移动（不加 Alt，因为 Alt+方向键是透明度控制）
-        switch (e.KeyCode)
-        {
-            case Keys.Up:
-                MovePlayer("up");
-                RenderGame();
-                UpdateStatusBar();
-                e.Handled = true;
-                break;
-            case Keys.Down:
-                MovePlayer("down");
-                RenderGame();
-                UpdateStatusBar();
-                e.Handled = true;
-                break;
-            case Keys.Left:
-                MovePlayer("left");
-                RenderGame();
-                UpdateStatusBar();
-                e.Handled = true;
-                break;
-            case Keys.Right:
-                MovePlayer("right");
-                RenderGame();
-                UpdateStatusBar();
-                e.Handled = true;
-                break;
-        }
     }
 
     private void ReturnToHome()
     {
+        _gameTimer?.Stop();
         if (Core.MoyuLauncher.Instance != null)
         {
             Core.MoyuLauncher.Instance.Show();
             this.Hide();
         }
+    }
+
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        _gameTimer?.Stop();
+        base.OnFormClosing(e);
     }
 }

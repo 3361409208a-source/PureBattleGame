@@ -7,45 +7,199 @@ using System.Windows.Forms;
 namespace PureBattleGame.Games.CodeSurvivor;
 
 /// <summary>
+/// 平台类型
+/// </summary>
+public enum PlatformType
+{
+    Static,     // 静止平台
+    Moving,     // 移动平台
+    Breaking,   // 破碎平台（踩上去后消失）
+    Spring      // 弹簧平台（弹跳）
+}
+
+/// <summary>
+/// 平台 - 横版过关中的平台
+/// </summary>
+public class Platform
+{
+    public float X { get; set; }
+    public float Y { get; set; }
+    public float Width { get; set; }
+    public float Height { get; set; } = 20;
+    public PlatformType Type { get; set; } = PlatformType.Static;
+
+    // 移动平台参数
+    public float StartX { get; set; }
+    public float EndX { get; set; }
+    public float MoveSpeed { get; set; } = 1.5f;
+    public bool MovingRight { get; set; } = true;
+
+    // 破碎平台参数
+    public bool IsBreaking { get; set; } = false;
+    public int BreakTimer { get; set; } = 0;
+
+    public Platform(float x, float y, float width, PlatformType type = PlatformType.Static)
+    {
+        X = x;
+        Y = y;
+        Width = width;
+        Type = type;
+        StartX = x;
+    }
+
+    public void Update()
+    {
+        if (Type == PlatformType.Moving)
+        {
+            if (MovingRight)
+            {
+                X += MoveSpeed;
+                if (X >= EndX) MovingRight = false;
+            }
+            else
+            {
+                X -= MoveSpeed;
+                if (X <= StartX) MovingRight = true;
+            }
+        }
+
+        if (IsBreaking)
+        {
+            BreakTimer--;
+        }
+    }
+
+    public RectangleF GetBounds()
+    {
+        return new RectangleF(X, Y, Width, Height);
+    }
+}
+
+/// <summary>
+/// 收集品类型
+/// </summary>
+public enum CollectibleType
+{
+    Coin,       // 金币
+    PowerUp,    // 能力提升
+    Flag        // 关卡终点旗帜
+}
+
+/// <summary>
+/// 收集品 - 金币、道具、旗帜
+/// </summary>
+public class Collectible
+{
+    public float X { get; set; }
+    public float Y { get; set; }
+    public CollectibleType Type { get; set; }
+    public string DisplayChar { get; set; } = "🪙";
+    public bool IsCollected { get; set; } = false;
+    public int Width { get; set; } = 24;
+    public int Height { get; set; } = 24;
+    public int Value { get; set; } = 10; // 金币价值或分数
+
+    public Collectible(float x, float y, CollectibleType type)
+    {
+        X = x;
+        Y = y;
+        Type = type;
+        DisplayChar = type switch
+        {
+            CollectibleType.Coin => "🪙",
+            CollectibleType.PowerUp => "⚡",
+            CollectibleType.Flag => "🚩",
+            _ => "?"
+        };
+        Value = type switch
+        {
+            CollectibleType.Coin => 10,
+            CollectibleType.PowerUp => 50,
+            CollectibleType.Flag => 100,
+            _ => 0
+        };
+    }
+
+    public RectangleF GetBounds()
+    {
+        return new RectangleF(X, Y, Width, Height);
+    }
+}
+
+/// <summary>
 /// 玩家实体 - 在代码世界中冒险的程序员
 /// </summary>
 public class Player
 {
-    public int X { get; set; } = 5;
-    public int Y { get; set; } = 3;
+    // 浮点坐标位置
+    public float X { get; set; } = 100;
+    public float Y { get; set; } = 300;
+
+    // 物理属性
+    public float VelX { get; set; } = 0;
+    public float VelY { get; set; } = 0;
+    public float Speed { get; set; } = 5;
+    public float JumpPower { get; set; } = 13;
+    public float Gravity { get; set; } = 0.6f;
+    public bool IsGrounded { get; set; } = false;
+    public bool FacingRight { get; set; } = true;
+
+    // 尺寸（用于碰撞检测）
+    public int Width { get; set; } = 28;
+    public int Height { get; set; } = 32;
+
+    // 游戏属性
     public int MaxHP { get; set; } = 100;
     public int HP { get; set; } = 100;
-    public int MaxMP { get; set; } = 50;
-    public int MP { get; set; } = 50;
     public int Level { get; set; } = 1;
-    public int EXP { get; set; } = 0;
-    public int EXPToNext { get; set; } = 100;
-    public int Attack { get; set; } = 15;
-    public int Defense { get; set; } = 5;
-    public int Gold { get; set; } = 0;
+    public int Score { get; set; } = 0;
+    public int Coins { get; set; } = 0;
+
+    // 无敌时间（受伤后）
+    public int InvincibleTime { get; set; } = 0;
 
     // 已解锁的技能（伪装成已解锁的文件）
     public List<Skill> Skills { get; set; } = new();
 
-    // 装备
-    public Item? Weapon { get; set; }
-    public Item? Armor { get; set; }
-    public Item? Accessory { get; set; }
-
-    // 背包
-    public List<Item> Inventory { get; set; } = new();
-
     public Player()
     {
-        // 初始技能
-        Skills.Add(new Skill("attack", "攻击", "basic", 0, "普通攻击目标"));
-        Skills.Add(new Skill("heal", "恢复", "magic", 10, "恢复 30 HP"));
+        Skills.Add(new Skill("jump", "跳跃", "basic", 0, "按空格键跳跃"));
+        Skills.Add(new Skill("move", "移动", "basic", 0, "方向键移动"));
+    }
+
+    public void Update()
+    {
+        // 应用重力
+        VelY += Gravity;
+
+        // 应用速度
+        X += VelX;
+        Y += VelY;
+
+        // 减少无敌时间
+        if (InvincibleTime > 0)
+            InvincibleTime--;
+
+        // 更新朝向
+        if (VelX > 0) FacingRight = true;
+        else if (VelX < 0) FacingRight = false;
+    }
+
+    public void Jump()
+    {
+        if (IsGrounded)
+        {
+            VelY = -JumpPower;
+            IsGrounded = false;
+        }
     }
 
     public void TakeDamage(int damage)
     {
-        int actual = Math.Max(1, damage - Defense);
-        HP = Math.Max(0, HP - actual);
+        if (InvincibleTime > 0) return;
+
+        HP = Math.Max(0, HP - damage);
+        InvincibleTime = 60; // 1秒无敌（60帧）
     }
 
     public void Heal(int amount)
@@ -53,38 +207,15 @@ public class Player
         HP = Math.Min(MaxHP, HP + amount);
     }
 
-    public void GainEXP(int amount)
+    public RectangleF GetBounds()
     {
-        EXP += amount;
-        while (EXP >= EXPToNext)
-        {
-            LevelUp();
-        }
+        return new RectangleF(X, Y, Width, Height);
     }
 
-    private void LevelUp()
+    public void CollectCoin(int value)
     {
-        EXP -= EXPToNext;
-        Level++;
-        EXPToNext = (int)(EXPToNext * 1.5);
-        MaxHP += 20;
-        HP = MaxHP;
-        MaxMP += 10;
-        MP = MaxMP;
-        Attack += 5;
-        Defense += 2;
-    }
-
-    public bool CanCast(Skill skill) => MP >= skill.MPCost;
-
-    public void Cast(Skill skill)
-    {
-        MP -= skill.MPCost;
-    }
-
-    public void RegenMP()
-    {
-        MP = Math.Min(MaxMP, MP + 2);
+        Coins += value;
+        Score += value;
     }
 }
 
@@ -95,12 +226,11 @@ public class Skill
 {
     public string Id { get; set; }
     public string Name { get; set; }
-    public string Type { get; set; } // basic, magic, ultimate
+    public string Type { get; set; }
     public int MPCost { get; set; }
     public string Description { get; set; }
     public int Power { get; set; }
     public bool IsUnlocked { get; set; } = true;
-    public int Level { get; set; } = 1;
 
     public Skill(string id, string name, string type, int mpCost, string desc, int power = 0)
     {
@@ -114,37 +244,17 @@ public class Skill
 }
 
 /// <summary>
-/// 装备/道具
-/// </summary>
-public class Item
-{
-    public string Id { get; set; }
-    public string Name { get; set; }
-    public string Type { get; set; } // weapon, armor, accessory, consumable
-    public string Rarity { get; set; } // common, rare, epic, legendary
-    public string Description { get; set; }
-    public int AttackBonus { get; set; }
-    public int DefenseBonus { get; set; }
-    public int HPBonus { get; set; }
-    public int MPBonus { get; set; }
-
-    public Item(string id, string name, string type, string rarity, string desc)
-    {
-        Id = id;
-        Name = name;
-        Type = type;
-        Rarity = rarity;
-        Description = desc;
-    }
-}
-
-/// <summary>
-/// 敌人
+/// 敌人 - 横版过关中的巡逻敌人
 /// </summary>
 public class Enemy
 {
-    public int X { get; set; }
-    public int Y { get; set; }
+    public float X { get; set; }
+    public float Y { get; set; }
+    public float VelX { get; set; } = 1.5f;
+    public float PatrolStart { get; set; }
+    public float PatrolEnd { get; set; }
+    public bool MovingRight { get; set; } = true;
+
     public string Type { get; set; }
     public string Name { get; set; } = "Unknown";
     public string DisplayChar { get; set; } = "?";
@@ -156,70 +266,74 @@ public class Enemy
     public int Gold { get; set; }
     public bool IsDead => HP <= 0;
 
-    // AI行为
-    public int AggroRange { get; set; } = 5;
-    public bool IsAggro { get; set; } = false;
+    // 尺寸
+    public int Width { get; set; } = 28;
+    public int Height { get; set; } = 28;
 
-    public Enemy(int x, int y, string type, int level)
+    public Enemy(float x, float y, string type, int level)
     {
         X = x;
         Y = y;
         Type = type;
-        Level = level;
-        InitializeStats();
+        PatrolStart = x - 60;
+        PatrolEnd = x + 60;
+        InitializeStats(level);
     }
 
-    public int Level { get; set; }
-
-    private void InitializeStats()
+    private void InitializeStats(int level)
     {
-        var multi = 1 + (Level - 1) * 0.2;
+        var multi = 1 + (level - 1) * 0.15;
         switch (Type)
         {
             case "bug":
                 Name = "Bug";
                 DisplayChar = "🐛";
-                MaxHP = (int)(30 * multi);
+                MaxHP = (int)(25 * multi);
                 Attack = (int)(8 * multi);
-                Defense = (int)(2 * multi);
+                Defense = (int)(1 * multi);
                 EXP = 15;
                 Gold = 5;
+                VelX = 1.0f;
                 break;
             case "slime":
                 Name = "Slime";
                 DisplayChar = "💧";
-                MaxHP = (int)(50 * multi);
+                MaxHP = (int)(40 * multi);
                 Attack = (int)(10 * multi);
-                Defense = (int)(3 * multi);
-                EXP = 25;
-                Gold = 10;
+                Defense = (int)(2 * multi);
+                EXP = 20;
+                Gold = 8;
+                VelX = 0.8f;
                 break;
             case "goblin":
                 Name = "Goblin";
                 DisplayChar = "👺";
-                MaxHP = (int)(70 * multi);
-                Attack = (int)(15 * multi);
-                Defense = (int)(5 * multi);
-                EXP = 40;
-                Gold = 20;
+                MaxHP = (int)(50 * multi);
+                Attack = (int)(12 * multi);
+                Defense = (int)(3 * multi);
+                EXP = 30;
+                Gold = 15;
+                VelX = 1.5f;
                 break;
             case "skeleton":
                 Name = "Skeleton";
                 DisplayChar = "💀";
-                MaxHP = (int)(60 * multi);
-                Attack = (int)(18 * multi);
-                Defense = (int)(4 * multi);
-                EXP = 35;
-                Gold = 15;
+                MaxHP = (int)(35 * multi);
+                Attack = (int)(15 * multi);
+                Defense = (int)(1 * multi);
+                EXP = 25;
+                Gold = 12;
+                VelX = 1.8f;
                 break;
             case "dragon":
                 Name = "Dragon";
                 DisplayChar = "🐉";
-                MaxHP = (int)(200 * multi);
-                Attack = (int)(30 * multi);
-                Defense = (int)(10 * multi);
-                EXP = 200;
-                Gold = 100;
+                MaxHP = (int)(150 * multi);
+                Attack = (int)(25 * multi);
+                Defense = (int)(8 * multi);
+                EXP = 150;
+                Gold = 80;
+                VelX = 1.2f;
                 break;
             default:
                 Name = "Unknown";
@@ -229,9 +343,33 @@ public class Enemy
                 Defense = 0;
                 EXP = 1;
                 Gold = 1;
+                VelX = 1.0f;
                 break;
         }
         HP = MaxHP;
+    }
+
+    public void Update()
+    {
+        if (IsDead) return;
+
+        // 巡逻移动
+        if (MovingRight)
+        {
+            X += VelX;
+            if (X >= PatrolEnd)
+            {
+                MovingRight = false;
+            }
+        }
+        else
+        {
+            X -= VelX;
+            if (X <= PatrolStart)
+            {
+                MovingRight = true;
+            }
+        }
     }
 
     public void TakeDamage(int damage)
@@ -240,162 +378,342 @@ public class Enemy
         HP = Math.Max(0, HP - actual);
     }
 
-    public void UpdateAI(Player player, int worldWidth, int worldHeight)
+    public RectangleF GetBounds()
     {
-        double dist = Math.Sqrt(Math.Pow(X - player.X, 2) + Math.Pow(Y - player.Y, 2));
-
-        if (dist <= AggroRange)
-        {
-            IsAggro = true;
-        }
-
-        if (!IsAggro) return;
-
-        // 向玩家移动
-        int dx = 0, dy = 0;
-        if (X < player.X) dx = 1;
-        else if (X > player.X) dx = -1;
-        if (Y < player.Y) dy = 1;
-        else if (Y > player.Y) dy = -1;
-
-        // 随机选择方向（避免斜向移动问题）
-        if (dx != 0 && dy != 0)
-        {
-            if (new Random().Next(2) == 0) dy = 0;
-            else dx = 0;
-        }
-
-        int newX = X + dx;
-        int newY = Y + dy;
-
-        if (newX >= 0 && newX < worldWidth && newY >= 0 && newY < worldHeight)
-        {
-            X = newX;
-            Y = newY;
-        }
+        return new RectangleF(X, Y, Width, Height);
     }
 }
 
 /// <summary>
-/// 游戏世界
+/// 游戏世界 - 横版过关关卡
 /// </summary>
 public class GameWorld
 {
-    public int Width { get; set; } = 40;
-    public int Height { get; set; } = 20;
-    public int CurrentFloor { get; set; } = 1;
+    public int LevelWidth { get; set; } = 2000;  // 关卡总宽度
+    public int LevelHeight { get; set; } = 600;  // 关卡高度
+    public int CurrentLevel { get; set; } = 1;
+    public float CameraX { get; set; } = 0;
+
     public Player Player { get; set; } = new();
+    public List<Platform> Platforms { get; set; } = new();
     public List<Enemy> Enemies { get; set; } = new();
-    public List<Item> ItemsOnGround { get; set; } = new();
+    public List<Collectible> Collectibles { get; set; } = new();
+
     public Random Rand { get; set; } = new();
 
-    // 地形 0=空地 1=墙 2=门 3=宝箱
-    public int[,] Map { get; set; } = null!;
+    // 屏幕尺寸（用于相机跟随）
+    public int ScreenWidth { get; set; } = 800;
+    public int ScreenHeight { get; set; } = 500;
+
+    // 地面Y坐标
+    public float GroundY => LevelHeight - 60;
 
     public GameWorld()
     {
-        GenerateFloor();
+        GenerateLevel();
     }
 
-    public void GenerateFloor()
+    public void GenerateLevel()
     {
-        Map = new int[Width, Height];
+        Platforms.Clear();
+        Enemies.Clear();
+        Collectibles.Clear();
 
-        // 生成边界墙
-        for (int x = 0; x < Width; x++)
-        {
-            Map[x, 0] = 1;
-            Map[x, Height - 1] = 1;
-        }
-        for (int y = 0; y < Height; y++)
-        {
-            Map[0, y] = 1;
-            Map[Width - 1, y] = 1;
-        }
+        // 重置玩家位置
+        Player.X = 50;
+        Player.Y = GroundY - 100;
+        Player.VelX = 0;
+        Player.VelY = 0;
 
-        // 随机生成内部墙
-        int wallCount = 20 + CurrentFloor * 3;
-        for (int i = 0; i < wallCount; i++)
+        // 生成地面（分段，便于处理）
+        float groundX = 0;
+        while (groundX < LevelWidth)
         {
-            int wx = Rand.Next(2, Width - 2);
-            int wy = Rand.Next(2, Height - 2);
-            if ((wx != Player.X || wy != Player.Y) && Map[wx, wy] == 0)
-            {
-                Map[wx, wy] = 1;
-            }
+            float segmentWidth = Math.Min(400, LevelWidth - groundX);
+            Platforms.Add(new Platform(groundX, GroundY, segmentWidth));
+            groundX += segmentWidth;
         }
 
-        // 生成下一层门
-        int doorX, doorY;
-        do
-        {
-            doorX = Rand.Next(2, Width - 2);
-            doorY = Rand.Next(2, Height - 2);
-        } while (Map[doorX, doorY] != 0 || (doorX == Player.X && doorY == Player.Y));
-        Map[doorX, doorY] = 2;
-
-        // 生成宝箱
-        int chestCount = 3 + Rand.Next(3);
-        for (int i = 0; i < chestCount; i++)
-        {
-            int cx, cy;
-            do
-            {
-                cx = Rand.Next(2, Width - 2);
-                cy = Rand.Next(2, Height - 2);
-            } while (Map[cx, cy] != 0);
-            Map[cx, cy] = 3;
-        }
+        // 根据关卡生成平台
+        GeneratePlatforms();
 
         // 生成敌人
-        Enemies.Clear();
-        int enemyCount = 5 + CurrentFloor * 2 + Rand.Next(3);
-        string[] types = CurrentFloor < 3 ? new[] { "bug", "slime" } :
-                        CurrentFloor < 5 ? new[] { "bug", "slime", "goblin" } :
-                        new[] { "slime", "goblin", "skeleton" };
+        GenerateEnemies();
+
+        // 生成收集品
+        GenerateCollectibles();
+
+        // 添加终点旗帜
+        Collectibles.Add(new Collectible(LevelWidth - 100, GroundY - 60, CollectibleType.Flag));
+    }
+
+    private void GeneratePlatforms()
+    {
+        // 第一关：简单平台
+        float[] platformPositions = CurrentLevel switch
+        {
+            1 => new float[] { 200, 400, 600, 900, 1200, 1500 },
+            2 => new float[] { 180, 350, 520, 750, 950, 1150, 1400, 1700 },
+            3 => new float[] { 150, 300, 500, 700, 900, 1100, 1300, 1500, 1700 },
+            _ => new float[] { 200, 450, 700, 1000, 1300, 1600 }
+        };
+
+        foreach (float px in platformPositions)
+        {
+            float y = GroundY - 80 - Rand.Next(60);
+            float width = 80 + Rand.Next(60);
+
+            // 有些平台是移动的
+            PlatformType type = Rand.Next(5) == 0 ? PlatformType.Moving : PlatformType.Static;
+            var platform = new Platform(px, y, width, type);
+
+            if (type == PlatformType.Moving)
+            {
+                platform.EndX = px + 80;
+                platform.MoveSpeed = 1.0f + Rand.Next(2);
+            }
+
+            Platforms.Add(platform);
+        }
+
+        // 高处平台（需要跳跃到达）
+        for (int i = 0; i < 3 + CurrentLevel; i++)
+        {
+            float px = 400 + i * 400 + Rand.Next(100);
+            if (px < LevelWidth - 200)
+            {
+                float y = GroundY - 150 - Rand.Next(50);
+                Platforms.Add(new Platform(px, y, 60 + Rand.Next(40)));
+            }
+        }
+    }
+
+    private void GenerateEnemies()
+    {
+        string[] types = CurrentLevel switch
+        {
+            1 => new[] { "bug", "slime" },
+            2 => new[] { "bug", "slime", "goblin" },
+            3 => new[] { "slime", "goblin", "skeleton" },
+            _ => new[] { "goblin", "skeleton" }
+        };
+
+        int enemyCount = 5 + CurrentLevel * 2;
 
         for (int i = 0; i < enemyCount; i++)
         {
-            int ex, ey;
-            do
+            float ex = 300 + i * (LevelWidth - 400) / enemyCount + Rand.Next(50);
+            float ey = GroundY - 30;
+
+            // 有些敌人在平台上
+            var platform = Platforms[Rand.Next(Platforms.Count)];
+            if (Rand.Next(3) == 0)
             {
-                ex = Rand.Next(2, Width - 2);
-                ey = Rand.Next(2, Height - 2);
-            } while (Map[ex, ey] != 0 || (ex == Player.X && ey == Player.Y) || Enemies.Any(e => e.X == ex && e.Y == ey));
+                ex = platform.X + platform.Width / 2;
+                ey = platform.Y - 30;
+            }
 
             string type = types[Rand.Next(types.Length)];
-            Enemies.Add(new Enemy(ex, ey, type, CurrentFloor));
+            var enemy = new Enemy(ex, ey, type, CurrentLevel);
+            Enemies.Add(enemy);
         }
-
-        // 重置玩家位置到入口
-        Player.X = 2;
-        Player.Y = 2;
     }
 
-    public bool CanMoveTo(int x, int y)
+    private void GenerateCollectibles()
     {
-        if (x < 0 || x >= Width || y < 0 || y >= Height) return false;
-        if (Map[x, y] == 1) return false; // 墙
-        if (Enemies.Any(e => e.X == x && e.Y == y && !e.IsDead)) return false;
-        return true;
-    }
-
-    public Enemy? GetEnemyAt(int x, int y)
-    {
-        return Enemies.FirstOrDefault(e => e.X == x && e.Y == y && !e.IsDead);
-    }
-
-    public void NextFloor()
-    {
-        CurrentFloor++;
-        GenerateFloor();
-    }
-
-    public void UpdateEnemies()
-    {
-        foreach (var enemy in Enemies.Where(e => !e.IsDead))
+        // 在平台上放置金币
+        foreach (var platform in Platforms)
         {
-            enemy.UpdateAI(Player, Width, Height);
+            if (Rand.Next(3) == 0)
+            {
+                Collectibles.Add(new Collectible(
+                    platform.X + platform.Width / 2 - 10,
+                    platform.Y - 30,
+                    CollectibleType.Coin));
+            }
         }
+
+        // 随机散布一些金币
+        for (int i = 0; i < 10 + CurrentLevel * 3; i++)
+        {
+            float cx = 200 + Rand.Next(LevelWidth - 300);
+            float cy = GroundY - 80 - Rand.Next(150);
+            Collectibles.Add(new Collectible(cx, cy, CollectibleType.Coin));
+        }
+
+        // 添加能力提升道具
+        int powerUpCount = 2 + CurrentLevel;
+        for (int i = 0; i < powerUpCount; i++)
+        {
+            float px = 500 + i * (LevelWidth / powerUpCount);
+            float py = GroundY - 120 - Rand.Next(100);
+            Collectibles.Add(new Collectible(px, py, CollectibleType.PowerUp));
+        }
+    }
+
+    public void UpdatePhysics()
+    {
+        // 更新玩家
+        Player.Update();
+
+        // 限制玩家不超出关卡边界
+        if (Player.X < 0) { Player.X = 0; Player.VelX = 0; }
+        if (Player.X > LevelWidth - Player.Width) { Player.X = LevelWidth - Player.Width; Player.VelX = 0; }
+        if (Player.Y > LevelHeight) // 掉落深渊
+        {
+            Player.HP = 0; // 死亡
+        }
+
+        // 更新平台
+        foreach (var platform in Platforms)
+        {
+            platform.Update();
+        }
+
+        // 平台碰撞检测
+        Player.IsGrounded = false;
+        foreach (var platform in Platforms)
+        {
+            if (CheckCollision(Player.GetBounds(), platform.GetBounds()))
+            {
+                // 从上方落到平台上
+                if (Player.VelY > 0 && Player.Y + Player.Height - Player.VelY <= platform.Y + 5)
+                {
+                    Player.Y = platform.Y - Player.Height;
+                    Player.VelY = 0;
+                    Player.IsGrounded = true;
+
+                    // 跟随移动平台
+                    if (platform.Type == PlatformType.Moving)
+                    {
+                        Player.X += platform.MovingRight ? platform.MoveSpeed : -platform.MoveSpeed;
+                    }
+
+                    // 弹簧平台
+                    if (platform.Type == PlatformType.Spring)
+                    {
+                        Player.VelY = -Player.JumpPower * 1.5f;
+                        Player.IsGrounded = false;
+                    }
+
+                    // 破碎平台
+                    if (platform.Type == PlatformType.Breaking && !platform.IsBreaking)
+                    {
+                        platform.IsBreaking = true;
+                        platform.BreakTimer = 60; // 1秒后消失
+                    }
+                }
+            }
+        }
+
+        // 移除已破碎的平台
+        Platforms.RemoveAll(p => p.IsBreaking && p.BreakTimer <= 0);
+
+        // 更新敌人
+        foreach (var enemy in Enemies)
+        {
+            enemy.Update();
+
+            // 敌人与玩家碰撞
+            if (!enemy.IsDead && CheckCollision(Player.GetBounds(), enemy.GetBounds()))
+            {
+                // 踩到敌人头上（消灭敌人）
+                if (Player.VelY > 0 && Player.Y + Player.Height - Player.VelY <= enemy.Y + 10)
+                {
+                    enemy.TakeDamage(100); // 一击必杀
+                    Player.VelY = -Player.JumpPower * 0.7f; // 小跳跃
+                    Player.Score += enemy.EXP;
+                    Player.Coins += enemy.Gold;
+                }
+                else
+                {
+                    // 被敌人碰到
+                    Player.TakeDamage(enemy.Attack);
+                    // 击退
+                    Player.VelX = Player.X < enemy.X ? -5 : 5;
+                    Player.VelY = -5;
+                }
+            }
+        }
+
+        // 清理死亡的敌人
+        Enemies.RemoveAll(e => e.IsDead);
+
+        // 更新收集品
+        foreach (var collectible in Collectibles)
+        {
+            if (!collectible.IsCollected && CheckCollision(Player.GetBounds(), collectible.GetBounds()))
+            {
+                collectible.IsCollected = true;
+
+                switch (collectible.Type)
+                {
+                    case CollectibleType.Coin:
+                        Player.CollectCoin(collectible.Value);
+                        break;
+                    case CollectibleType.PowerUp:
+                        Player.Heal(20);
+                        Player.Score += 50;
+                        break;
+                    case CollectibleType.Flag:
+                        // 到达终点，由外部处理
+                        break;
+                }
+            }
+        }
+
+        // 清理已收集的物品
+        Collectibles.RemoveAll(c => c.IsCollected && c.Type != CollectibleType.Flag);
+
+        // 更新相机位置（跟随玩家）
+        UpdateCamera();
+    }
+
+    private void UpdateCamera()
+    {
+        // 相机跟随玩家，但保持在关卡边界内
+        float targetCameraX = Player.X - ScreenWidth / 2 + Player.Width / 2;
+
+        // 平滑跟随
+        CameraX += (targetCameraX - CameraX) * 0.1f;
+
+        // 限制相机范围
+        if (CameraX < 0) CameraX = 0;
+        if (CameraX > LevelWidth - ScreenWidth) CameraX = LevelWidth - ScreenWidth;
+    }
+
+    public bool CheckCollision(RectangleF a, RectangleF b)
+    {
+        return a.X < b.X + b.Width &&
+               a.X + a.Width > b.X &&
+               a.Y < b.Y + b.Height &&
+               a.Y + a.Height > b.Y;
+    }
+
+    public bool IsOnScreen(float x, float width)
+    {
+        return x + width >= CameraX && x <= CameraX + ScreenWidth;
+    }
+
+    public void NextLevel()
+    {
+        CurrentLevel++;
+        LevelWidth = 2000 + CurrentLevel * 200;
+        GenerateLevel();
+    }
+
+    public void RestartLevel()
+    {
+        Player.HP = Player.MaxHP;
+        Player.X = 50;
+        Player.Y = GroundY - 100;
+        Player.VelX = 0;
+        Player.VelY = 0;
+        Player.Coins = Math.Max(0, Player.Coins - 50); // 惩罚
+    }
+
+    public bool IsLevelComplete()
+    {
+        return Collectibles.Any(c => c.Type == CollectibleType.Flag && c.IsCollected);
     }
 }
