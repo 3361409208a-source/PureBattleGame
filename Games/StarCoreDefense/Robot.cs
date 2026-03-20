@@ -565,7 +565,7 @@ public partial class Robot
         // 2. 工程兵：寻找损坏的围墙
         if (ClassType == RobotClass.Engineer)
         {
-            TargetWall = BattleForm.Instance?.GetWeakestWall();
+            TargetWall = BattleForm.Instance?.GetWeakestWall(this);
             return;
         }
 
@@ -670,9 +670,11 @@ public partial class Robot
 
     private void UpdateEngineerLogic()
     {
-        if (TargetWall == null || !TargetWall.IsActive)
+        // 目标失效、修复完成或被他人占用时，重新选择目标
+        if (TargetWall == null || !TargetWall.IsActive || TargetWall.HP >= TargetWall.MaxHP || (TargetWall.LockingRobot != null && TargetWall.LockingRobot != this))
         {
-            TargetWall = BattleForm.Instance?.GetWeakestWall();
+            UnlockTargets(); // 先清除旧的锁定关系
+            TargetWall = BattleForm.Instance?.GetWeakestWall(this);
         }
 
         if (TargetWall == null)
@@ -698,13 +700,27 @@ public partial class Robot
             Dx *= 0.5f;
             Dy *= 0.5f;
             _buildingTimer++;
-            TargetWall.Repair(2); // 工程兵修理效率更高
+            int repairAmt = 2 + (BattleForm.Instance?._engineerLevel ?? 1); // 修理量随等级提升
+            TargetWall.Repair(repairAmt); 
+            
             if (_buildingTimer % 15 == 0)
             {
                 BattleForm.Instance?.AddExplosion(X + Size / 2, Y + Size / 2, Color.DeepSkyBlue, 2, "SPARK");
             }
-            if (TargetWall.HP >= TargetWall.MaxHP) TargetWall = null;
+
+            if (TargetWall.HP >= TargetWall.MaxHP)
+            {
+                UnlockTargets();
+            }
         }
+    }
+
+    public void UnlockTargets()
+    {
+        if (TargetMineral != null && TargetMineral.LockingRobot == this) TargetMineral.LockingRobot = null;
+        if (TargetWall != null && TargetWall.LockingRobot == this) TargetWall.LockingRobot = null;
+        TargetMineral = null;
+        TargetWall = null;
     }
 
 
@@ -1256,12 +1272,7 @@ public partial class Robot
 
     private void HandleDeath()
     {
-        if (TargetMineral != null && TargetMineral.LockingRobot == this)
-        {
-            TargetMineral.LockingRobot = null;
-        }
-        TargetMineral = null;
-        TargetWall = null;
+        UnlockTargets();
 
         IsDead = true;
         IsMoving = false;

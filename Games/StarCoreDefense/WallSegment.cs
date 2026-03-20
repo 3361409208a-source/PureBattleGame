@@ -19,6 +19,9 @@ public class WallSegment
     // 视觉反馈
     public int HitFlashTimer { get; set; } = 0;
     public int RepairEffectTimer { get; set; } = 0;
+    
+    // 该分节当前可能正被某个工程单位锁定，防止多单位无效重叠
+    public Robot? LockingRobot { get; set; }
 
     public WallSegment(float angle, float radius, float thickness, int maxHP)
     {

@@ -2291,7 +2291,21 @@ public partial class BattleForm : Form
                 case RobotClass.Shooter: DrawShooterAppearance(g, robot, x, y, size, centerX, centerY); break;
                 case RobotClass.Healer: DrawHealerAppearance(g, robot, x, y, size, centerX, centerY); break;
                 case RobotClass.Guardian: DrawGuardianAppearance(g, robot, x, y, size, centerX, centerY); break;
+                case RobotClass.Engineer: DrawEngineerAppearance(g, robot, x, y, size, centerX, centerY); break;
                 default: DrawDefaultAppearance(g, robot, x, y, size, centerX, centerY); break;
+            }
+
+            // 特殊效果：工程兵修理光束
+            if (robot.ClassType == RobotClass.Engineer && robot.TargetWall != null)
+            {
+                var br = GetBaseRobot();
+                var wp = robot.TargetWall.GetWorldPosition(br?.X ?? 0, br?.Y ?? 0);
+                using (var pen = new Pen(Color.FromArgb(150, Color.DeepSkyBlue), 2 + (float)Math.Sin(Environment.TickCount / 50.0) * 1))
+                {
+                    g.DrawLine(pen, centerX, centerY, wp.X, wp.Y);
+                    // 目标落点火花
+                    g.FillEllipse(Brushes.White, wp.X - 2, wp.Y - 2, 4, 4);
+                }
             }
 
             Draw3DOrbiters(g, robot, centerX, centerY, size, false);
@@ -2383,12 +2397,24 @@ public partial class BattleForm : Form
     {
         using var bodyBrush = new SolidBrush(robot.PrimaryColor);
         using var darkBrush = new SolidBrush(robot.SecondaryColor);
-        g.FillEllipse(bodyBrush, x, y, size, size);
-        g.FillEllipse(darkBrush, x + size * 0.2f, y + size * 0.2f, size * 0.6f, size * 0.6f);
-        float rot = Environment.TickCount / 100.0f;
-        float ax = cx + (float)Math.Cos(rot) * (size * 0.6f), ay = cy + (float)Math.Sin(rot) * (size * 0.6f);
-        using var p = new Pen(robot.PrimaryColor, 3); g.DrawLine(p, cx, cy, ax, ay);
-        g.FillEllipse(Brushes.Yellow, ax - 3, ay - 3, 6, 6);
+        
+        // 1. 底盘：带有机械感的圆角矩形
+        g.FillEllipse(darkBrush, x, y, size, size);
+        g.FillEllipse(bodyBrush, x + size * 0.1f, y + size * 0.1f, size * 0.8f, size * 0.8f);
+        
+        // 2. 旋转的钻头/钻头臂 (仅在移动或采集时)
+        float rot = Environment.TickCount / 50.0f;
+        float armLen = size * 0.6f;
+        for (int i = 0; i < 2; i++)
+        {
+            float ang = rot + i * (float)Math.PI;
+            float ax = cx + (float)Math.Cos(ang) * armLen, ay = cy + (float)Math.Sin(ang) * armLen;
+            using var p = new Pen(Color.Gray, 3); g.DrawLine(p, cx, cy, ax, ay);
+            g.FillEllipse(Brushes.Silver, ax - 4, ay - 4, 8, 8);
+            // 尖端闪烁
+            if (robot.TargetMineral != null) g.FillEllipse(Brushes.White, ax - 1, ay - 1, 3, 3);
+        }
+
         DrawEyes(g, robot, cx, cy, 3);
     }
 
@@ -2396,14 +2422,24 @@ public partial class BattleForm : Form
     {
         using var bodyBrush = new SolidBrush(robot.PrimaryColor);
         using var darkBrush = new SolidBrush(robot.SecondaryColor);
-        PointF[] pts = { new PointF(cx, y), new PointF(x + size, cy), new PointF(cx, y + size), new PointF(x, cy) };
-        g.FillPolygon(bodyBrush, pts); g.FillRectangle(darkBrush, cx - 2, cy - 2, 4, 4);
+        
+        // 1. 主翼：三角形锐利外观
+        PointF[] pts = { new PointF(cx, y - 2), new PointF(x + size + 2, cy), new PointF(cx, y + size + 2), new PointF(x - 2, cy) };
+        g.FillPolygon(bodyBrush, pts);
+        g.FillEllipse(darkBrush, cx - size / 4, cy - size / 4, size / 2, size / 2);
+        
+        // 2. 炮管：指向目标
         float ang = (float)Math.Atan2(robot.Dy, robot.Dx);
         if (robot.MonsterTarget != null) ang = (float)Math.Atan2(robot.MonsterTarget.Y - cy, robot.MonsterTarget.X - cx);
+        
         for (int i = -1; i <= 1; i += 2) {
-            float ba = ang + i * 0.3f, bx = cx + (float)Math.Cos(ba) * (size * 0.7f), by = cy + (float)Math.Sin(ba) * (size * 0.7f);
-            using var bp = new Pen(Color.Gray, 4); g.DrawLine(bp, cx, cy, bx, by);
+            float ba = ang + i * 0.35f, bx = cx + (float)Math.Cos(ba) * (size * 0.85f), by = cy + (float)Math.Sin(ba) * (size * 0.85f);
+            using var bp = new Pen(Color.FromArgb(80, 80, 80), 5); 
+            g.DrawLine(bp, cx, cy, bx, by);
+            // 炮口光效 (如果正在攻击)
+            if (robot.MonsterTarget != null) g.FillEllipse(Brushes.OrangeRed, bx - 2, by - 2, 4, 4);
         }
+        
         DrawVisor(g, cx, cy, size, ang);
     }
 
@@ -2411,16 +2447,28 @@ public partial class BattleForm : Form
     {
         using var bodyBrush = new SolidBrush(robot.PrimaryColor);
         using var darkBrush = new SolidBrush(robot.SecondaryColor);
+        
+        // 1. 核心球体
         g.FillEllipse(bodyBrush, x, y, size, size);
-        float pulse = 0.5f + (float)Math.Sin(Environment.TickCount / 200.0) * 0.5f;
-        using var pb = new SolidBrush(Color.FromArgb((int)(100 * pulse), Color.LimeGreen));
-        g.FillEllipse(pb, x - 5, y - 5, size + 10, size + 10);
+        float pulse = 0.5f + (float)Math.Sin(Environment.TickCount / 150.0) * 0.5f;
+        
+        // 2. 治疗光晕 (更加动态)
+        using (var pb = new SolidBrush(Color.FromArgb((int)(80 * pulse), Color.LimeGreen)))
+        {
+            float ringSize = size * (1.2f + 0.2f * pulse);
+            g.FillEllipse(pb, cx - ringSize / 2, cy - ringSize / 2, ringSize, ringSize);
+        }
+
+        // 3. 内部十字标志
         using var cb = new SolidBrush(Color.White);
-        g.FillRectangle(cb, cx - 2, cy - 8, 4, 16); g.FillRectangle(cb, cx - 8, cy - 2, 16, 4);
+        g.FillRectangle(cb, cx - 1, cy - 7, 3, 14); g.FillRectangle(cb, cx - 7, cy - 1, 14, 3);
+        
+        // 4. 环绕无人机
         for (int i = 0; i < 2; i++) {
-            float rot = Environment.TickCount / 500.0f + i * (float)Math.PI;
-            float sx = cx + (float)Math.Cos(rot) * (size * 0.8f), sy = cy + (float)Math.Sin(rot) * (size * 0.8f);
-            g.FillEllipse(Brushes.LimeGreen, sx - 3, sy - 3, 6, 6);
+            float rot = Environment.TickCount / 400.0f + i * (float)Math.PI;
+            float sx = cx + (float)Math.Cos(rot) * (size * 0.9f), sy = cy + (float)Math.Sin(rot) * (size * 0.9f);
+            g.FillEllipse(Brushes.White, sx - 2, sy - 2, 5, 5);
+            g.FillEllipse(Brushes.LimeGreen, sx - 1, sy - 1, 3, 3);
         }
     }
 
@@ -2428,13 +2476,44 @@ public partial class BattleForm : Form
     {
         using var bodyBrush = new SolidBrush(robot.PrimaryColor);
         using var darkBrush = new SolidBrush(robot.SecondaryColor);
+        
+        // 1. 重型六边形装甲
         PointF[] hex = new PointF[6];
         for (int i = 0; i < 6; i++) {
             float a = i * (float)Math.PI / 3;
-            hex[i] = new PointF(cx + (float)Math.Cos(a) * (size / 2f), cy + (float)Math.Sin(a) * (size / 2f));
+            hex[i] = new PointF(cx + (float)Math.Cos(a) * (size / 1.8f), cy + (float)Math.Sin(a) * (size / 1.8f));
         }
-        g.FillPolygon(bodyBrush, hex); using var bp = new Pen(darkBrush, 2); g.DrawPolygon(bp, hex);
+        g.FillPolygon(bodyBrush, hex);
+        using var bp = new Pen(darkBrush, 3); g.DrawPolygon(bp, hex);
+        
+        // 2. 能量核心
+        float hPulse = 0.5f + (float)Math.Sin(Environment.TickCount / 100.0) * 0.5f;
+        using var coreB = new SolidBrush(Color.FromArgb((int)(100 + 100 * hPulse), Color.Orange));
+        g.FillEllipse(coreB, cx - 5, cy - 5, 10, 10);
+
         DrawEyes(g, robot, cx, cy, 2);
+    }
+
+    private void DrawEngineerAppearance(Graphics g, Robot robot, float x, float y, float size, float cx, float cy)
+    {
+        using var bodyBrush = new SolidBrush(robot.PrimaryColor);
+        using var darkBrush = new SolidBrush(robot.SecondaryColor);
+        
+        // 1. 工字型主体
+        g.FillRectangle(darkBrush, x + size * 0.1f, y + size * 0.1f, size * 0.8f, size * 0.8f);
+        g.FillRectangle(bodyBrush, x + size * 0.2f, y + size * 0.2f, size * 0.6f, size * 0.6f);
+        
+        // 2. 修理机械臂
+        float rot = Environment.TickCount / 80.0f;
+        float armLen = size * 0.7f;
+        float ax = cx + (float)Math.Cos(rot) * armLen, ay = cy + (float)Math.Sin(rot) * armLen;
+        using (var p = new Pen(Color.FromArgb(100, 100, 100), 4)) g.DrawLine(p, cx, cy, ax, ay);
+        g.FillRectangle(Brushes.DeepSkyBlue, ax - 3, ay - 3, 6, 6);
+        
+        // 3. 电子眼 (深蓝色)
+        using var eb = new SolidBrush(Color.Cyan);
+        g.FillRectangle(eb, cx - 6, cy - 3, 4, 4);
+        g.FillRectangle(eb, cx + 2, cy - 3, 4, 4);
     }
 
     private void DrawUltraAppearance(Graphics g, Robot robot, float x, float y, float size, float cx, float cy)
@@ -2716,9 +2795,15 @@ public partial class BattleForm : Form
         }
     }
 
-    public WallSegment? GetWeakestWall()
+    public WallSegment? GetWeakestWall(Robot caller)
     {
-        return _walls.Where(w => w.HP < w.MaxHP).OrderBy(w => w.HP).FirstOrDefault();
+        // 优先寻找：当前没被锁定的、血量不满或处于蓝图阶段（HP=0）的墙体
+        var best = _walls.Where(w => (w.LockingRobot == null || w.LockingRobot == caller) && w.HP < w.MaxHP)
+                         .OrderBy(w => w.HP) // 优先修最破的（蓝图第一优先）
+                         .FirstOrDefault();
+
+        if (best != null) best.LockingRobot = caller;
+        return best;
     }
 
     private void RenderWalls(Graphics g, float bx, float by)

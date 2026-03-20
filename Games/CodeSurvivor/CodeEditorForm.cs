@@ -520,10 +520,10 @@ public partial class CodeEditorForm : Form
         PrintTerminal($"");
     }
 
+    private string _lastRenderedText = "";
+
     private void RenderGame()
     {
-        _codeEditor.Clear();
-
         var sb = new StringBuilder();
         float camX = _world.CameraX;
 
@@ -695,8 +695,15 @@ public partial class CodeEditorForm : Form
         sb.AppendLine("// - Jump on enemies to defeat them");
         sb.AppendLine($"// - Reach the flag to complete the level");
 
-        _codeEditor.Text = sb.ToString();
-        ApplySyntaxHighlighting();
+        string newText = sb.ToString();
+
+        // 只在文本变化时更新，避免闪烁
+        if (newText != _lastRenderedText)
+        {
+            _lastRenderedText = newText;
+            _codeEditor.Text = newText;
+            ApplySyntaxHighlighting();
+        }
     }
 
     private void ApplySyntaxHighlighting()
