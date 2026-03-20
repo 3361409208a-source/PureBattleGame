@@ -142,83 +142,125 @@ public partial class BattleForm : Form
         // 为了风格统一，我们在 Render 中绘制。
     }
 
+    private Panel? _browserToolbar;
+    private TextBox? _addressBar;
+
     private async void InitializeBrowser()
     {
         _browserPanel = new Panel
         {
-            Size = new Size(this.ClientSize.Width - 40, this.ClientSize.Height - 120),
+            Size = new Size(this.ClientSize.Width - 40, this.ClientSize.Height - 80),
             Location = new Point(20, 20),
-            BackColor = Color.White,
+            BackColor = Color.FromArgb(40, 44, 52),
             Visible = false,
-            BorderStyle = BorderStyle.FixedSingle
+            BorderStyle = BorderStyle.None
         };
 
-        _webView = new WebView2
+        // 1. 创建工具栏
+        _browserToolbar = new Panel
         {
-            Dock = DockStyle.Fill
+            Dock = DockStyle.Top,
+            Height = 35,
+            BackColor = Color.FromArgb(33, 37, 43),
+            Padding = new Padding(5)
         };
 
-        _browserPanel.Controls.Add(_webView);
+        var btnBack = CreateToolbarButton("◀", 0);
+        var btnForward = CreateToolbarButton("▶", 35);
+        var btnReload = CreateToolbarButton("🔄", 70);
+        
+        _addressBar = new TextBox
+        {
+            Location = new Point(110, 6),
+            Size = new Size(_browserPanel.Width - 160, 23),
+            BackColor = Color.FromArgb(24, 26, 31),
+            ForeColor = Color.White,
+            BorderStyle = BorderStyle.FixedSingle,
+            Font = new Font("Segoe UI", 9)
+        };
+        _addressBar.KeyDown += (s, e) => {
+            if (e.KeyCode == Keys.Enter && _webView != null) {
+                string url = _addressBar.Text.Trim();
+                if (!url.StartsWith("http")) url = "https://" + url;
+                _webView.CoreWebView2.Navigate(url);
+                e.Handled = true; e.SuppressKeyPress = true;
+            }
+        };
+
+        var btnClose = CreateToolbarButton("❌", _browserPanel.Width - 40);
+        btnClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        btnClose.ForeColor = Color.IndianRed;
+        btnClose.Click += (s, e) => {
+            _isBrowserVisible = false;
+            _browserPanel.Visible = false;
+            this.Focus();
+        };
+
+        btnBack.Click += (s, e) => { if (_webView?.CoreWebView2.CanGoBack == true) _webView.GoBack(); };
+        btnForward.Click += (s, e) => { if (_webView?.CoreWebView2.CanGoForward == true) _webView.GoForward(); };
+        btnReload.Click += (s, e) => { _webView?.Reload(); };
+
+        _browserToolbar.Controls.AddRange(new Control[] { btnBack, btnForward, btnReload, _addressBar, btnClose });
+        _browserPanel.Controls.Add(_browserToolbar);
+
+        // 2. 创建 WebView 容器
+        var webContainer = new Panel { Dock = DockStyle.Fill };
+        _webView = new WebView2 { Dock = DockStyle.Fill };
+        webContainer.Controls.Add(_webView);
+        _browserPanel.Controls.Add(webContainer);
+        webContainer.BringToFront();
+
         this.Controls.Add(_browserPanel);
 
         // 初始化 WebView2
         await _webView.EnsureCoreWebView2Async(null);
 
-        // 阻止新窗口弹出，强制在当前 WebView 内打开链接
-        _webView.CoreWebView2.NewWindowRequested += (sender, e) =>
-        {
-            e.Handled = true; // 拦截新窗口
-            _webView.CoreWebView2.Navigate(e.Uri); // 在当前窗口加载新链接
+        _webView.CoreWebView2.NewWindowRequested += (sender, e) => {
+            e.Handled = true;
+            _webView.CoreWebView2.Navigate(e.Uri);
         };
 
-        // 监听浏览器内的键盘事件，将快捷键传递回主窗体
-        _webView.KeyDown += (sender, e) =>
-        {
-            if (e.Alt)
-            {
-                if (e.KeyCode == Keys.Up)
-                {
-                    if (this.Opacity < 1.0) this.Opacity += 0.1;
-                    if (this.Opacity > 1.0) this.Opacity = 1.0;
+        _webView.CoreWebView2.SourceChanged += (s, e) => {
+            if (_addressBar != null) _addressBar.Text = _webView.Source.ToString();
+        };
+
+        // 键盘处理
+        _webView.KeyDown += (sender, e) => {
+            if (e.Alt) {
+                if (e.KeyCode == Keys.Up) {
+                    this.Opacity = Math.Min(1.0, this.Opacity + 0.1);
                     e.Handled = true;
-                }
-                else if (e.KeyCode == Keys.Down)
-                {
-                    if (this.Opacity > 0.1) this.Opacity -= 0.1;
-                    if (this.Opacity < 0.1) this.Opacity = 0.1;
+                } else if (e.KeyCode == Keys.Down) {
+                    this.Opacity = Math.Max(0.1, this.Opacity - 0.1);
                     e.Handled = true;
-                }
-                else if (e.KeyCode == Keys.Space)
-                {
-                    if (this.Opacity > 0.0)
-                    {
-                        this.Tag = this.Opacity;
-                        this.Opacity = 0.0;
-                        this.ShowInTaskbar = false;
-                    }
-                    else
-                    {
-                        this.Opacity = (this.Tag is double op) ? op : 1.0;
-                        this.ShowInTaskbar = true;
-                    }
+                } else if (e.KeyCode == Keys.Space) {
+                    if (this.Opacity > 0.0) { this.Tag = this.Opacity; this.Opacity = 0.0; this.ShowInTaskbar = false; }
+                    else { this.Opacity = (this.Tag is double op) ? op : 1.0; this.ShowInTaskbar = true; }
                     e.Handled = true;
-                }
-                else if (e.KeyCode == Keys.B)
-                {
-                    _isBrowserVisible = false;
-                    _browserPanel!.Visible = false;
-                    this.Focus();
+                } else if (e.KeyCode == Keys.B) {
+                    _isBrowserVisible = false; _browserPanel!.Visible = false; this.Focus();
                     e.Handled = true;
-                }
-                else if (e.KeyCode == Keys.Q)
-                {
-                    ReturnToHome();
-                    e.Handled = true;
+                } else if (e.KeyCode == Keys.Q) {
+                    ReturnToHome(); e.Handled = true;
                 }
             }
         };
 
-        _webView.CoreWebView2.Navigate("https://bing.com"); // 默认打开 Bing
+        _webView.CoreWebView2.Navigate("https://bing.com");
+    }
+
+    private Button CreateToolbarButton(string text, int x)
+    {
+        return new Button {
+            Text = text,
+            Location = new Point(x + 5, 4),
+            Size = new Size(30, 25),
+            FlatStyle = FlatStyle.Flat,
+            ForeColor = Color.LightGray,
+            BackColor = Color.FromArgb(45, 49, 57),
+            Font = new Font("Segoe UI Emoji", 9),
+            Cursor = Cursors.Hand
+        };
     }
 
     private void SetupGame()
@@ -500,6 +542,16 @@ public partial class BattleForm : Form
                 _bufferGraphics = Graphics.FromImage(_backBuffer);
                 _bufferGraphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None;
                 _bufferGraphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
+            }
+        }
+
+        // 调整浏览器位置
+        if (_browserPanel != null)
+        {
+            _browserPanel.Size = new Size(this.ClientSize.Width - 40, this.ClientSize.Height - 80);
+            if (_addressBar != null)
+            {
+                _addressBar.Size = new Size(_browserPanel.Width - 160, 23);
             }
         }
     }
@@ -1176,8 +1228,8 @@ public partial class BattleForm : Form
         {
             if (_waveTimer <= 0)
             {
-                // 开始新的一波
-                _monstersToSpawnInWave = 3 + CurrentWave * 2; // 每波怪物递增
+                // 开始新的一波 (略微提升怪物数量基础以增加挑战)
+                _monstersToSpawnInWave = 5 + CurrentWave * 4; 
                 _spawnInterval = 0;
             }
             else
@@ -1186,79 +1238,73 @@ public partial class BattleForm : Form
             }
         }
 
-        // 生成怪物逻辑
+        // 生成怪物逻辑 (支持单帧多刷)
         if (_monstersToSpawnInWave > 0)
         {
             _spawnInterval--;
             if (_spawnInterval <= 0)
             {
-                // 获取基地参考点
-                var baseB = GetBaseRobot();
-                float bX = baseB?.X + baseB?.Size / 2 ?? 0;
-                float bY = baseB?.Y + baseB?.Size / 2 ?? 0;
-
-                // 核心算法：怪物从基地的真实地图物理边缘刷出
-                float spawnRange = _totalMapRange + 50; 
-
-                float spawnX = 0, spawnY = 0;
-                int edge = _rand.Next(4);
-
-                switch (edge)
+                // 每波刷怪数量越多，单次刷出的数量也越多 (1-3个同时刷)
+                int burst = Math.Min(_monstersToSpawnInWave, 1 + CurrentWave / 15);
+                for (int i = 0; i < burst; i++)
                 {
-                    case 0: // 顶部边缘
-                        spawnX = bX + (float)(_rand.NextDouble() - 0.5) * _totalMapRange * 2;
-                        spawnY = bY - spawnRange;
-                        break;
-                    case 1: // 右侧边缘
-                        spawnX = bX + spawnRange;
-                        spawnY = bY + (float)(_rand.NextDouble() - 0.5) * _totalMapRange * 2;
-                        break;
-                    case 2: // 底部边缘
-                        spawnX = bX + (float)(_rand.NextDouble() - 0.5) * _totalMapRange * 2;
-                        spawnY = bY + spawnRange;
-                        break;
-                    case 3: // 左侧边缘
-                        spawnX = bX - spawnRange;
-                        spawnY = bY + (float)(_rand.NextDouble() - 0.5) * _totalMapRange * 2;
-                        break;
+                    SpawnOneMonster(CurrentWave);
                 }
+                
+                // 刷怪间隔：最低 8 帧 (约0.13秒)，随波次变快
+                _spawnInterval = Math.Max(8, 50 - CurrentWave * 4); 
+            }
 
-                var monster = new Monster(spawnX, spawnY, CurrentWave);
-                // 根据波次增加怪物血量，初始第1波血量为 100
-                monster.MaxHP = 80 + CurrentWave * 20;
-                monster.HP = monster.MaxHP;
-
-                // 每10波出一个大Boss
-                if (CurrentWave % 10 == 0 && _monstersToSpawnInWave == 1)
-                {
-                    monster.MaxHP *= 10;
-                    monster.HP = monster.MaxHP;
-                    monster.Size = 80;
-                }
-
-                _monsters.Add(monster);
-
-                _monstersToSpawnInWave--;
-                _spawnInterval = 60; // 1秒生成一个
-
-                // 告诉所有机器人有新怪物了
-                foreach (var robot in _robots)
-                    if (robot.IsActive && !robot.IsDead) robot.SetMonsterTarget(monster);
-
-                 if (_monstersToSpawnInWave <= 0)
-                {
-                    // 这波刷完了，准备下一波的计时
-                    CurrentWave++;
-                    _waveTimer = 600; // 10秒后下一波
-                    
-                    // 每新增一波，地图实际大小扩大 0.5 倍
-                    _totalMapRange *= 1.5f;
-                    
-                    // 视野也同步稍微拉远一点点，最高不超过 8.0 倍
-                    _worldViewFactor = Math.Min(8.0f, _worldViewFactor + 0.1f);
-                }
+            if (_monstersToSpawnInWave <= 0)
+            {
+                // 这波刷完了，进入下一波准备阶段
+                CurrentWave++;
+                _waveTimer = 600; // 10秒后下一波
+                
+                // 地图扩展由 1.5倍 更改为 线性增加 150，并设置最大上限 2500
+                _totalMapRange = Math.Min(2500f, _totalMapRange + 150f);
+                
+                // 视野也同步稍微拉远一点点，最高不超过 8.0 倍
+                _worldViewFactor = Math.Min(8.0f, _worldViewFactor + 0.15f);
             }
         }
+    }
+
+    private void SpawnOneMonster(int wave)
+    {
+        var baseB = GetBaseRobot();
+        float bX = baseB?.X + baseB?.Size / 2 ?? 0;
+        float bY = baseB?.Y + baseB?.Size / 2 ?? 0;
+
+        float spawnRange = _totalMapRange + 100; // 稍微拉开一点刷怪距离 
+        float spawnX = 0, spawnY = 0;
+        int edge = _rand.Next(4);
+
+        switch (edge)
+        {
+            case 0: spawnX = bX + (float)(_rand.NextDouble() - 0.5) * _totalMapRange * 2; spawnY = bY - spawnRange; break;
+            case 1: spawnX = bX + spawnRange; spawnY = bY + (float)(_rand.NextDouble() - 0.5) * _totalMapRange * 2; break;
+            case 2: spawnX = bX + (float)(_rand.NextDouble() - 0.5) * _totalMapRange * 2; spawnY = bY + spawnRange; break;
+            case 3: spawnX = bX - spawnRange; spawnY = bY + (float)(_rand.NextDouble() - 0.5) * _totalMapRange * 2; break;
+        }
+
+        var monster = new Monster(spawnX, spawnY, wave);
+        monster.MaxHP = 100 + wave * 40; // 提升血量成长
+        monster.HP = monster.MaxHP;
+
+        if (wave % 10 == 0 && _monstersToSpawnInWave == 1) // Boss
+        {
+            monster.MaxHP *= 15;
+            monster.HP = monster.MaxHP;
+            monster.Size = 100;
+            AddFloatingText(spawnX, spawnY, "LEVEL BOSS INCOMING!", Color.Red);
+        }
+
+        _monsters.Add(monster);
+        _monstersToSpawnInWave--;
+
+        foreach (var robot in _robots)
+            if (robot.IsActive && !robot.IsDead) robot.SetMonsterTarget(monster);
     }
 
     private void HandleGameEnding()

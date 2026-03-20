@@ -175,8 +175,9 @@ public class Monster
             float dy = TargetY - (Y + Size / 2);
             float dist = (float)Math.Sqrt(dx * dx + dy * dy);
             
-            // 按类型决定移动策略
-            float moveSpeed = IsElite ? 0.22f : (ArmorResist > 0 ? 0.1f : 0.15f);
+            // 按类型决定移动策略：大幅提升基础速度并随波数略微增加
+            float wave = BattleForm.Instance?.CurrentWave ?? 1;
+            float moveSpeed = (IsElite ? 0.4f : (ArmorResist > 0 ? 0.25f : 0.35f)) + (wave * 0.012f);
             float keepDist = IsRanged ? 400f : 50f; // 远程兵保持射程
 
             if (dist > keepDist)
@@ -193,13 +194,12 @@ public class Monster
             // 发动攻击
             if (AttackCooldown <= 0 && dist < (IsRanged ? 500 : 300))
             {
-                int wave = BattleForm.Instance?.CurrentWave ?? 1;
-                AttackCooldown = Math.Max(30, 90 - wave * 2); 
+                AttackCooldown = Math.Max(30, 90 - (int)wave * 2); 
                 
                 int attackType = Rand.Next(100);
                 if (!IsRanged && attackType < 40 + wave) // 近战散射
                 {
-                    int projectiles = Math.Min(16, 8 + wave / 2);
+                    int projectiles = Math.Min(16, 8 + (int)wave / 2);
                     for (int i = 0; i < projectiles; i++)
                     {
                         float angle = i * (float)Math.PI * 2 / projectiles;
