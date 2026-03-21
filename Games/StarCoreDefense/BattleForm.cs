@@ -293,8 +293,11 @@ public partial class BattleForm : Form
 
     private void SetupGame()
     {
-        // 创建双缓冲
-        _backBuffer = new Bitmap(this.ClientSize.Width, this.ClientSize.Height);
+        // 创建双缓冲（限制最大尺寸防止内存溢出）
+        int maxSize = 4096;
+        int width = Math.Min(this.ClientSize.Width, maxSize);
+        int height = Math.Min(this.ClientSize.Height, maxSize);
+        _backBuffer = new Bitmap(width, height);
         _bufferGraphics = Graphics.FromImage(_backBuffer);
         _bufferGraphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None;
         _bufferGraphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
@@ -740,17 +743,22 @@ public partial class BattleForm : Form
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
-        if (_backBuffer != null && this.ClientSize.Width > 0 && this.ClientSize.Height > 0)
+        if (this.ClientSize.Width > 0 && this.ClientSize.Height > 0)
         {
-            _backBuffer.Dispose();
-            _backBuffer = new Bitmap(this.ClientSize.Width, this.ClientSize.Height);
-            if (_bufferGraphics != null)
-            {
-                _bufferGraphics.Dispose();
-                _bufferGraphics = Graphics.FromImage(_backBuffer);
-                _bufferGraphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None;
-                _bufferGraphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
-            }
+            // 先释放 Graphics，再释放 Bitmap（正确的顺序）
+            _bufferGraphics?.Dispose();
+            _bufferGraphics = null;
+            _backBuffer?.Dispose();
+
+            // 限制最大缓冲区尺寸，防止内存溢出
+            int maxSize = 4096;
+            int width = Math.Min(this.ClientSize.Width, maxSize);
+            int height = Math.Min(this.ClientSize.Height, maxSize);
+
+            _backBuffer = new Bitmap(width, height);
+            _bufferGraphics = Graphics.FromImage(_backBuffer);
+            _bufferGraphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None;
+            _bufferGraphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
         }
 
         // 调整浏览器位置
