@@ -3212,20 +3212,20 @@ public partial class BattleForm : Form
                 if (angleDiff < halfSweep + 0.05f) 
                 {
                     // 检测带 + 击退逻辑锁定：务必保持 += 符号以实现向外反弹！
-                    // 【核心修复】防止“反向弹力”把进城的怪瞬间踢出去
-                    if (Math.Abs(dist - wall.Radius) < (wall.Thickness + m.Size / 2f) + 5f)
+                // --- 核心修复：防止分母为零导致怪物坐标变为 NaN ---
+                // 当怪物极度接近基地圆心（dist < 0.1f）时，不执行基于向向量的推力计算
+                if (dist > 0.1f && Math.Abs(dist - wall.Radius) < (wall.Thickness + m.Size / 2f) + 5f)
+                {
+                    // 只有在怪物位于墙体外侧（dist > wall.Radius）时才向外推
+                    if (dist > wall.Radius - 5f) 
                     {
-                        // 只有在怪物位于墙体外侧（dist > wall.Radius）时才向外推
-                        // 这样一旦怪物从缺口挤进去，就不会再被周围邻居墙体的“排斥力”给强制弹飞到城门口了
-                        if (dist > wall.Radius - 5f) 
-                        {
-                            m.X += (dx / dist) * 15f; 
-                            m.Y += (dy / dist) * 15f;
-                            
-                            int wallDmg = (10 + CurrentWave) * (m.IsElite ? 5 : 1); 
-                            wall.TakeDamage(wallDmg);
-                        }
+                        m.X += (dx / dist) * 15f; 
+                        m.Y += (dy / dist) * 15f;
+                        
+                        int wallDmg = (10 + CurrentWave) * (m.IsElite ? 5 : 1); 
+                        wall.TakeDamage(wallDmg);
                     }
+                }
                 }
             }
         }
