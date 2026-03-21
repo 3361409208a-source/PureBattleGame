@@ -675,22 +675,34 @@ public partial class Robot
 
         int engineerLevel = BattleForm.Instance?._engineerLevel ?? 1;
 
-        // 2. 超频远距离群体无极修墙 (每帧执行！)
+        // 2. 超频全图远程跨层修墙 (由于是“赛博工程”，不限层级，瞬间全修)
         _activeRepairTargets.Clear();
         if (BattleForm.Instance != null && BattleForm.Instance._walls != null)
         {
-            // 找出全图破损最严重的前 N 面墙（随等级增加同时修复数量）
-            int maxTargets = 2 + engineerLevel;
+            // 找出全图需要维修的墙
+            // 优先级：由于是爽游，我们让工程兵更智能：
+            // 如果外层没激活，且内层满血，则全力集火外层扩建
+            // 如果内层有缺口，由于是保命要紧，优先补内层
+            bool innerUrgent = BattleForm.Instance._walls.Any(w => w.Layer == 0 && w.HP < w.MaxHP * 0.5f);
+            
+            // 找出所有不满血的墙
             var damagedWalls = BattleForm.Instance._walls
-                               .Where(w => w.HP > 0 && w.HP < w.MaxHP)
-                               .OrderBy(w => (float)w.HP / w.MaxHP)
-                               .Take(maxTargets);
+                               .Where(w => w.HP < w.MaxHP)
+                               .OrderBy(w => {
+                                   // 优先级权重计算：
+                                   // 1. 如果内城告急，给 Layer 0 极高权重
+                                   // 2. 否则，给 Layer 1 正常权重，优先修血比例最低的
+                                   float layerWeight = w.Layer == 0 ? (innerUrgent ? 0 : 10) : 5;
+                                   float hpWeight = (float)w.HP / w.MaxHP;
+                                   return layerWeight + hpWeight;
+                               })
+                               .Take(5 + engineerLevel * 2); // 随等级提升同时修复的目标数
                                
             foreach (var w in damagedWalls)
             {
                 _activeRepairTargets.Add(w);
-                TargetWall = w; // 给渲染画线用（顺便借用旧逻辑特效）
-                int baseRepair = 10 + engineerLevel * 10; // 极其变态的每帧修复量
+                TargetWall = w; 
+                int baseRepair = 15 + engineerLevel * 10; 
                 w.Repair(baseRepair);
             }
             if (_activeRepairTargets.Count == 0) TargetWall = null;
