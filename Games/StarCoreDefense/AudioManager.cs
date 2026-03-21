@@ -82,10 +82,13 @@ public static class AudioManager
         try { GenerateWav(path, duration, waveFunc); } catch { }
     }
 
-    public static void PlayShootSound() => PlaySound("shoot", 40);
-    public static void PlayHitSound() => PlaySound("hit", 40);
-    public static void PlayDeathSound() => PlaySound("death", 60);
-    public static void PlayProjectileSound(string type) => PlaySound(type.ToLower(), 40);
+    // 弹幕游戏音频最佳实践：通过大幅提升同类音效的冷却时间（CD），
+    // 将满屏的受击/发射音频强制“量化”为规律的节奏点。
+    // 这不仅解决重叠相位带来的刺耳底噪，还彻底释放了底层音频通道并发压力。
+    public static void PlayShootSound() => PlaySound("shoot", 80);
+    public static void PlayHitSound() => PlaySound("hit", 120);
+    public static void PlayDeathSound() => PlaySound("death", 100);
+    public static void PlayProjectileSound(string type) => PlaySound(type.ToLower(), 80);
 
     public static void PlaySound(string effect, int cooldownMs = 40)
     {
