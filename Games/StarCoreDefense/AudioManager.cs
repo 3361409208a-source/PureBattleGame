@@ -139,38 +139,47 @@ public static class AudioManager
     private static extern int GetShortPathName([MarshalAs(UnmanagedType.LPTStr)] string lpszLongPath, 
         [MarshalAs(UnmanagedType.LPTStr)] StringBuilder lpszShortPath, int cchBuffer);
 
+    private static bool _bgmInitialized = false;
+
+    private static void InitializeBGM()
+    {
+        if (_bgmInitialized) return;
+        _bgmInitialized = true;
+
+        for (int i = 1; i <= 2; i++)
+        {
+            string fileName = $"{i}.mp3";
+            string[] candidates = {
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Games", "StarCoreDefense", fileName),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "Games", "StarCoreDefense", fileName),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, fileName),
+                Path.Combine(Environment.CurrentDirectory, "Games", "StarCoreDefense", fileName)
+            };
+            string finalPath = candidates.FirstOrDefault(File.Exists) ?? "";
+            if (!string.IsNullOrEmpty(finalPath))
+            {
+                StringBuilder shortPath = new StringBuilder(255);
+                GetShortPathName(finalPath, shortPath, shortPath.Capacity);
+                mciSendString($"open \"{shortPath}\" type mpegvideo alias bgm{i}", null, 0, IntPtr.Zero);
+            }
+        }
+    }
+
     public static void PlayBGM(int track) // 1: battle, 2: peace
     {
         if (_currentBGMTrack == track) return;
+        
+        if (!_bgmInitialized) InitializeBGM();
+
+        // 停止当前所有背景音乐轨道
+        mciSendString("stop bgm1", null, 0, IntPtr.Zero);
+        mciSendString("stop bgm2", null, 0, IntPtr.Zero);
+
         _currentBGMTrack = track;
-
-        mciSendString("stop bgm", null, 0, IntPtr.Zero);
-        mciSendString("close bgm", null, 0, IntPtr.Zero);
-
         if (IsMutedBGM) return;
 
-        string fileName = $"{track}.mp3";
-        // 尝试多个路径定位 (针对 dotnet run 和 发布环境)
-        string[] candidates = {
-            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Games", "StarCoreDefense", fileName),
-            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "Games", "StarCoreDefense", fileName),
-            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, fileName),
-            Path.Combine(Environment.CurrentDirectory, "Games", "StarCoreDefense", fileName)
-        };
-
-        string finalPath = candidates.FirstOrDefault(File.Exists) ?? "";
-
-        if (!string.IsNullOrEmpty(finalPath))
-        {
-            // MCI 极度讨厌长路径和特殊字符，必须转 8.3 短路径名
-            StringBuilder shortPath = new StringBuilder(255);
-            GetShortPathName(finalPath, shortPath, shortPath.Capacity);
-            string path = shortPath.ToString();
-
-            // 必须明确指定 type mpegvideo 以启用 MP3 解码器
-            mciSendString($"open \"{path}\" type mpegvideo alias bgm", null, 0, IntPtr.Zero);
-            mciSendString("play bgm repeat", null, 0, IntPtr.Zero);
-        }
+        // 瞬间从头播放目标轨道（已在通道中预热，不产生缝隙）
+        mciSendString($"play bgm{track} from 0 repeat", null, 0, IntPtr.Zero);
     }
 
     public static void UpdateBGMVolume()

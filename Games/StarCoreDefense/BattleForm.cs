@@ -96,6 +96,7 @@ public partial class BattleForm : Form
 
     // 性能诊断
     private int _fps = 0;
+    private int _bgmSwitchTimer = 0; // 音频切换缓冲（防止在零星小怪死亡时反复切歌）
     private int _frameCountForFps = 0;
     private DateTime _lastMetricUpdate = DateTime.Now;
     private TimeSpan _lastTotalProcessorTime = System.Diagnostics.Process.GetCurrentProcess().TotalProcessorTime;
@@ -486,9 +487,22 @@ public partial class BattleForm : Form
             }
         }
 
-        // 背景音乐切换逻辑：如果有活着的怪物则放战斗音乐(1.mp3)，否则放平时音乐(2.mp3)
-        bool hasThreat = _monsters.Any(m => m.IsActive && !m.IsDead);
-        AudioManager.PlayBGM(hasThreat ? 1 : 2);
+        // 背景音乐切换逻辑：如果有活着的怪物则放战斗音乐(1.mp3)，否则延迟放平时音乐(2.mp3)
+        bool existsThreat = _monsters.Any(m => m.IsActive && !m.IsDead);
+        
+        if (existsThreat)
+        {
+            _bgmSwitchTimer = 180; // 只要有怪，重置“安全计时器”为 3 秒
+            AudioManager.PlayBGM(1); // 战斗
+        }
+        else
+        {
+            if (_bgmSwitchTimer > 0) _bgmSwitchTimer--;
+            if (_bgmSwitchTimer <= 0)
+            {
+                AudioManager.PlayBGM(2); // 和平
+            }
+        }
 
         // --- 核心逻辑增强：全周界合拢监控 ---
         if (!_isLayer1Activated)
@@ -3198,15 +3212,19 @@ public partial class BattleForm : Form
                 if (angleDiff < halfSweep + 0.05f) 
                 {
                     // 检测带 + 击退逻辑锁定：务必保持 += 符号以实现向外反弹！
-                    // 检测带 + 击退逻辑锁定：务必保持 += 符号以实现向外反弹！
+                    // 【核心修复】防止“反向弹力”把进城的怪瞬间踢出去
                     if (Math.Abs(dist - wall.Radius) < (wall.Thickness + m.Size / 2f) + 5f)
                     {
-                        m.X += (dx / dist) * 15f; // 增加反弹力度，但撞击更疼
-                        m.Y += (dy / dist) * 15f;
-
-                        // 【割草改动】增加撞墙伤害，精英怪撞墙伤害翻倍，让城墙有被冲破的危机感
-                        int wallDmg = (10 + CurrentWave) * (m.IsElite ? 5 : 1); 
-                        wall.TakeDamage(wallDmg);
+                        // 只有在怪物位于墙体外侧（dist > wall.Radius）时才向外推
+                        // 这样一旦怪物从缺口挤进去，就不会再被周围邻居墙体的“排斥力”给强制弹飞到城门口了
+                        if (dist > wall.Radius - 5f) 
+                        {
+                            m.X += (dx / dist) * 15f; 
+                            m.Y += (dy / dist) * 15f;
+                            
+                            int wallDmg = (10 + CurrentWave) * (m.IsElite ? 5 : 1); 
+                            wall.TakeDamage(wallDmg);
+                        }
                     }
                 }
             }
