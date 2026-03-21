@@ -166,13 +166,20 @@ public class Monster
             {
                 if (!robot.IsActive || robot.IsDead) continue;
                 
-                // --- 史诗修正：外圈未激活前，怪物无视所有在内圈外的机器人 ---
+                // --- 史诗修正：外圈未激活且未大规模动工前，怪物主要攻击核心圈 ---
                 if (!isLayer1Active)
                 {
-                    // 假设内圈半径 150，我们划定 250 为有效警戒区
-                    float dxToBase = (robot.X + robot.Size/2) - (screenWidth/2);
-                    float dyToBase = (robot.Y + robot.Size/2) - (screenHeight/2);
-                    if (Math.Sqrt(dxToBase * dxToBase + dyToBase * dyToBase) > 250) continue;
+                    // 动态检测外圈建筑进度：只要有一定比例（例如 > 4 个）建成，怪物就开始感知外围威胁
+                    bool l1Started = robots.Any(r => r.ClassType == RobotClass.Engineer && r.TargetWall?.Layer == 1 && r.TargetWall.HP > 0);
+                    if (!l1Started) 
+                    {
+                        float bx = baseTarget?.X + baseTarget?.Size / 2 ?? screenWidth / 2f;
+                        float by = baseTarget?.Y + baseTarget?.Size / 2 ?? screenHeight / 2f;
+                        float dxToBase = (robot.X + robot.Size / 2) - bx;
+                        float dyToBase = (robot.Y + robot.Size / 2) - by;
+                        // 初始判定：内圈核心区外，非战斗单位将被怪物暂时忽视（增加隐蔽性，也确保护林员能执行前哨任务）
+                        if (Math.Sqrt(dxToBase * dxToBase + dyToBase * dyToBase) > 280) continue;
+                    }
                 }
                 
                 float dxTarget = (robot.X + robot.Size/2) - (X + Size/2);

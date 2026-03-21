@@ -2989,13 +2989,15 @@ public partial class BattleForm : Form
     public WallSegment? GetGarrisonWall(Robot caller, Monster threat)
     {
         // 寻找最优驻扎位：
-        // 1. 如果外层防线已激活，则全员拉往外层。
-        // 2. 如果外层未激活，则留在内层防守。
+        // 1. 如果外层防线已激活（或已经开始大规模扩建），则尝试换防至外层。
+        // 2. 否则，留在内层防守。
         bool l1Active = IsLayer1Complete();
+        bool l1InConstruction = _walls.Count(w => w.Layer == 1 && w.HP > 0) > 4;
+        
         var br = GetBaseRobot();
         
         var best = _walls.Where(w => w.IsActive && 
-                                    (w.Layer == (l1Active ? 1 : 0)) && 
+                                    (w.Layer == ( (l1Active || l1InConstruction) ? 1 : 0)) && 
                                     (w.GarrisonRobot == null || w.GarrisonRobot == caller))
                          .OrderBy(w => {
                              var wp = w.GetWorldPosition(br?.X ?? 0, br?.Y ?? 0);
