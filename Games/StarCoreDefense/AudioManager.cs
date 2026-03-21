@@ -146,7 +146,7 @@ public static class AudioManager
         if (_bgmInitialized) return;
         _bgmInitialized = true;
 
-        for (int i = 1; i <= 2; i++)
+        for (int i = 1; i <= 3; i++)
         {
             string fileName = $"{i}.mp3";
             string[] candidates = {
@@ -171,9 +171,9 @@ public static class AudioManager
         
         if (!_bgmInitialized) InitializeBGM();
 
-        // 停止当前所有背景音乐轨道
         mciSendString("stop bgm1", null, 0, IntPtr.Zero);
         mciSendString("stop bgm2", null, 0, IntPtr.Zero);
+        mciSendString("stop bgm3", null, 0, IntPtr.Zero);
 
         _currentBGMTrack = track;
         if (IsMutedBGM) return;
