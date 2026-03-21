@@ -356,8 +356,8 @@ public partial class BattleForm : Form
 
         _settingsPanel = new Panel
         {
-            Size = new Size(120, 80),
-            Location = new Point(this.ClientSize.Width - 150, 35),
+            Size = new Size(140, 150),
+            Location = new Point(this.ClientSize.Width - 170, 35),
             BackColor = Color.FromArgb(200, 30, 30, 35),
             Visible = false,
             Anchor = AnchorStyles.Top | AnchorStyles.Right,
@@ -393,8 +393,35 @@ public partial class BattleForm : Form
             AudioManager.UpdateBGMVolume();
         };
 
+        Label lblVol = new Label 
+        { 
+            Text = "音效音量:", 
+            ForeColor = Color.White, 
+            AutoSize = true, 
+            Location = new Point(8, 70),
+            Font = new Font("Microsoft YaHei", 8)
+        };
+
+        TrackBar tbSfxVol = new TrackBar
+        {
+            Minimum = 0,
+            Maximum = 1000,
+            Value = AudioManager.SfxVolume,
+            TickFrequency = 100,
+            Location = new Point(5, 90),
+            Size = new Size(120, 30),
+            TickStyle = TickStyle.BottomRight
+        };
+
+        tbSfxVol.ValueChanged += (s, e) => {
+            AudioManager.SfxVolume = tbSfxVol.Value;
+            if (AudioManager.SfxVolume == 0) cbSfx.Checked = false;
+        };
+
         _settingsPanel.Controls.Add(cbSfx);
         _settingsPanel.Controls.Add(cbBgm);
+        _settingsPanel.Controls.Add(lblVol);
+        _settingsPanel.Controls.Add(tbSfxVol);
         this.Controls.Add(_settingsPanel);
     }
 

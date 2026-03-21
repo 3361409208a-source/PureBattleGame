@@ -18,6 +18,10 @@ public static class AudioManager
 
     public static bool IsMutedSFX { get; set; } = false;
     public static bool IsMutedBGM { get; set; } = false;
+    
+    // 全局音效音量 (0~1000)，默认值设为 500 (即降低 50%)
+    public static int SfxVolume { get; set; } = 500;
+
     private static int _currentBGMTrack = -1; // -1: none, 1: battle, 2: peace, 3: battle 2
     private static readonly float[] _targetVolumes = { 0, 1000, 1000, 1000 }; // 0: ignore, 1..3: tracks
     private static readonly float[] _currentVolumes = { 0, 0, 0, 0 };
@@ -135,6 +139,9 @@ public static class AudioManager
 
             _channelIndices[name] = (idx + 1) % count;
 
+            // 每次播放前强制根据当前用户的音量设置应用衰减
+            mciSendString($"setaudio {alias} volume to {SfxVolume}", null, 0, IntPtr.Zero);
+            
             // 恢复单线程播放。前面通道数上限已经削减完毕，
             // 且 MCI 原生异步无阻塞，再用从后台线程调反而会由于线程隔离导致没有声音。
             mciSendString($"play {alias} from 0", null, 0, IntPtr.Zero);
