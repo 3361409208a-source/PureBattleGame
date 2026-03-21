@@ -129,6 +129,7 @@ public partial class Robot
     // 触摸/漂浮效果
     public float ShakingOffset { get; set; } = 0;
     public float RotationAngle { get; set; } = 0;
+    public float OrbitAngle { get; set; } = 0; // 守卫者公转角度
 
     public Robot(int id, string name, float x, float y, RobotClass classType = RobotClass.Shooter, RobotRank rank = RobotRank.Normal)
     {
@@ -284,12 +285,14 @@ public partial class Robot
                 HP = MaxHP;
                 break;
             case RobotClass.Guardian:
+                int gLevel = BattleForm.Instance?._guardianLevel ?? 1;
                 PrimaryColor = Color.FromArgb(128, 128, 128); // 铁灰色
                 SecondaryColor = Color.FromArgb(80, 80, 80);
                 EyeColor = Color.Orange;
-                Size = 30; // 体型较大
-                SpeedMultiplier = 1.1f;
-                MaxHP = (int)(2000 * (1 + 0.2f * (BattleForm.Instance?._guardianLevel - 1 ?? 0))); // 血量较厚
+                Size = 34; // 体型再次略微加大，增加撞击面积
+                SpeedMultiplier = 1.0f + 0.15f * (gLevel - 1); // 升级提升速度
+                MaxHP = (int)(2500 * (1 + 0.25f * (gLevel - 1))); // 血量大幅提升
+                Damage = 100 + (gLevel - 1) * 60; // 升级大幅提升伤害
                 HP = MaxHP;
                 break;
             case RobotClass.Engineer:
@@ -429,7 +432,7 @@ public partial class Robot
         }
         else if (ClassType == RobotClass.Guardian)
         {
-            UpdateGuardianLogic(allMonsters);
+            UpdateGuardianLogic(allRobots, allMonsters);
         }
         else if (MonsterTarget != null)
         {
@@ -897,102 +900,89 @@ public partial class Robot
         }
     }
 
-    private void UpdateGuardianLogic(List<Monster> allMonsters)
+    private void UpdateGuardianLogic(List<Robot> allRobots, List<Monster> allMonsters)
     {
-        Robot? baseTarget = BattleForm.Instance?.GetBaseRobot();
-        if (baseTarget == null || !baseTarget.IsActive || baseTarget.IsDead)
+        var baseBot = BattleForm.Instance?.GetBaseRobot();
+        if (baseBot == null) return;
+        float bx = baseBot.X + baseBot.Size / 2;
+        float by = baseBot.Y + baseBot.Size / 2;
+
+        // 1. 轨道半径：优先巡逻已动工的外圈 (Layer 1, 半径约 420-450)，否则巡逻内圈 (Layer 0, 半径约 140-150)
+        bool l1InConstruction = BattleForm.Instance?._walls.Any(w => w.Layer == 1 && w.HP > 0) ?? false;
+        float orbitRadius = l1InConstruction ? 420f : 140f;
+
+        // 2. 轨道旋转
+        float orbitSpeed = 0.015f * SpeedMultiplier;
+        OrbitAngle += orbitSpeed;
+        if (OrbitAngle > (float)Math.PI * 2) OrbitAngle -= (float)Math.PI * 2;
+
+        // 计算目标点 (使用 ID 作为偏移，使多个守卫者均匀分布在圆周上)
+        int gCount = Math.Max(1, allRobots.Count(r => r.ClassType == RobotClass.Guardian && r.IsActive));
+        float sector = (float)(Math.PI * 2 / gCount);
+        int gIndex = allRobots.Where(r => r.ClassType == RobotClass.Guardian && r.IsActive).ToList().FindIndex(r => r == this);
+        if (gIndex < 0) gIndex = 0;
+        
+        float targetX = bx + (float)Math.Cos(OrbitAngle + gIndex * sector) * orbitRadius;
+        float targetY = by + (float)Math.Sin(OrbitAngle + gIndex * sector) * orbitRadius;
+
+        // 移动到轨道点 (移除死区导致的一抖一抖，使用顺滑的前馈控制)
+        float dxO = targetX - (X + Size / 2); // 以自身中心移动
+        float dyO = targetY - (Y + Size / 2);
+        
+        // 预判轨道切线速度
+        float targetVx = -(float)Math.Sin(OrbitAngle + gIndex * sector) * orbitRadius * orbitSpeed;
+        float targetVy = (float)Math.Cos(OrbitAngle + gIndex * sector) * orbitRadius * orbitSpeed;
+
+        // 丝滑 PD 控制：保持切线速度的同时，用位移偏差进行软修正
+        Dx = Dx * 0.8f + (targetVx + dxO * 0.1f) * 0.2f;
+        Dy = Dy * 0.8f + (targetVy + dyO * 0.1f) * 0.2f;
+
+        // 限制最高爆发速度防止过度抖动
+        float maxSpeed = 12.0f * SpeedMultiplier;
+        float currentSpeed = (float)Math.Sqrt(Dx * Dx + Dy * Dy);
+        if (currentSpeed > maxSpeed)
         {
-            UpdateRandomMovement();
-            return;
+            Dx = (Dx / currentSpeed) * maxSpeed;
+            Dy = (Dy / currentSpeed) * maxSpeed;
         }
 
-        // 寻找离基地最近的威胁
-        float aggroRange = 350.0f;
-        Monster? targetMonster = null;
-        float minDist = float.MaxValue;
-
+        // 3. 撞击战斗 (Body Slam)
         foreach (var m in allMonsters)
         {
             if (!m.IsActive || m.IsDead) continue;
-            float dx = m.X - X, dy = m.Y - Y;
-            float d = (float)Math.Sqrt(dx * dx + dy * dy);
-            if (d < aggroRange && d < minDist) { minDist = d; targetMonster = m; }
-        }
+            
+            float mx = m.X + m.Size / 2;
+            float my = m.Y + m.Size / 2;
+            float dxM = mx - (X + Size / 2);
+            float dyM = my - (Y + Size / 2);
+            float distM = (float)Math.Sqrt(dxM * dxM + dyM * dyM);
+            float contactDist = (Size + m.Size) / 2f + 5f;
 
-        if (targetMonster != null)
-        {
-            var (mx, my) = targetMonster.GetCenter();
-            float dx = mx - X, dy = my - Y;
-            float d = (float)Math.Sqrt(dx * dx + dy * dy);
-            if (d < 1) d = 1;
+            if (distM < contactDist)
+            {
+                // 撞击伤害：基础 + 速度加成
+                float moveImpulse = (float)Math.Sqrt(Dx * Dx + Dy * Dy);
+                int totalDmg = Damage + (int)(Damage * 0.4f * moveImpulse);
+                m.TakeDamage(totalDmg);
+                
+                // 击退：根据守卫者等级和冲撞力道决定
+                float pushForce = 12f + (BattleForm.Instance?._guardianLevel ?? 1) * 3f;
+                if (distM < 0.1f) distM = 0.1f;
+                m.Dx += (dxM / distM) * pushForce;
+                m.Dy += (dyM / distM) * pushForce;
 
-            float maxSpeed = 5.0f * SpeedMultiplier;
-
-            // 守卫者特色逻辑：【引力跳跃】+【等离子旋风】
-            if (ShootCooldown <= 0 && d > 120 && d < 300)
-            {
-                // 距离中等，发起跳跃
-                ShootCooldown = 120; // 较长CD，极具爆发力
-                SpecialState = "LEAPING";
-                SpecialStateTimer = 15;
-                Dx += (dx / d) * 35.0f; // 瞬间爆发初速度
-                Dy += (dy / d) * 35.0f;
-                AudioManager.PlaySound("leap");
-                BattleForm.Instance?.AddExplosion(X, Y, Color.OrangeRed, 10, "SPARK");
-            }
-            else if (SpecialState != "WHIRLWIND" && d < 60)
-            {
-                // 到达中心，开启旋风打击
-                SpecialState = "WHIRLWIND";
-                SpecialStateTimer = 60; // 持续1秒的旋风
-                AudioManager.PlaySound("whirlwind");
-                Dx *= 0.2f; Dy *= 0.2f; // 旋风期间移速变慢但更稳健
-            }
-
-            if (SpecialState == "WHIRLWIND")
-            {
-                // 旋风逻辑：每帧对周围怪物进行小幅度击退和中等伤害
-                if (SpecialStateTimer % 4 == 0) // 每隔几帧攻击一次
-                {
-                    float aoe = 120f;
-                    var hits = allMonsters.Where(m => m.IsActive && !m.IsDead && 
-                        Math.Sqrt(Math.Pow(m.X - X, 2) + Math.Pow(m.Y - Y, 2)) < aoe).ToList();
-                    
-                    int dmg = (int)(30 * (1 + (BattleForm.Instance?._guardianLevel - 1 ?? 0) * 0.2f));
-                    if (hits != null)
-                    {
-                        foreach (var m in hits)
-                        {
-                            m.TakeDamage(dmg);
-                            float mDx = m.X - X, mDy = m.Y - Y;
-                            float mD = (float)Math.Sqrt(mDx*mDx + mDy*mDy);
-                            if (mD > 0) { m.Dx += (mDx/mD)*6.0f; m.Dy += (mDy/mD)*6.0f; } // 持续排斥
-                        }
-                    }
-                    // 旋风火花
-                    if (Rand.Next(5) < 2) BattleForm.Instance?.AddExplosion(X, Y, Color.FromArgb(150, 255, 165, 0), 2, "SPARK");
-                }
-                RotationAngle += 45f; // 高速自旋
-            }
-            else if (SpecialState != "LEAPING")
-            {
-                // 常规追逐
-                Dx = Dx * 0.85f + (dx / d) * maxSpeed * 0.25f;
-                Dy = Dy * 0.85f + (dy / d) * maxSpeed * 0.25f;
+                // 视觉反馈
+                BattleForm.Instance?.AddExplosion(mx, my, Color.Orange, 2, "SPARK");
+                
+                // 撞击反作用力 (略微顿挫)
+                Dx *= 0.6f;
+                Dy *= 0.6f;
             }
         }
-        else
-        {
-            // 回归基地巡逻
-            float dx = (baseTarget.X + baseTarget.Size / 2) - X;
-            float dy = (baseTarget.Y + baseTarget.Size / 2) - Y;
-            float d = (float)Math.Sqrt(dx * dx + dy * dy);
-            if (d > 100) { Dx = Dx * 0.9f + (dx / d) * 0.5f; Dy = Dy * 0.9f + (dy / d) * 0.5f; }
-            else UpdateRandomMovement();
-        }
 
-        // 摩擦阻力
-        Dx *= 0.95f; Dy *= 0.95f;
+        // 应用阻力
+        Dx *= 0.98f;
+        Dy *= 0.98f;
     }
 
     private void FollowTeammates(List<Robot> targets)
