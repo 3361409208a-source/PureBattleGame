@@ -27,12 +27,12 @@ public static class AudioManager
     private static readonly Dictionary<string, int> _channelIndices = new Dictionary<string, int>();
     private static readonly Dictionary<string, long> _lastPlayTime = new Dictionary<string, long>();
     
-    // 不同音效的独立通道数（并发池大小）
+    // 不同音效的独立通道数（并发池大小，大幅缩减以降低系统句柄上限）
     private static readonly Dictionary<string, int> _channelCounts = new Dictionary<string, int>
     {
-        { "shoot", 12 }, { "hit", 8 }, { "mine", 4 }, { "build", 4 },
-        { "death", 6 }, { "overload", 4 }, { "leap", 4 }, { "whirlwind", 4 },
-        { "level_up", 2 }, { "purchase", 2 }
+        { "shoot", 5 }, { "hit", 4 }, { "mine", 2 }, { "build", 2 },
+        { "death", 3 }, { "overload", 2 }, { "leap", 2 }, { "whirlwind", 2 },
+        { "level_up", 1 }, { "purchase", 1 }
     };
 
     private static string _baseAssetPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Games", "StarCoreDefense", "Assets", "Sfx");
@@ -82,12 +82,12 @@ public static class AudioManager
         try { GenerateWav(path, duration, waveFunc); } catch { }
     }
 
-    public static void PlayShootSound() => PlaySound("shoot", 15);
-    public static void PlayHitSound() => PlaySound("hit", 10);
-    public static void PlayDeathSound() => PlaySound("death", 50);
-    public static void PlayProjectileSound(string type) => PlaySound(type.ToLower(), 20);
+    public static void PlayShootSound() => PlaySound("shoot", 40);
+    public static void PlayHitSound() => PlaySound("hit", 40);
+    public static void PlayDeathSound() => PlaySound("death", 60);
+    public static void PlayProjectileSound(string type) => PlaySound(type.ToLower(), 40);
 
-    public static void PlaySound(string effect, int cooldownMs = 20)
+    public static void PlaySound(string effect, int cooldownMs = 40)
     {
         if (IsMutedSFX) return; // 音效禁用
 
@@ -101,14 +101,15 @@ public static class AudioManager
 
         try
         {
-            int count = _channelCounts.ContainsKey(name) ? _channelCounts[name] : 4;
+            int count = _channelCounts.ContainsKey(name) ? _channelCounts[name] : 2;
             int idx = _channelIndices[name];
             string alias = $"{name}_{idx}";
 
-            // 直接通过预开通道播放，无需 Open/Close
-            mciSendString($"play {alias} from 0", null, 0, IntPtr.Zero);
-            
             _channelIndices[name] = (idx + 1) % count;
+
+            // 恢复单线程播放。前面通道数上限已经削减完毕，
+            // 且 MCI 原生异步无阻塞，再用从后台线程调反而会由于线程隔离导致没有声音。
+            mciSendString($"play {alias} from 0", null, 0, IntPtr.Zero);
         }
         catch { }
     }
