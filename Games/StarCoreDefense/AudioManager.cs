@@ -165,9 +165,8 @@ public static class AudioManager
                 GetShortPathName(finalPath, shortPath, shortPath.Capacity);
                 mciSendString($"open \"{shortPath}\" type mpegvideo alias bgm{i}", null, 0, IntPtr.Zero);
                 
-                // 【终极无缝方案】让所有轨道在加载时就以静音状态全部起跑，永不停歇
-                mciSendString($"set bgm{i} audio all volume 0", null, 0, IntPtr.Zero);
-                mciSendString($"play bgm{i} repeat", null, 0, IntPtr.Zero);
+                // 设置初始音量为 0，不再同时 play
+                mciSendString($"setaudio bgm{i} volume to 0", null, 0, IntPtr.Zero);
             }
         }
     }
@@ -176,7 +175,6 @@ public static class AudioManager
     {
         if (!_bgmInitialized) InitializeBGM();
 
-        // 【性能关键】如果目标轨道已经是当前轨道，且并未切换，禁止重复下达 MCI 指令，防止音频抖动断点
         if (_currentBGMTrack == track) return;
 
         _currentBGMTrack = track;
@@ -187,9 +185,22 @@ public static class AudioManager
             _targetVolumes[i] = (i == track && !IsMutedBGM) ? 1000f : 0f;
         }
 
-        // 【终极无缝方案】不再执行任何 pause/resume/play 指令。
-        // 所有轨道都在后台以 repeat 模式永动运行。
-        // 我们只在 Update 中通过纯净的 set volume 命令调整各轨平衡。
+        // 目标轨道开始播放（虽然目前音量可能趋近 0，但 LERP 马上会拉升它）
+        if (!IsMutedBGM)
+        {
+            mciSendString($"resume bgm{track}", null, 0, IntPtr.Zero);
+            string status = GetTrackStatus(track);
+            if (!status.Contains("playing")) 
+            {
+                mciSendString($"play bgm{track} repeat", null, 0, IntPtr.Zero);
+            }
+        }
+        else
+        {
+            mciSendString("pause bgm1", null, 0, IntPtr.Zero);
+            mciSendString("pause bgm2", null, 0, IntPtr.Zero);
+            mciSendString("pause bgm3", null, 0, IntPtr.Zero);
+        }
     }
 
     /// <summary>
@@ -210,9 +221,13 @@ public static class AudioManager
                 if (_currentVolumes[i] < target) _currentVolumes[i] = Math.Min(target, _currentVolumes[i] + FADE_SPEED);
                 else _currentVolumes[i] = Math.Max(target, _currentVolumes[i] - FADE_SPEED);
 
-                mciSendString($"set bgm{i} audio all volume {(int)_currentVolumes[i]}", null, 0, IntPtr.Zero);
+                mciSendString($"setaudio bgm{i} volume to {(int)_currentVolumes[i]}", null, 0, IntPtr.Zero);
                 
-                // 彻底移除 pause 逻辑，保持永动，杜绝任何状态切换带来的卡顿
+                // 如果音量彻底归零了，就暂停它，免除后台资源占用和不可预见的重叠Bug
+                if (_currentVolumes[i] <= 0 && i != _currentBGMTrack)
+                {
+                    mciSendString($"pause bgm{i}", null, 0, IntPtr.Zero);
+                }
             }
         }
     }
