@@ -3168,7 +3168,13 @@ public partial class BattleForm : Form
             {
                 // 绘制弧线
                 float drawSweep = (wall.Layer == 1 && !l1Active && wall.HP > 0) ? sweepAngle * hpPercent : sweepAngle;
-                g.DrawArc(pen, bx - wall.Radius, by - wall.Radius, wall.Radius * 2, wall.Radius * 2, startAngle, drawSweep);
+                
+                // 【绝杀修理崩溃】GDI+ 的 DrawArc 当遇到极小且非零的 sweepAngle(如 0.0001f) 时，
+                // 会因底层构建失败而直接抛出 OutOfMemoryException
+                if (Math.Abs(drawSweep) > 0.1f)
+                {
+                    g.DrawArc(pen, bx - wall.Radius, by - wall.Radius, wall.Radius * 2, wall.Radius * 2, startAngle, drawSweep);
+                }
 
                 // 只有在已建成/已激活状态，或者正在建设中时，才显示实体支柱
                 if (wall.HP > 0)
