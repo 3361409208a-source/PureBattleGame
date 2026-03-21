@@ -1385,8 +1385,8 @@ public partial class BattleForm : Form
         {
             if (_waveTimer <= 0)
             {
-                // 开始新的一波 (略微提升怪物数量基础以增加挑战)
-                _monstersToSpawnInWave = 5 + CurrentWave * 4; 
+                // 【帧率抢救】怪物数量适度缩减，WinForms渲染太吃力
+                _monstersToSpawnInWave = 20 + CurrentWave * 10; 
                 _spawnInterval = 0;
             }
             else
@@ -1402,15 +1402,15 @@ public partial class BattleForm : Form
             _spawnInterval--;
             if (_spawnInterval <= 0)
             {
-                // 每波刷怪数量越多，单次刷出的数量也越多 (1-3个同时刷)
-                int burst = Math.Min(_monstersToSpawnInWave, 1 + CurrentWave / 15);
+                // 【割草改动】每帧刷怪数量极大提升，形成真正的虫群潮水
+                int burst = Math.Min(_monstersToSpawnInWave, 3 + CurrentWave);
                 for (int i = 0; i < burst; i++)
                 {
                     SpawnOneMonster(CurrentWave);
                 }
                 
-                // 刷怪间隔：最低 8 帧 (约0.13秒)，随波次变快
-                _spawnInterval = Math.Max(8, 50 - CurrentWave * 4); 
+                // 刷怪无间隔，源源不断涌出
+                _spawnInterval = Math.Max(1, 10 - CurrentWave); 
             }
 
             if (_monstersToSpawnInWave <= 0)
@@ -1447,7 +1447,8 @@ public partial class BattleForm : Form
         }
 
         var monster = new Monster(spawnX, spawnY, wave);
-        monster.MaxHP = 100 + wave * 40; // 提升血量成长
+        // 【割草改动】调整血量：不能像纸糊的一碰就全死光，增加硬度让他们更密集
+        monster.MaxHP = 200 + wave * 60; 
         monster.HP = monster.MaxHP;
 
         if (wave % 10 == 0 && _monstersToSpawnInWave == 1) // Boss
@@ -1523,8 +1524,34 @@ public partial class BattleForm : Form
         });
     }
 
+    public void TriggerChainExplosion(float x, float y, float radius, int damage)
+    {
+        // 视觉反馈
+        AddExplosion(x, y, Color.Orange, 5, "SPARK");
+        
+        lock (_projectileLock) { // 稍微防一下多线程并发问题
+            // 找出范围内的怪物，触发真伤爆炸，引发连环殉爆
+            for (int i = 0; i < _monsters.Count; i++)
+            {
+                var m = _monsters[i];
+                if (m.IsActive && !m.IsDead)
+                {
+                    float dx = (m.X + m.Size / 2) - x;
+                    float dy = (m.Y + m.Size / 2) - y;
+                    if (dx * dx + dy * dy <= radius * radius)
+                    {
+                        m.TakeDamage(damage); 
+                    }
+                }
+            }
+        }
+    }
+
     public void AddExplosion(float x, float y, Color color, int count = 10, string type = "SPARK")
     {
+        // 【帧率保底】如果同屏粒子超过300，坚决不再生成新粒子，拯救FPS
+        if (_particles.Count > 300) return;
+
         for (int i = 0; i < count; i++)
         {
             float angle = (float)(_rand.NextDouble() * Math.PI * 2);

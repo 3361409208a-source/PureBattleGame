@@ -1095,8 +1095,8 @@ public partial class Robot
                 else { Dx *= 0.9f; Dy *= 0.9f; }
             }
 
-            // 发射攻击 (只要在一定范围内就可以攻击)
-            if (ShootCooldown == 0 && dist <= 400 && Rand.Next(100) < 60)
+            // 发射攻击 (超远距离、必触发)
+            if (ShootCooldown <= 0 && dist <= 600)
             {
                 LaunchAttackAtMonster(MonsterTarget);
             }
@@ -1146,8 +1146,8 @@ public partial class Robot
 
         int shooterLevel = BattleForm.Instance?._shooterLevel ?? 1;
         
-        // 降低普通攻击冷却，等级越高，射速越快 (Lv.1: 37, Lv.4: 28, Lv.8: 16)
-        ShootCooldown = Math.Max(12, 40 - shooterLevel * 3);
+        // 【帧率保底】射速适中，防止对象超载
+        ShootCooldown = Math.Max(5, 12 - shooterLevel * 2);
 
         // 引入更多攻击方式：激光判定及高频率射击
         if (shooterLevel >= 3 && Rand.Next(100) < 35)
@@ -1169,9 +1169,9 @@ public partial class Robot
         else if (shooterLevel >= 4) type = "PLASMA";
         else if (shooterLevel >= 2) type = "ROCKET";
         
-        // 连发机制：每3级多发一枚子弹，最多5发
-        int projectileCount = 1 + (shooterLevel - 1) / 3;
-        if (projectileCount > 5) projectileCount = 5;
+        // 【帧率保底】适度减少子弹数量，避免卡顿
+        int projectileCount = 2 + (shooterLevel - 1);
+        if (projectileCount > 8) projectileCount = 8;
 
         for (int i = 0; i < projectileCount; i++)
         {

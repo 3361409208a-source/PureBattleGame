@@ -92,8 +92,8 @@ public class Monster
             string[] types = { "SLIME", "SPIDER", "BAT", "WORM" };
             Type = types[Rand.Next(types.Length)];
         }
-        // 核心血量缩放：从 100 提升至 400 基础，并随波数大幅成長
-        MaxHP = 400 + (wave - 1) * 200; 
+        // 【割草改动】核心血量超大幅度削减，从原来几百几千变为几十
+        MaxHP = 30 + (wave - 1) * 15; 
         HP = MaxHP;
     }
 
@@ -205,9 +205,9 @@ public class Monster
             float dy = TargetY - (Y + Size / 2);
             float dist = (float)Math.Sqrt(dx * dx + dy * dy);
             
-            // 按类型决定移动策略：大幅提升基础速度并随波数略微增加
+            // 【割草改动】移速极大幅度降低，变成慢吞吞的“僵尸海”，给玩家倾泻火力的空间
             float wave = BattleForm.Instance?.CurrentWave ?? 1;
-            float moveSpeed = (IsElite ? 0.4f : (ArmorResist > 0 ? 0.25f : 0.35f)) + (wave * 0.012f);
+            float moveSpeed = (IsElite ? 0.2f : (ArmorResist > 0 ? 0.1f : 0.15f)) + (wave * 0.003f);
             float keepDist = IsRanged ? 400f : 50f; // 远程兵保持射程
 
             if (dist > keepDist)
@@ -321,12 +321,26 @@ public class Monster
         
         AudioManager.PlayDeathSound();
 
-        // 怪物死亡掉落金币 - 提高奖励
+        // 【割草改动】怪物死亡时爆金币、爆水晶，引发连锁爆炸！
         if (BattleForm.Instance != null)
         {
-            // 大Boss掉落更多，小怪也增加奖励
-            int goldReward = Size > 50 ? 800 : 50;
+            // 掉落巨量奖励
+            int goldReward = Size > 50 ? 800 : (20 + BattleForm.Instance.CurrentWave * 2);
             BattleForm.Instance.Gold += goldReward;
+            
+            // 加入自动吸水晶的快感（几率掉落水晶直接加进账户）
+            if (Rand.Next(100) < 30) // 30%概率掉水晶
+            {
+                BattleForm.Instance.Minerals += 2 + BattleForm.Instance.CurrentWave;
+                BattleForm.Instance.AddFloatingText(X, Y - 20, $"+ 💎", Color.Cyan);
+            }
+
+            // 引发连锁大爆炸（威力加强，匹配现在变厚的血量）
+            int explosionRadius = Size > 50 ? 250 : 120; // 极大的爆炸半径
+            int explosionDamage = 180 + BattleForm.Instance.CurrentWave * 60; // 炸得够疼
+            
+            // 触发群伤
+            BattleForm.Instance.TriggerChainExplosion(X + Size / 2, Y + Size / 2, explosionRadius, explosionDamage);
         }
     }
 }
