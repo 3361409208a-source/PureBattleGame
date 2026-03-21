@@ -2322,6 +2322,10 @@ public partial class BattleForm : Form
                 _engineerLevel++;
                 AudioManager.PlaySound("level_up");
                 foreach (var r in _robots) if (r.ClassType == RobotClass.Engineer) r.ApplyClassProperties();
+                
+                // 动态构建一层新的围墙蓝图！
+                BuildOuterLayerBlueprint(_engineerLevel);
+
                 UpdateUI();
             }
         }, true));
@@ -3110,12 +3114,38 @@ public partial class BattleForm : Form
         return _walls.Any(w => w.Layer == 0 && w.HP <= 0);
     }
 
+    public int MaxActiveLayer()
+    {
+        return _walls.Where(w => w.HP > 0).Max(w => (int?)w.Layer) ?? 0;
+    }
+
+    // 允许工程兵无限扩张的基础蓝图生成函数
+    private void BuildOuterLayerBlueprint(int layerIndex)
+    {
+        if (_walls.Any(w => w.Layer == layerIndex)) return;
+
+        // 每多一层，圈块增加12，半径增加300，血量指数级增强
+        int segments = 24 + layerIndex * 12;
+        float radius = 150 + layerIndex * 300;
+        int maxHp = 1000 + layerIndex * 2000;
+        float thickness = 10 + layerIndex * 5;
+
+        for (int i = 0; i < segments; i++)
+        {
+            float angle = (float)(i * Math.PI * 2 / segments);
+            var wall = new WallSegment(angle, radius, thickness, maxHp) { Layer = layerIndex, HP = 0 };
+            _walls.Add(wall);
+        }
+
+        AddFloatingText(this.ClientSize.Width / 2, this.ClientSize.Height / 2, $"外环扩张方案: 环区 {layerIndex} 已启动!", Color.Orange);
+        AudioManager.PlaySound("build");
+    }
+
     public WallSegment? GetWeakestWall(Robot caller)
     {
-        // 1. 优先度排序：层级优先 (层 0 高于 层 1)，缺失优先 (HP=0 高于 HP>0)
-        bool l1Active = IsLayer1Complete();
+        // 自动按层级从内向外建造/修理
         var best = _walls.Where(w => (w.LockingRobot == null || w.LockingRobot == caller) && w.HP < w.MaxHP)
-                         .OrderBy(w => (l1Active ? (w.Layer == 1 ? 0 : 1) : w.Layer) * 1000000 + (w.HP <= 0 ? -10000 : w.HP)) 
+                         .OrderBy(w => w.Layer * 1000000 + (w.HP <= 0 ? -10000 : w.HP)) 
                          .FirstOrDefault();
 
         if (best != null) best.LockingRobot = caller;
@@ -3124,16 +3154,13 @@ public partial class BattleForm : Form
 
     public WallSegment? GetGarrisonWall(Robot caller, Monster threat)
     {
-        // 寻找最优驻扎位：
-        // 1. 如果外层防线已激活（或已经开始大规模扩建），则尝试换防至外层。
-        // 2. 否则，留在内层防守。
-        bool l1Active = IsLayer1Complete();
-        bool l1InConstruction = _walls.Count(w => w.Layer == 1 && w.HP > 0) > 4;
+        // 自动寻找当前已开工（HP>0）的最外层大本营层级
+        int maxActiveLayer = _walls.Where(w => w.HP > 0).Max(w => (int?)w.Layer) ?? 0;
         
         var br = GetBaseRobot();
         
         var best = _walls.Where(w => w.IsActive && 
-                                    (w.Layer == ( (l1Active || l1InConstruction) ? 1 : 0)) && 
+                                    (w.Layer == maxActiveLayer) && 
                                     (w.GarrisonRobot == null || w.GarrisonRobot == caller))
                          .OrderBy(w => {
                              var wp = w.GetWorldPosition(br?.X ?? 0, br?.Y ?? 0);
@@ -3155,16 +3182,12 @@ public partial class BattleForm : Form
 
     private void RenderWalls(Graphics g, float bx, float by)
     {
-        int l1Count = _walls.Count(w => w.Layer == 1);
-        int l0Count = _walls.Count(w => w.Layer == 0);
-        float sweepAngleOuter = 360f / (l1Count > 0 ? l1Count : 36);
-        float sweepAngleInner = 360f / (l0Count > 0 ? l0Count : 24);
-        
-        bool l1Active = IsLayer1Complete();
-
         foreach (var wall in _walls)
         {
-            float sweepAngle = wall.Layer == 1 ? sweepAngleOuter : sweepAngleInner;
+            int layerCount = _walls.Count(w => w.Layer == wall.Layer);
+            float sweepAngle = 360f / (layerCount > 0 ? layerCount : 24);
+            bool isLayerComplete = _walls.Where(w => w.Layer == wall.Layer).All(w => w.HP > 0);
+
             float wx = bx + (float)Math.Cos(wall.Angle) * wall.Radius;
             float wy = by + (float)Math.Sin(wall.Angle) * wall.Radius;
             float startAngle = (float)(wall.Angle * 180 / Math.PI) - sweepAngle / 2;
@@ -3175,44 +3198,40 @@ public partial class BattleForm : Form
             
             if (wall.HP <= 0)
             {
-                baseColor = wall.Layer == 1 ? Color.FromArgb(40, 255, 200, 0) : Color.FromArgb(40, 0, 255, 255);
+                // 等待修筑的淡色细线模板
+                baseColor = wall.Layer > 0 ? Color.FromArgb(40, 255, 200, 0) : Color.FromArgb(40, 0, 255, 255);
             }
-            else if (wall.Layer == 1 && !l1Active)
+            else if (wall.Layer > 0 && !isLayerComplete)
             {
+                // 仍在全层建设期时
                 baseColor = Color.FromArgb(100, 255, 180, 0);
             }
             else
             {
+                // 已建成、激活防御状态的渐变颜色 (按血量)
                 baseColor = Color.FromArgb(200, (int)(255 * (1 - hpPercent)), (int)(255 * hpPercent), 
-                                              wall.Layer == 1 ? (hpPercent > 0.8f ? 255 : 100) : 100);
+                                              wall.Layer > 0 ? (hpPercent > 0.8f ? 255 : 100) : 100);
             }
 
             Color wallColor = wall.HitFlashTimer > 0 ? Color.White : baseColor;
 
-            // 恢复原始形态：圆弧线 + 实心方块（厚度标示）
             using (var pen = new Pen(Color.FromArgb(100, wallColor), 2))
             using (var brush = new SolidBrush(wallColor))
             {
-                // 绘制弧线
-                float drawSweep = (wall.Layer == 1 && !l1Active && wall.HP > 0) ? sweepAngle * hpPercent : sweepAngle;
+                float drawSweep = (wall.Layer > 0 && !isLayerComplete && wall.HP > 0) ? sweepAngle * hpPercent : sweepAngle;
                 
-                // 【绝杀修理崩溃】GDI+ 的 DrawArc 当遇到极小且非零的 sweepAngle(如 0.0001f) 时，
-                // 会因底层构建失败而直接抛出 OutOfMemoryException
                 if (Math.Abs(drawSweep) > 0.1f)
                 {
                     g.DrawArc(pen, bx - wall.Radius, by - wall.Radius, wall.Radius * 2, wall.Radius * 2, startAngle, drawSweep);
                 }
 
-                // 只有在已建成/已激活状态，或者正在建设中时，才显示实体支柱
                 if (wall.HP > 0)
                 {
                     g.TranslateTransform(wx, wy);
                     g.RotateTransform((float)(wall.Angle * 180 / Math.PI));
-                    // 原始形态的方块绘制
                     g.FillRectangle(brush, -wall.Thickness / 2, -wall.Thickness / 2, wall.Thickness, wall.Thickness * 2);
                     
                     g.ResetTransform();
-                    // 恢复相机变换 (这一步至关重要，防止影响后续渲染)
                     g.TranslateTransform(this.ClientSize.Width / 2f + _panX, this.ClientSize.Height / 2f + _panY);
                     g.ScaleTransform(1.0f / _worldViewFactor, 1.0f / _worldViewFactor);
                     g.TranslateTransform(-bx, -by);
@@ -3227,10 +3246,6 @@ public partial class BattleForm : Form
         if (b == null) return;
         float bx = b.X + b.Size / 2, by = b.Y + b.Size / 2;
 
-        bool l1Active = IsLayer1Complete();
-        int innerCount = _walls.Count(w => w.Layer == 0);
-        int outerCount = _walls.Count(w => w.Layer == 1);
-
         foreach (var m in _monsters)
         {
             if (!m.IsActive || m.IsDead) continue;
@@ -3242,8 +3257,10 @@ public partial class BattleForm : Form
 
             foreach (var wall in _walls)
             {
+                bool isLayerComplete = _walls.Where(w => w.Layer == wall.Layer).All(w => w.HP > 0);
+                
                 // 层级过滤：外圈未开机视为虚空
-                if (wall.Layer == 1 && !l1Active) continue;
+                if (wall.Layer > 0 && !isLayerComplete) continue;
                 if (wall.HP <= 0) continue;
                 
                 float angle = (float)Math.Atan2(dy, dx);
@@ -3252,8 +3269,10 @@ public partial class BattleForm : Form
                 float angleDiff = (float)Math.Abs(angle - wall.Angle);
                 if (angleDiff > Math.PI) angleDiff = (float)(Math.PI * 2 - angleDiff);
 
-                float halfSweep = (float)Math.PI / (wall.Layer == 1 ? outerCount : innerCount);
+                int layerCount = _walls.Count(w => w.Layer == wall.Layer);
+                float halfSweep = (float)Math.PI / (layerCount > 0 ? layerCount : 24);
                 if (angleDiff < halfSweep + 0.05f) 
+
                 {
                     // 检测带 + 击退逻辑锁定：务必保持 += 符号以实现向外反弹！
                 // --- 核心修复：防止分母为零导致怪物坐标变为 NaN ---

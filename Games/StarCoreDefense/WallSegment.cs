@@ -40,8 +40,8 @@ public class WallSegment
     {
         if (!IsActive) return;
 
-        // --- 核心保护：外圈在合拢开机前处于“无敌”蓝图状态，不接受任何怪物伤害 ---
-        if (Layer == 1 && BattleForm.Instance != null && !BattleForm.Instance.IsLayer1Complete())
+        // --- 核心保护：所有新开工的外层环区在未闭合供能前，处于无敌的“虚影”蓝图状态 ---
+        if (Layer > 0 && BattleForm.Instance != null && !BattleForm.Instance.IsLayerComplete(Layer))
         {
             return;
         }

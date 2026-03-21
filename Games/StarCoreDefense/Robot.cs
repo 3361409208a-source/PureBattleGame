@@ -875,9 +875,9 @@ public partial class Robot
 
         // 1. 轨道半径：严格同步墙体半径 (Layer 0: 150, Layer 1: 450)
         // 增加 25 像素偏移，使守护兵处于墙体稍微外一点点的位置。
-        // 修正：只有当外圈防线完全建造成功并激活后，守护兵再出去。
-        bool l1Active = BattleForm.Instance?.IsLayer1Complete() ?? false;
-        float orbitRadius = l1Active ? 475f : 175f;
+        // 修正：守护者将跟随基地扩张，永远绕着最外层已激活防线外围 25 像素飞行
+        int maxLayer = BattleForm.Instance?.MaxActiveLayer() ?? 0;
+        float orbitRadius = 175f + maxLayer * 300f;
 
         // 2. 轨道旋转
         float orbitSpeed = 0.015f * SpeedMultiplier;
@@ -1234,13 +1234,13 @@ public partial class Robot
             float dist = (float)Math.Sqrt(dx * dx + dy * dy);
 
             // --- AI 巡逻半径动态扩展：防线合拢后，机器人巡逻圈外推 ---
-            bool l1Active = BattleForm.Instance?.IsLayer1Complete() ?? false;
-            float baseRadius = l1Active ? 420f : 70f; // 外圈驻扎点在 450，所以驻守半径定在 420 附近
+            int maxLayer = BattleForm.Instance?.MaxActiveLayer() ?? 0;
+            float baseRadius = 70f + maxLayer * 350f; // 动态外推，如 Layer1 420, Layer2 770
             
             float idealRadius = baseRadius;
-            if (ClassType == RobotClass.Guardian) idealRadius = baseRadius + (l1Active ? 30f : 50f);
-            else if (ClassType == RobotClass.Shooter) idealRadius = baseRadius + (l1Active ? 10f : 15f) + (Id % 4) * 12; 
-            else if (ClassType == RobotClass.Healer) idealRadius = l1Active ? 400f : 50f; // 治疗者随动
+            if (ClassType == RobotClass.Guardian) idealRadius = baseRadius + (maxLayer > 0 ? 30f : 50f);
+            else if (ClassType == RobotClass.Shooter) idealRadius = baseRadius + (maxLayer > 0 ? 10f : 15f) + (Id % 4) * 12; 
+            else if (ClassType == RobotClass.Healer) idealRadius = maxLayer > 0 ? (baseRadius - 20f) : 50f;
 
             float boostMult = SpeedBoostTimer > 0 ? 3.0f : 1.0f;
             float maxSpeed = 2.5f * SpeedMultiplier * boostMult;
