@@ -3198,11 +3198,15 @@ public partial class BattleForm : Form
                 if (angleDiff < halfSweep + 0.05f) 
                 {
                     // 检测带 + 击退逻辑锁定：务必保持 += 符号以实现向外反弹！
+                    // 检测带 + 击退逻辑锁定：务必保持 += 符号以实现向外反弹！
                     if (Math.Abs(dist - wall.Radius) < (wall.Thickness + m.Size / 2f) + 5f)
                     {
-                        m.X += (dx / dist) * 12f; // 正确的向外推力
-                        m.Y += (dy / dist) * 12f;
-                        wall.TakeDamage(1 + CurrentWave / 5);
+                        m.X += (dx / dist) * 15f; // 增加反弹力度，但撞击更疼
+                        m.Y += (dy / dist) * 15f;
+
+                        // 【割草改动】增加撞墙伤害，精英怪撞墙伤害翻倍，让城墙有被冲破的危机感
+                        int wallDmg = (10 + CurrentWave) * (m.IsElite ? 5 : 1); 
+                        wall.TakeDamage(wallDmg);
                     }
                 }
             }

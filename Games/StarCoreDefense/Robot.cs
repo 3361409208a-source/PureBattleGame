@@ -702,7 +702,9 @@ public partial class Robot
             {
                 _activeRepairTargets.Add(w);
                 TargetWall = w; 
-                int baseRepair = 15 + engineerLevel * 10; 
+                // 【平衡性削弱】修复量从 20+ 降到 1~5，防止单人奶爆全图怪物 DPS。
+                // 现在的工程兵修墙更像是“细水长流”，必须堆人手才能顶住后期压力
+                int baseRepair = 1 + (engineerLevel / 3); 
                 w.Repair(baseRepair);
             }
             if (_activeRepairTargets.Count == 0) TargetWall = null;
