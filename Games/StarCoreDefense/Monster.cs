@@ -335,9 +335,9 @@ public class Monster
                 BattleForm.Instance.AddFloatingText(X, Y - 20, $"+ 💎", Color.Cyan);
             }
 
-            // 引发连锁大爆炸（威力加强，匹配现在变厚的血量）
-            int explosionRadius = Size > 50 ? 250 : 120; // 极大的爆炸半径
-            int explosionDamage = 180 + BattleForm.Instance.CurrentWave * 60; // 炸得够疼
+            // 【平衡性削弱】降低大爆炸引发的连环斩杀线，防止瞬间叠加秒杀满血Boss
+            int explosionRadius = Size > 50 ? 150 : 80; // 大幅缩小爆炸波及范围，减少殉爆层数
+            int explosionDamage = 30 + BattleForm.Instance.CurrentWave * 15; // 伤害下调至合理区间，主要清理贴身小怪
             
             // 触发群伤
             BattleForm.Instance.TriggerChainExplosion(X + Size / 2, Y + Size / 2, explosionRadius, explosionDamage);

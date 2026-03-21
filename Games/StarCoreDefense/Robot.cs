@@ -527,50 +527,13 @@ public partial class Robot
     private void FindAndAssignTarget(List<Robot> allRobots, List<Monster> allMonsters)
     {
         if (_targetUpdateCooldown > 0) return;
-        _targetUpdateCooldown = 15 + new Random().Next(15); // 随机错开更新频率
-        // 1. 采集型机器人：全屏超速搜索逻辑
+        _targetUpdateCooldown = 15 + new Random().Next(15); 
+        
+        // 【割草改动】采集型机器人：彻底放弃乱跑找矿的设定。现在它们是“主基地的挂机印钞机”！
         if (ClassType == RobotClass.Worker)
         {
-            var minerals = BattleForm.Instance?.GetMinerals();
-            if (minerals != null)
-            {
-                Mineral? bestMineral = null;
-                float bestMineralScore = float.MaxValue;
-                
-                // 采集工总数
-                int totalWorkers = allRobots.Count(r => r.ClassType == RobotClass.Worker && r.IsActive && !r.IsDead);
-
-                foreach (var m in minerals)
-                {
-                    if (!m.IsActive) continue;
-                    
-                    // 核心抢占锁逻辑：严格 1对1，如果被别人锁了就不去，保证不扎堆
-                    if (m.LockingRobot != null && m.LockingRobot != this)
-                        continue;
-
-                    float dxM = m.X - X;
-                    float dyM = m.Y - Y;
-                    float distSq = dxM * dxM + dyM * dyM;
-                    
-                    float mineralScore = distSq;
-                    
-                    if (mineralScore < bestMineralScore)
-                    {
-                        bestMineralScore = mineralScore;
-                        bestMineral = m;
-                    }
-                }
-                
-                if (bestMineral != null)
-                {
-                    // 先释放旧锁，再锁定新目标
-                    if (TargetMineral != null && TargetMineral.LockingRobot == this) TargetMineral.LockingRobot = null;
-                    TargetMineral = bestMineral;
-                    TargetMineral.LockingRobot = this; 
-                    return;
-                }
-            }
-            return;
+            TargetMineral = null;
+            return; // 采集工无需在此寻找任何怪/矿，不瞎跑！
         }
 
         // 2. 工程兵：寻找损坏的围墙
@@ -630,160 +593,137 @@ public partial class Robot
 
     private void UpdateWorkerLogic()
     {
-        // 动态避战逻辑：采集工不再“一闻到硝烟就跑”
-        if (BattleForm.Instance != null && BattleForm.Instance.IsUnderThreat())
+        // 【解压改动】不再乱跑，所有Worker全职在内圈转化为“挂机资源印钞机”
+        var baseBot = BattleForm.Instance?.GetBaseRobot();
+        if (baseBot != null)
         {
-            // 判定是否真的危险：
-            // 1. 如果外墙已激活，且附近 350 像素内没有怪物，认为环境相对安全，可以继续采矿
-            // 2. 如果外墙未建成，或者有怪物已突入内圈（距离自身 < 350），则必须回撤
-            bool l1Active = BattleForm.Instance.IsLayer1Complete();
-            float monsterDist = BattleForm.Instance.GetNearestMonsterDist(X, Y);
+            float targetRadius = 50f + (Id % 10) * 10f; // 环绕半径
+            float dx = (baseBot.X + baseBot.Size / 2) - (X + Size / 2);
+            float dy = (baseBot.Y + baseBot.Size / 2) - (Y + Size / 2);
+            float dist = Math.Max(1, (float)Math.Sqrt(dx * dx + dy * dy));
 
-            if (!l1Active || monsterDist < 350)
-            {
-                TargetMineral = null;
-                UpdateSafetyRetreat();
-                return;
+            float maxSpeed = 3.0f * SpeedMultiplier;
+
+            if (dist > targetRadius + 15) { Dx += (dx / dist) * 0.3f; Dy += (dy / dist) * 0.3f; }
+            else if (dist < targetRadius - 15) { Dx -= (dx / dist) * 0.3f; Dy -= (dy / dist) * 0.3f; }
+            else 
+            { 
+                float tangentDx = -(dy / dist) * maxSpeed * 0.5f;
+                float tangentDy =  (dx / dist) * maxSpeed * 0.5f;
+                if (Id % 2 == 0) { tangentDx = -tangentDx; tangentDy = -tangentDy; } // 左右互逆
+                Dx = Dx * 0.9f + tangentDx * 0.1f;
+                Dy = Dy * 0.9f + tangentDy * 0.1f;
             }
-        }
-
-        if (TargetMineral != null && !TargetMineral.IsActive) TargetMineral = null;
-        if (TargetMineral == null)
-        {
-            UpdateRandomMovement();
-            return;
-        }
-
-        float dx = TargetMineral.X - X;
-        float dy = TargetMineral.Y - Y;
-        float dist = (float)Math.Sqrt(dx * dx + dy * dy);
-
-        // 采集工速度随等级极快增长：基础 6.0 + (等级 * 1.5)
-        float boostMult = SpeedBoostTimer > 0 ? 3.0f : 1.0f;
-        float maxSpeed = (6.0f + (BattleForm.Instance?._workerLevel ?? 1) * 1.5f) * SpeedMultiplier * boostMult;
-
-        if (dist > 15)
-        {
-            Dx = Dx * 0.8f + (dx / dist) * maxSpeed * 0.2f;
-            Dy = Dy * 0.8f + (dy / dist) * maxSpeed * 0.2f;
-            _miningTimer = 0;
-        }
-        else
-        {
-            Dx *= 0.3f;
-            Dy *= 0.3f;
+            
+            // 极速印钞逻辑
             _miningTimer++;
-            if (_miningTimer >= 40) // 采集速度也变快了
+            int workerLevel = BattleForm.Instance?._workerLevel ?? 1;
+            
+            // 等级越高，印钞越快（最快3帧一次爆钱，就像角子机）
+            int interval = Math.Max(3, 40 - workerLevel * 4); 
+
+            if (_miningTimer >= interval)
             {
                 _miningTimer = 0;
-                AudioManager.PlaySound("mine");
-                // 这里加星矿（钻石）而不是钱
                 if (BattleForm.Instance != null)
                 {
-                    // 采矿量随采集工等级提升（Lv.1: 15, Lv.2: 20, Lv.3: 25...）
-                    int workerLv = BattleForm.Instance._workerLevel;
-                    int mineralYield = 10 + workerLv * 5;
-                    BattleForm.Instance.Minerals += mineralYield;
-                    BattleForm.Instance.AddFloatingText(X, Y - 20, $"+{mineralYield} 💎", Color.Cyan);
+                    int goldYield = 10 + workerLevel * 4;
+                    int mineralYield = (Rand.Next(100) < (5 + workerLevel)) ? 1 : 0; // 几率爆原矿
                     
-                    // 彻底移除该晶体，确保“采完了”
-                    TargetMineral.LockingRobot = null; // 采完释放
-                    TargetMineral.IsActive = false;
-                    BattleForm.Instance.RemoveMineral(TargetMineral);
+                    BattleForm.Instance.Gold += goldYield;
+                    BattleForm.Instance.Minerals += mineralYield;
+                    
+                    // 每5次闪现一次特效和数字，防止满屏幕黄字
+                    if (Rand.Next(100) < 20)
+                    {
+                        BattleForm.Instance.AddFloatingText(X + Size / 2, Y - 10, $"+{goldYield}", Color.Gold);
+                        BattleForm.Instance.AddExplosion(X + Size / 2, Y + Size / 2, Color.Gold, 1, "SPARK");
+                    }
                 }
-                // 采集完后清除目标重新通过 FindAndAssignTarget 全局检索
-                TargetMineral = null;
             }
         }
     }
 
+    // 【改版工程兵】：绝对安全地挂机超频修墙，甚至还能发死亡射线！
+    private List<WallSegment> _activeRepairTargets = new List<WallSegment>();
+
     private void UpdateEngineerLogic()
     {
-        bool l1Active = BattleForm.Instance?.IsLayer1Complete() ?? false;
-
-        // 战斗状态下的精细化决策
-        if (BattleForm.Instance != null && BattleForm.Instance.IsUnderThreat())
+        // 1. 绝对安全的定步巡航（在内圈绕转）
+        var baseBot = BattleForm.Instance?.GetBaseRobot();
+        if (baseBot != null)
         {
-            // 修正冲突逻辑：如果外线已开机，外线就是主战场，允许工程师继续待在外线。
-            // 只有在外线还没开机，或者内层出现裂痕时，才由于“避险”逻辑退守。
-            bool doingUrgentWork = TargetWall != null && 
-                                  (TargetWall.Layer == 0 || (l1Active && TargetWall.Layer == 1)) && 
-                                  TargetWall.HP < TargetWall.MaxHP;
-            
-            if (!doingUrgentWork)
+            float targetRadius = 70f + (Id % 3) * 15f; 
+            float bx = baseBot.X + baseBot.Size / 2;
+            float by = baseBot.Y + baseBot.Size / 2;
+            float dx = bx - (X + Size / 2);
+            float dy = by - (Y + Size / 2);
+            float dist = Math.Max(1, (float)Math.Sqrt(dx * dx + dy * dy));
+
+            float maxSpeed = 3.5f * SpeedMultiplier;
+            if (dist > targetRadius + 10) { Dx += (dx / dist) * 0.3f; Dy += (dy / dist) * 0.3f; }
+            else if (dist < targetRadius - 10) { Dx -= (dx / dist) * 0.3f; Dy -= (dy / dist) * 0.3f; }
+            else 
+            { 
+                float tangentDx = -(dy / dist) * maxSpeed * 0.5f;
+                float tangentDy =  (dx / dist) * maxSpeed * 0.5f;
+                Dx = Dx * 0.9f + tangentDx * 0.1f;
+                Dy = Dy * 0.9f + tangentDy * 0.1f;
+            }
+            Dx *= 0.9f; Dy *= 0.9f;
+        }
+
+        int engineerLevel = BattleForm.Instance?._engineerLevel ?? 1;
+
+        // 2. 超频远距离群体无极修墙 (每帧执行！)
+        _activeRepairTargets.Clear();
+        if (BattleForm.Instance != null && BattleForm.Instance._walls != null)
+        {
+            // 找出全图破损最严重的前 N 面墙（随等级增加同时修复数量）
+            int maxTargets = 2 + engineerLevel;
+            var damagedWalls = BattleForm.Instance._walls
+                               .Where(w => w.HP > 0 && w.HP < w.MaxHP)
+                               .OrderBy(w => (float)w.HP / w.MaxHP)
+                               .Take(maxTargets);
+                               
+            foreach (var w in damagedWalls)
             {
-                // 如果当前没在干活，优先找内层修，内层满了再看外层（如果外层已逻辑在线）
-                var bestRepair = BattleForm.Instance?._walls
-                                    .Where(w => ((l1Active && w.Layer == 1) || w.Layer == 0) && w.HP < w.MaxHP && (w.LockingRobot == null || w.LockingRobot == this))
-                                    .OrderBy(w => (l1Active ? (w.Layer == 1 ? 0 : 1) : w.Layer))
-                                    .FirstOrDefault();
-                
-                if (bestRepair != null)
-                {
-                    UnlockTargets();
-                    TargetWall = bestRepair;
-                    TargetWall.LockingRobot = this;
-                }
-                else
-                {
-                    // 确实内外都没活干（全满），撤回中心避险
-                    UnlockTargets();
-                    TargetWall = null;
-                    UpdateSafetyRetreat();
-                    return;
-                }
+                _activeRepairTargets.Add(w);
+                TargetWall = w; // 给渲染画线用（顺便借用旧逻辑特效）
+                int baseRepair = 10 + engineerLevel * 10; // 极其变态的每帧修复量
+                w.Repair(baseRepair);
+            }
+            if (_activeRepairTargets.Count == 0) TargetWall = null;
+            
+            if (_activeRepairTargets.Count > 0 && Rand.Next(100) < 15)
+            {
+                BattleForm.Instance.AddExplosion(X + Size / 2, Y + Size / 2, Color.DeepSkyBlue, 1, "SPARK");
             }
         }
-        if (TargetWall != null && TargetWall.HP > 0 && BattleForm.Instance != null && BattleForm.Instance.HasWallGaps())
+        
+        // 3. 全新技能：天基死亡射线 (DEATH_RAY)
+        _buildingTimer++;
+        int weaponCooldown = Math.Max(20, 150 - engineerLevel * 10); // 随等级变快
+        
+        if (_buildingTimer >= weaponCooldown)
         {
-             UnlockTargets();
-             TargetWall = null;
-        }
-
-        // 目标失效、修复完成或被他人占用时，重新选择目标
-        if (TargetWall == null || (TargetWall.LockingRobot != null && TargetWall.LockingRobot != this) || TargetWall.HP >= TargetWall.MaxHP)
-        {
-            UnlockTargets(); // 先清除旧的锁定关系
-            TargetWall = BattleForm.Instance?.GetWeakestWall(this);
-        }
-
-        if (TargetWall == null)
-        {
-            UpdateRandomMovement();
-            return;
-        }
-
-        var wp = TargetWall.GetWorldPosition(BattleForm.Instance!.GetBaseRobot()?.X ?? 0, BattleForm.Instance!.GetBaseRobot()?.Y ?? 0);
-        float dx = wp.X - X;
-        float dy = wp.Y - Y;
-        float dist = (float)Math.Sqrt(dx * dx + dy * dy);
-
-        if (dist > 25)
-        {
-            float maxSpeed = 5.0f * SpeedMultiplier;
-            Dx = Dx * 0.9f + (dx / dist) * maxSpeed * 0.1f;
-            Dy = Dy * 0.9f + (dy / dist) * maxSpeed * 0.1f;
             _buildingTimer = 0;
-        }
-        else
-        {
-            Dx *= 0.5f;
-            Dy *= 0.5f;
-            _buildingTimer++;
-            // 效率大幅提升：外环工作量大，修理速度额外增加 5 倍
-            float baseRepair = 2.0f + (BattleForm.Instance?._engineerLevel ?? 1) * 2.5f;
-            float finalRepair = TargetWall.Layer == 1 ? baseRepair * 5.0f : baseRepair;
-            TargetWall.Repair((int)finalRepair); 
+            // 找一个最近的倒霉怪射激光
+            var allMonsters = BattleForm.Instance?.GetAllMonsters();
+            Monster? targetMonster = allMonsters?
+                                     .Where(m => m.IsActive && !m.IsDead)
+                                     .OrderBy(m => Math.Pow(m.X - X, 2) + Math.Pow(m.Y - Y, 2))
+                                     .FirstOrDefault();
             
-            if (_buildingTimer % 15 == 0)
+            if (targetMonster != null && BattleForm.Instance != null)
             {
-                AudioManager.PlaySound("build");
-                BattleForm.Instance?.AddExplosion(X + Size / 2, Y + Size / 2, Color.DeepSkyBlue, 2, "SPARK");
-            }
-
-            if (TargetWall.HP >= TargetWall.MaxHP)
-            {
-                UnlockTargets();
+                float cx = X + Size / 2;
+                float cy = Y + Size / 2;
+                var (mx, my) = targetMonster.GetCenter();
+                var laser = new Projectile(this, cx, cy, mx, my, "DEATH_RAY");
+                BattleForm.Instance.AddProjectile(laser);
+                
+                AudioManager.PlayShootSound();
             }
         }
     }
@@ -843,69 +783,72 @@ public partial class Robot
         HealingTargets.Clear();
         _healCooldown--;
 
-        // 寻找需要治疗的队友，优先选择血量百分比最低的（伤势最重的）
-        // 当基地血量百分比低于70%时，才将基地提至最高优先级
-        var baseRobot2 = allRobots.FirstOrDefault(r => r.ClassType == RobotClass.Base);
-        bool baseInDanger = baseRobot2 != null && (float)baseRobot2.HP / baseRobot2.MaxHP < 0.70f;
-        var targets = allRobots.Where(r => r != this && r.IsActive && !r.IsDead && r.HP < r.MaxHP && r.ClassType != RobotClass.Worker)
-                               .OrderBy(r => baseInDanger && r.ClassType == RobotClass.Base ? 0 : 1) // 仅基地危机时优先基地
-                               .ThenBy(r => (float)r.HP / r.MaxHP) // 按血量百分比排序，最危险的先治
-                               .Take(3)
-                               .ToList();
-
-        foreach (var target in targets)
+        // 【割草改动】医疗兵变为“全图光环枢纽”，围绕基地绝对安全地巡航
+        var baseBot = BattleForm.Instance?.GetBaseRobot();
+        if (baseBot != null)
         {
-            float dx = target.X - X;
-            float dy = target.Y - Y;
-            float dist = (float)Math.Sqrt(dx * dx + dy * dy);
+            float targetRadius = 100f + (Id % 5) * 20f; // 环绕在比矿工稍远一点的内圈
+            float bDx = (baseBot.X + baseBot.Size / 2) - (X + Size / 2);
+            float bDy = (baseBot.Y + baseBot.Size / 2) - (Y + Size / 2);
+            float bDist = Math.Max(1, (float)Math.Sqrt(bDx * bDx + bDy * bDy));
 
-            if (dist < 300)
+            float maxSpeed = 3.0f * SpeedMultiplier;
+            if (bDist > targetRadius + 15) { Dx += (bDx / bDist) * 0.4f; Dy += (bDy / bDist) * 0.4f; }
+            else if (bDist < targetRadius - 15) { Dx -= (bDx / bDist) * 0.4f; Dy -= (bDy / bDist) * 0.4f; }
+            else 
+            { 
+                float tangentDx = -(bDy / bDist) * maxSpeed * 0.5f;
+                float tangentDy =  (bDx / bDist) * maxSpeed * 0.5f;
+                Dx = Dx * 0.9f + tangentDx * 0.1f;
+                Dy = Dy * 0.9f + tangentDy * 0.1f;
+            }
+            Dx *= 0.9f; Dy *= 0.9f;
+        }
+
+        int healerLevel = BattleForm.Instance?._healerLevel ?? 1;
+        int interval = Math.Max(30, 120 - healerLevel * 10); // 随等级光环加速，最快半秒一跳
+
+        if (_healCooldown <= 0)
+        {
+            _healCooldown = interval;
+            
+            // 【全图爆奶】包含百分比回血，极大加强对基地和被围墙单位的保护！
+            int flatHeal = 50 + healerLevel * 30; // 基础大口奶
+            float pctHeal = 0.02f + healerLevel * 0.005f; // 最大生命值百分比治疗
+            
+            // 奶机器人与基地
+            foreach (var r in allRobots)
             {
-                HealingTargets.Add(target);
-                if (_healCooldown <= 0)
+                if (r.IsActive && !r.IsDead && r.HP < r.MaxHP)
                 {
-                    int healAmount = 20 + ((BattleForm.Instance?._healerLevel ?? 1) - 1) * 5; // 根据等级增加治疗量
-                    target.HP = Math.Min(target.MaxHP, target.HP + healAmount);
-                    BattleForm.Instance?.AddExplosion(target.X + target.Size / 2, target.Y + target.Size / 2, Color.LimeGreen, 2, "SPARK");
-                    BattleForm.Instance?.AddFloatingText(target.X + target.Size / 2, target.Y - 10, $"+{healAmount}", Color.LimeGreen);
+                    int totalHeal = flatHeal + (int)(r.MaxHP * pctHeal);
+                    r.HP = Math.Min(r.MaxHP, r.HP + totalHeal);
+                    
+                    // 特效：全屏幕撒下生命之光
+                    BattleForm.Instance?.AddExplosion(r.X + r.Size / 2, r.Y + r.Size / 2, Color.LimeGreen, 2, "SPARK");
+                    // 为防止满屏跳字太卡，仅缺血严重的单位跳绿色大字
+                    if (r == this || r.ClassType == RobotClass.Base || (float)r.HP / r.MaxHP < 0.4f)
+                    {
+                        BattleForm.Instance?.AddFloatingText(r.X + r.Size / 2, r.Y - 10, $"+{totalHeal}", Color.LimeGreen);
+                    }
                 }
             }
-        }
-
-        if (_healCooldown <= 0) _healCooldown = 30; // 0.5秒回一次血
-
-        // 移动逻辑：如果周围有怪物，逃跑；否则走向血量最少或者最近的队友
-        if (MonsterTarget != null)
-        {
-            var (monsterX, monsterY) = MonsterTarget.GetCenter();
-            float mDx = monsterX - X;
-            float mDy = monsterY - Y;
-            float mDist = (float)Math.Sqrt(mDx * mDx + mDy * mDy);
-
-            if (mDist < 200)
+            
+            // 奶所有城墙 (医疗兵的黑科技：纳米机器人隔空修复城墙)
+            if (BattleForm.Instance != null && BattleForm.Instance._walls != null)
             {
-                // 逃离怪物
-                float maxSpeed = 3.0f * SpeedMultiplier;
-                Dx -= (mDx / mDist) * 0.5f;
-                Dy -= (mDy / mDist) * 0.5f;
+                foreach(var w in BattleForm.Instance._walls)
+                {
+                    if (w.HP > 0 && w.HP < w.MaxHP)
+                    {
+                        int wallHeal = flatHeal * 2 + (int)(w.MaxHP * pctHeal);
+                        w.HP = Math.Min(w.MaxHP, w.HP + wallHeal);
+                    }
+                }
             }
-            else
-            {
-                FollowTeammates(targets);
-            }
-        }
-        else
-        {
-            FollowTeammates(targets);
-        }
-
-        // 限制最大速度
-        float currentSpeed = (float)Math.Sqrt(Dx * Dx + Dy * Dy);
-        float limitSpeed = 3.0f * SpeedMultiplier;
-        if (currentSpeed > limitSpeed)
-        {
-            Dx = (Dx / currentSpeed) * limitSpeed;
-            Dy = (Dy / currentSpeed) * limitSpeed;
+            
+            // 中心爆发的大治疗圈特效
+            BattleForm.Instance?.AddExplosion(X + Size / 2, Y + Size / 2, Color.LimeGreen, 15, "RING");
         }
     }
 
@@ -976,31 +919,20 @@ public partial class Robot
 
             if (distM < contactDist)
             {
-                // 撞击伤害：基础 + 速度加成 (降低速度加成的倍率，防止过高)
-                int totalDmg = Damage + (int)(Damage * 0.25f * currentV);
-                m.TakeDamage(totalDmg);
-                
-                // 击退有力化：根据守卫者等级和当前角动量决定
-                float pushForce = 15f + (BattleForm.Instance?._guardianLevel ?? 1) * 3f + (currentV * 0.8f);
-                if (distM < 0.1f) distM = 0.1f;
-                
-                // 击退方向：合力方向（移动方向 + 径向方向）
-                float pushX = (Dx * 0.7f + (dxM / distM) * 0.3f);
-                float pushY = (Dy * 0.7f + (dyM / distM) * 0.3f);
-                float pushLen = (float)Math.Sqrt(pushX * pushX + pushY * pushY);
-                
-                if (pushLen > 0.1f)
+                // 【修复：守卫者秒杀漏洞】之前守卫者会在0.1秒内撞击怪物数十次造成十万点真实伤害！
+                // 现在增加“物理撞击内置冷却判定”，借用怪物的受击硬闪时间，使其撞击伤害更加合理
+                if (m.HitFlashTimer <= 5)
                 {
-                    m.Dx += (pushX / pushLen) * pushForce;
-                    m.Dy += (pushY / pushLen) * pushForce;
+                    int totalDmg = Damage + (int)(Damage * 0.25f * currentV);
+                    m.TakeDamage(totalDmg);
+                    
+                    // 视觉反馈：根据伤害大小调整爆炸规模
+                    BattleForm.Instance?.AddExplosion(mx, my, Color.Orange, totalDmg > 200 ? 4 : 2, "SPARK");
+                    
+                    // 撞击反作用力 (略微损耗动能)
+                    Dx *= 0.95f;
+                    Dy *= 0.95f;
                 }
-
-                // 视觉反馈：根据伤害大小调整爆炸规模
-                BattleForm.Instance?.AddExplosion(mx, my, Color.Orange, totalDmg > 200 ? 4 : 2, "SPARK");
-                
-                // 撞击反作用力 (略微损耗动能)
-                Dx *= 0.95f;
-                Dy *= 0.95f;
             }
         }
 
@@ -1446,6 +1378,7 @@ public partial class Robot
             int wave = BattleForm.Instance?.CurrentWave ?? 1;
             if (p.Type == "INK") baseDmg = 10 + wave * 2;
             else if (p.Type == "SPIT") baseDmg = 5 + wave;
+            else if (p.Type == "CANNON") baseDmg = 40 + wave * 8; // 【修复】之前精英怪的炮弹被遗漏，伤害只有5，现在补回精英级伤害
         }
         else
         {
@@ -1517,9 +1450,9 @@ public partial class Robot
             "LIGHTNING" => 10,
             "SPIT" => 5,
             "INK" => 8,
-            "METEOR" => 60,
+            "METEOR" => 15, // 【平衡削弱】从 60 狂砍到 15，因为有8连发和极限射速，否则DPS太夸张
             "BLACK_HOLE" => 2,
-            "DEATH_RAY" => 5,
+            "DEATH_RAY" => 250, // 【割草加强】工程师放的死亡射线，一发必死
             _ => 5
         };
 

@@ -37,7 +37,7 @@ public partial class BattleForm : Form
     public int Gold { get; set; } = 2000;
     public int Minerals { get; set; } = 500;
     public int CurrentWave { get; set; } = 1;
-    private int _waveTimer = 600; // 10秒后开始第一波
+    private int _waveTimer = 120; // 【割草改动】开局2秒后直接开干，不磨叽
     private int _monstersToSpawnInWave = 0;
     private int _spawnInterval = 0;
 
@@ -512,24 +512,13 @@ public partial class BattleForm : Form
             }
         }
 
-        // 更新矿物生成逻辑
+        // 更新矿物生成逻辑 (已废弃全图散落矿石)
         _mineralSpawnTimer--;
         if (_mineralSpawnTimer <= 0)
         {
             _mineralSpawnTimer = 300 + _rand.Next(300);
-            if (_minerals.Count < 20) // 适当增加资源密度
-            {
-                // 改为在大地图物理范围内生成，而不是屏幕内 (彻底修复 ClientSize 可能为负导致的崩溃)
-                var baseB = GetBaseRobot();
-                float bX = baseB?.X + baseB?.Size / 2 ?? 0;
-                float bY = baseB?.Y + baseB?.Size / 2 ?? 0;
-                
-                // 在当前地图半径内随机分布
-                float mx = bX + (float)(_rand.NextDouble() - 0.5) * _totalMapRange * 1.5f;
-                float my = bY + (float)(_rand.NextDouble() - 0.5) * _totalMapRange * 1.5f;
-
-                _minerals.Add(new Mineral(mx, my));
-            }
+            // 【割草废弃】不再在场景中生成满地乱跑的物理矿石。
+            // 因为采集工（Worker）现在直接在你眼前充当“挂机印钞机”，全图矿石已经没有存在意义了。
         }
 
         // 更新粒子
@@ -590,9 +579,30 @@ public partial class BattleForm : Form
                     {
                         if (monster.IsActive && !monster.IsDead && p.CheckCollision(monster.X, monster.Y, monster.Size))
                         {
-                            monster.OnHit(p);
+                            // 【修复：高级武器无范围伤害Bug】之前所有子弹都只造成单体伤害，即使是陨石！
+                            if (p.ExplosionRadius > 0)
+                            {
+                                for (int mi = 0; mi < _monsters.Count; mi++)
+                                {
+                                    var m = _monsters[mi];
+                                    if (m.IsActive && !m.IsDead)
+                                    {
+                                        float dx = (m.X + m.Size / 2) - p.X;
+                                        float dy = (m.Y + m.Size / 2) - p.Y;
+                                        if (dx * dx + dy * dy <= p.ExplosionRadius * p.ExplosionRadius)
+                                            m.OnHit(p);
+                                    }
+                                }
+                                AddExplosion(p.X, p.Y, p.ProjectileColor, 15, "SPARK");
+                            }
+                            else
+                            {
+                                monster.OnHit(p);
+                                AddExplosion(p.X, p.Y, p.ProjectileColor, 5, "SPARK");
+                            }
+                            
                             if (p.Type == "LIGHTNING") { monster.ParalyzeTimer = 60; AddExplosion(monster.X + monster.Size / 2, monster.Y + monster.Size / 2, Color.White, 3, "SPARK"); }
-                            AddExplosion(p.X, p.Y, p.ProjectileColor, 5, "SPARK");
+                            
                             if (p.Type != "BLACK_HOLE" && p.Type != "DEATH_RAY") { p.IsActive = false; _projectiles.RemoveAt(i); }
                             break;
                         }
@@ -1317,8 +1327,11 @@ public partial class BattleForm : Form
 
         _baseWaveTimer++;
         
-        // 1. 蓄力视觉效果优化
-        if (_baseWaveTimer > 300) // 最后 1 秒蓄力
+        // 【割草改动】基地等级越高，脉冲冷却时间越短（甚至能做到一两秒炸一次清屏）
+        int cooldown = Math.Max(100, 360 - (_baseLevel - 1) * 25);
+        
+        // 1. 蓄力视觉效果优化 (大约提前1秒开始蓄力)
+        if (_baseWaveTimer > cooldown - 60)
         {
             float baseX = baseRobot.X + baseRobot.Size / 2f;
             float baseY = baseRobot.Y + baseRobot.Size / 2f;
@@ -1327,36 +1340,34 @@ public partial class BattleForm : Form
             if (_rand.Next(2) == 0)
             {
                 float angle = (float)(_rand.NextDouble() * Math.PI * 2);
-                float dist = 120 - (_baseWaveTimer - 300) * 1.8f;
+                float dist = 120 - (_baseWaveTimer - (cooldown - 60)) * 1.8f;
                 if (dist < 10) dist = 10;
                 float px = baseX + (float)Math.Cos(angle) * dist;
                 float py = baseY + (float)Math.Sin(angle) * dist;
                 AddExplosion(px, py, Color.FromArgb(200, Color.Cyan), 1, "SPARK");
             }
-            
-            // 基地核心大幅脉动缩放
-            // 绘制逻辑在 DrawRobot 中利用 _baseWaveTimer 决定核心发光半径 (此处无需逻辑，DrawRobot 自动关联)
         }
 
-        if (_baseWaveTimer >= 360) // 达到触发阈值
+        if (_baseWaveTimer >= cooldown) // 达到触发阈值
         {
             _baseWaveTimer = 0;
 
-            // 获取参数
-            float waveRadius = 200f + (_baseLevel - 1) * 20f;
-            float pushForce = 35f + (_baseLevel - 1) * 5f;
-            int waveDamage = 35 + (_baseLevel - 1) * 15;
+            // 【割草改动】指数暴涨的伤害与核弹般的清屏半径！
+            float waveRadius = 300f + (_baseLevel - 1) * 100f; // 满级几乎覆盖半张地图
+            float pushForce = 50f + (_baseLevel - 1) * 15f;    // 把怪推到天涯海角
+            int waveDamage = 500 + (_baseLevel - 1) * 350;     // 足够秒杀后一半波次所有的中小型单位
 
             float baseX = baseRobot.X + baseRobot.Size / 2f;
             float baseY = baseRobot.Y + baseRobot.Size / 2f;
 
             // 爆发视觉特效
-            AddExplosion(baseX, baseY, Color.White, 35, "RING"); // 增加白色闪光环
-            AddExplosion(baseX, baseY, Color.Cyan, 30, "SPARK");
-            AddExplosion(baseX, baseY, Color.Blue, 10, "SMOKE");
-
-            // 震动处理（如果有此功能）
+            AddExplosion(baseX, baseY, Color.White, 35, "RING"); 
+            AddExplosion(baseX, baseY, Color.Cyan, 50, "SPARK");
+            AddExplosion(baseX, baseY, Color.Blue, 15, "SMOKE");
             
+            // 额外震撼视觉：在屏幕中心跳出提示
+            AddFloatingText(baseX, baseY - 50, "[BASE PULSE]", Color.Aqua);
+
             // 影响范围内的怪物
             foreach (var monster in _monsters)
             {
@@ -1365,12 +1376,11 @@ public partial class BattleForm : Form
                 var (mx, my) = monster.GetCenter();
                 float dx = mx - baseX;
                 float dy = my - baseY;
-                float dist = (float)Math.Sqrt(dx * dx + dy * dy);
+                float dist = Math.Max(1f, (float)Math.Sqrt(dx * dx + dy * dy));
 
                 if (dist <= waveRadius)
                 {
                     monster.TakeDamage(waveDamage);
-                    if (dist < 1f) dist = 1f;
                     monster.Dx += (dx / dist) * pushForce;
                     monster.Dy += (dy / dist) * pushForce;
                 }
@@ -1417,7 +1427,7 @@ public partial class BattleForm : Form
             {
                 // 这波刷完了，进入下一波准备阶段
                 CurrentWave++;
-                _waveTimer = 600; // 10秒后下一波
+                _waveTimer = 120; // 【割草改动】间隔从600(10秒)狂砍到120(2秒)，这才是真正的“尸潮无缝衔接”！
                 
                 // 地图扩展由 1.5倍 更改为 线性增加 150，并设置最大上限 2500
                 _totalMapRange = Math.Min(2500f, _totalMapRange + 150f);
