@@ -167,28 +167,36 @@ public static class AudioManager
 
     public static void PlayBGM(int track) // 1: battle, 2: peace, 3: battle2
     {
-        if (_currentBGMTrack == track) 
-        {
-            // 如果已经在播这一轨了，确保它是 Playing 状态（防止自然播放结束停掉）
-            if (!IsMutedBGM) mciSendString($"play bgm{track} repeat", null, 0, IntPtr.Zero);
-            return;
-        }
-        
         if (!_bgmInitialized) InitializeBGM();
 
-        // 【断点续播】暂停旧轨道，而不是停止
+        if (IsMutedBGM)
+        {
+            // 如果静音，停止/暂停当前所有可能的轨道，并直接返回
+            mciSendString("pause bgm1", null, 0, IntPtr.Zero);
+            mciSendString("pause bgm2", null, 0, IntPtr.Zero);
+            mciSendString("pause bgm3", null, 0, IntPtr.Zero);
+            _currentBGMTrack = track;
+            return;
+        }
+
+        if (_currentBGMTrack == track) 
+        {
+            // 如果已经在播这一轨了，确保它是 Playing 状态（如果是从静音恢复过来的话）
+            mciSendString($"resume bgm{track}", null, 0, IntPtr.Zero);
+            mciSendString($"play bgm{track} repeat", null, 0, IntPtr.Zero);
+            return;
+        }
+
+        // 【断点续播】暂停旧轨道
         if (_currentBGMTrack != -1)
         {
             mciSendString($"pause bgm{_currentBGMTrack}", null, 0, IntPtr.Zero);
         }
 
         _currentBGMTrack = track;
-        if (IsMutedBGM) return;
 
-        // 【断点续播】恢复播放目标轨道
-        // resume 命令会让它从之前暂停的地方继续
+        // 【断点续播】恢复并播放目标轨道
         mciSendString($"resume bgm{track}", null, 0, IntPtr.Zero);
-        // 万一没播过，或者已经到底了(自然停止)，补一个从当前位置开始的 play
         mciSendString($"play bgm{track} repeat", null, 0, IntPtr.Zero);
     }
 
