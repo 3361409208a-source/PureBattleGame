@@ -172,6 +172,10 @@ public static class AudioManager
     {
         if (!_bgmInitialized) InitializeBGM();
 
+        // 【性能关键】如果目标轨道已经是当前轨道，且并未切换，禁止重复下达 MCI 指令，防止音频抖动断点
+        if (_currentBGMTrack == track) return;
+
+        int oldTrack = _currentBGMTrack;
         _currentBGMTrack = track;
 
         // 设置音量目标：目标轨道淡入，其他轨道淡出
@@ -180,15 +184,15 @@ public static class AudioManager
             _targetVolumes[i] = (i == track && !IsMutedBGM) ? 1000f : 0f;
         }
 
-        // 确保正在播放的轨道是处于 Play 状态（即使音量是0）
+        // 核心：提前换入。在音量还是 0 的时候就启动播放，让音量渐变逻辑在后台慢慢拉升
         if (!IsMutedBGM)
         {
+            // 启动目标音轨（如果音量渐变逻辑处理得好，这里可以瞬间重叠）
             mciSendString($"resume bgm{track}", null, 0, IntPtr.Zero);
             mciSendString($"play bgm{track} repeat", null, 0, IntPtr.Zero);
         }
         else
         {
-            // 如果完全静音，则暂停所有
             mciSendString("pause bgm1", null, 0, IntPtr.Zero);
             mciSendString("pause bgm2", null, 0, IntPtr.Zero);
             mciSendString("pause bgm3", null, 0, IntPtr.Zero);
