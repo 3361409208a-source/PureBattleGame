@@ -164,18 +164,21 @@ public static class AudioManager
                 StringBuilder shortPath = new StringBuilder(255);
                 GetShortPathName(finalPath, shortPath, shortPath.Capacity);
                 mciSendString($"open \"{shortPath}\" type mpegvideo alias bgm{i}", null, 0, IntPtr.Zero);
+                
+                // 【终极无缝方案】让所有轨道在加载时就以静音状态全部起跑，永不停歇
+                mciSendString($"set bgm{i} audio all volume 0", null, 0, IntPtr.Zero);
+                mciSendString($"play bgm{i} repeat", null, 0, IntPtr.Zero);
             }
         }
     }
 
-    public static void PlayBGM(int track) // 1: battle, 2: peace, 3: battle2
+    public static void PlayBGM(int track) // 1: battle, 2: peace, 3: battle 2
     {
         if (!_bgmInitialized) InitializeBGM();
 
         // 【性能关键】如果目标轨道已经是当前轨道，且并未切换，禁止重复下达 MCI 指令，防止音频抖动断点
         if (_currentBGMTrack == track) return;
 
-        int oldTrack = _currentBGMTrack;
         _currentBGMTrack = track;
 
         // 设置音量目标：目标轨道淡入，其他轨道淡出
@@ -184,19 +187,9 @@ public static class AudioManager
             _targetVolumes[i] = (i == track && !IsMutedBGM) ? 1000f : 0f;
         }
 
-        // 核心：提前换入。在音量还是 0 的时候就启动播放，让音量渐变逻辑在后台慢慢拉升
-        if (!IsMutedBGM)
-        {
-            // 启动目标音轨（如果音量渐变逻辑处理得好，这里可以瞬间重叠）
-            mciSendString($"resume bgm{track}", null, 0, IntPtr.Zero);
-            mciSendString($"play bgm{track} repeat", null, 0, IntPtr.Zero);
-        }
-        else
-        {
-            mciSendString("pause bgm1", null, 0, IntPtr.Zero);
-            mciSendString("pause bgm2", null, 0, IntPtr.Zero);
-            mciSendString("pause bgm3", null, 0, IntPtr.Zero);
-        }
+        // 【终极无缝方案】不再执行任何 pause/resume/play 指令。
+        // 所有轨道都在后台以 repeat 模式永动运行。
+        // 我们只在 Update 中通过纯净的 set volume 命令调整各轨平衡。
     }
 
     /// <summary>
@@ -209,7 +202,9 @@ public static class AudioManager
         for (int i = 1; i <= 3; i++)
         {
             float target = IsMutedBGM ? 0 : _targetVolumes[i];
-            if (Math.Abs(_currentVolumes[i] - target) > 1f)
+            
+            // 使用极小阈值避免浮点误差导致的无限微调
+            if (Math.Abs(_currentVolumes[i] - target) > 0.5f)
             {
                 // 线性插值趋近目标音量
                 if (_currentVolumes[i] < target) _currentVolumes[i] = Math.Min(target, _currentVolumes[i] + FADE_SPEED);
@@ -217,11 +212,7 @@ public static class AudioManager
 
                 mciSendString($"set bgm{i} audio all volume {(int)_currentVolumes[i]}", null, 0, IntPtr.Zero);
                 
-                // 如果音量彻底归零，顺便暂停该轨道节省 CPU (可选)
-                if (_currentVolumes[i] <= 0 && i != _currentBGMTrack)
-                {
-                    mciSendString($"pause bgm{i}", null, 0, IntPtr.Zero);
-                }
+                // 彻底移除 pause 逻辑，保持永动，杜绝任何状态切换带来的卡顿
             }
         }
     }
