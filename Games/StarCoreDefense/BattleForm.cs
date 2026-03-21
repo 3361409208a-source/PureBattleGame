@@ -487,6 +487,8 @@ public partial class BattleForm : Form
                 monster.Update(this.ClientSize.Width, this.ClientSize.Height, _robots, l1Active);
             }
         }
+        // --- 核心集成：音乐淡入淡出每帧更新 ---
+        AudioManager.Update(1.0f / 60.0f); 
 
         // 【断点续播 & 完整播放轮换】
         bool existsThreat = _monsters.Any(m => m.IsActive && !m.IsDead);

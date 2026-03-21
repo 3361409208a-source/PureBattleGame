@@ -18,7 +18,10 @@ public static class AudioManager
 
     public static bool IsMutedSFX { get; set; } = false;
     public static bool IsMutedBGM { get; set; } = false;
-    private static int _currentBGMTrack = -1; // -1: none, 1: battle, 2: peace
+    private static int _currentBGMTrack = -1; // -1: none, 1: battle, 2: peace, 3: battle 2
+    private static readonly float[] _targetVolumes = { 0, 1000, 1000, 1000 }; // 0: ignore, 1..3: tracks
+    private static readonly float[] _currentVolumes = { 0, 0, 0, 0 };
+    private const float FADE_SPEED = 10f; // 每帧音量变化步长 (约1.5秒线性淡入淡出)
 
     private static readonly Dictionary<string, string> _soundPaths = new Dictionary<string, string>();
     private static readonly Dictionary<string, int> _channelIndices = new Dictionary<string, int>();
@@ -169,35 +172,54 @@ public static class AudioManager
     {
         if (!_bgmInitialized) InitializeBGM();
 
-        if (IsMutedBGM)
+        _currentBGMTrack = track;
+
+        // 设置音量目标：目标轨道淡入，其他轨道淡出
+        for (int i = 1; i <= 3; i++)
         {
-            // 如果静音，停止/暂停当前所有可能的轨道，并直接返回
+            _targetVolumes[i] = (i == track && !IsMutedBGM) ? 1000f : 0f;
+        }
+
+        // 确保正在播放的轨道是处于 Play 状态（即使音量是0）
+        if (!IsMutedBGM)
+        {
+            mciSendString($"resume bgm{track}", null, 0, IntPtr.Zero);
+            mciSendString($"play bgm{track} repeat", null, 0, IntPtr.Zero);
+        }
+        else
+        {
+            // 如果完全静音，则暂停所有
             mciSendString("pause bgm1", null, 0, IntPtr.Zero);
             mciSendString("pause bgm2", null, 0, IntPtr.Zero);
             mciSendString("pause bgm3", null, 0, IntPtr.Zero);
-            _currentBGMTrack = track;
-            return;
         }
+    }
 
-        if (_currentBGMTrack == track) 
+    /// <summary>
+    /// 每帧调用一次，处理淡入淡出
+    /// </summary>
+    public static void Update(float deltaTime)
+    {
+        if (!_bgmInitialized) return;
+
+        for (int i = 1; i <= 3; i++)
         {
-            // 如果已经在播这一轨了，确保它是 Playing 状态（如果是从静音恢复过来的话）
-            mciSendString($"resume bgm{track}", null, 0, IntPtr.Zero);
-            mciSendString($"play bgm{track} repeat", null, 0, IntPtr.Zero);
-            return;
+            float target = IsMutedBGM ? 0 : _targetVolumes[i];
+            if (Math.Abs(_currentVolumes[i] - target) > 1f)
+            {
+                // 线性插值趋近目标音量
+                if (_currentVolumes[i] < target) _currentVolumes[i] = Math.Min(target, _currentVolumes[i] + FADE_SPEED);
+                else _currentVolumes[i] = Math.Max(target, _currentVolumes[i] - FADE_SPEED);
+
+                mciSendString($"set bgm{i} audio all volume {(int)_currentVolumes[i]}", null, 0, IntPtr.Zero);
+                
+                // 如果音量彻底归零，顺便暂停该轨道节省 CPU (可选)
+                if (_currentVolumes[i] <= 0 && i != _currentBGMTrack)
+                {
+                    mciSendString($"pause bgm{i}", null, 0, IntPtr.Zero);
+                }
+            }
         }
-
-        // 【断点续播】暂停旧轨道
-        if (_currentBGMTrack != -1)
-        {
-            mciSendString($"pause bgm{_currentBGMTrack}", null, 0, IntPtr.Zero);
-        }
-
-        _currentBGMTrack = track;
-
-        // 【断点续播】恢复并播放目标轨道
-        mciSendString($"resume bgm{track}", null, 0, IntPtr.Zero);
-        mciSendString($"play bgm{track} repeat", null, 0, IntPtr.Zero);
     }
 
     public static string GetTrackStatus(int track)
