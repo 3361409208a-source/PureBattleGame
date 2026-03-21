@@ -292,7 +292,7 @@ public partial class Robot
                 Size = 34; // 体型再次略微加大，增加撞击面积
                 SpeedMultiplier = 1.0f + 0.15f * (gLevel - 1); // 升级提升速度
                 MaxHP = (int)(2500 * (1 + 0.25f * (gLevel - 1))); // 血量大幅提升
-                Damage = 100 + (gLevel - 1) * 60; // 升级大幅提升伤害
+                Damage = 45 + (gLevel - 1) * 20; // 降低基础伤害, 升级平滑提升
                 HP = MaxHP;
                 break;
             case RobotClass.Engineer:
@@ -907,9 +907,11 @@ public partial class Robot
         float bx = baseBot.X + baseBot.Size / 2;
         float by = baseBot.Y + baseBot.Size / 2;
 
-        // 1. 轨道半径：优先巡逻已动工的外圈 (Layer 1, 半径约 420-450)，否则巡逻内圈 (Layer 0, 半径约 140-150)
-        bool l1InConstruction = BattleForm.Instance?._walls.Any(w => w.Layer == 1 && w.HP > 0) ?? false;
-        float orbitRadius = l1InConstruction ? 420f : 140f;
+        // 1. 轨道半径：严格同步墙体半径 (Layer 0: 150, Layer 1: 450)
+        // 增加 25 像素偏移，使守护兵处于墙体稍微外一点点的位置。
+        // 修正：只有当外圈防线完全建造成功并激活后，守护兵再出去。
+        bool l1Active = BattleForm.Instance?.IsLayer1Complete() ?? false;
+        float orbitRadius = l1Active ? 475f : 175f;
 
         // 2. 轨道旋转
         float orbitSpeed = 0.015f * SpeedMultiplier;
@@ -946,7 +948,10 @@ public partial class Robot
             Dy = (Dy / currentSpeed) * maxSpeed;
         }
 
-        // 3. 撞击战斗 (Body Slam)
+        // 3. 撞击战斗 (Body Slam) - 增强碰撞检测：高速下增加“扫描半径”防止穿模
+        float currentV = (float)Math.Sqrt(Dx * Dx + Dy * Dy);
+        float extraHitRange = Math.Min(30f, currentV * 1.5f); // 速度越快，受击判定范围越大
+
         foreach (var m in allMonsters)
         {
             if (!m.IsActive || m.IsDead) continue;
@@ -956,27 +961,37 @@ public partial class Robot
             float dxM = mx - (X + Size / 2);
             float dyM = my - (Y + Size / 2);
             float distM = (float)Math.Sqrt(dxM * dxM + dyM * dyM);
-            float contactDist = (Size + m.Size) / 2f + 5f;
+            
+            // 基础接触距离 + 动能扩展距离
+            float contactDist = (Size + m.Size) / 2f + 5f + extraHitRange;
 
             if (distM < contactDist)
             {
-                // 撞击伤害：基础 + 速度加成
-                float moveImpulse = (float)Math.Sqrt(Dx * Dx + Dy * Dy);
-                int totalDmg = Damage + (int)(Damage * 0.4f * moveImpulse);
+                // 撞击伤害：基础 + 速度加成 (降低速度加成的倍率，防止过高)
+                int totalDmg = Damage + (int)(Damage * 0.25f * currentV);
                 m.TakeDamage(totalDmg);
                 
-                // 击退：根据守卫者等级和冲撞力道决定
-                float pushForce = 12f + (BattleForm.Instance?._guardianLevel ?? 1) * 3f;
+                // 击退有力化：根据守卫者等级和当前角动量决定
+                float pushForce = 15f + (BattleForm.Instance?._guardianLevel ?? 1) * 3f + (currentV * 0.8f);
                 if (distM < 0.1f) distM = 0.1f;
-                m.Dx += (dxM / distM) * pushForce;
-                m.Dy += (dyM / distM) * pushForce;
-
-                // 视觉反馈
-                BattleForm.Instance?.AddExplosion(mx, my, Color.Orange, 2, "SPARK");
                 
-                // 撞击反作用力 (略微顿挫)
-                Dx *= 0.6f;
-                Dy *= 0.6f;
+                // 击退方向：合力方向（移动方向 + 径向方向）
+                float pushX = (Dx * 0.7f + (dxM / distM) * 0.3f);
+                float pushY = (Dy * 0.7f + (dyM / distM) * 0.3f);
+                float pushLen = (float)Math.Sqrt(pushX * pushX + pushY * pushY);
+                
+                if (pushLen > 0.1f)
+                {
+                    m.Dx += (pushX / pushLen) * pushForce;
+                    m.Dy += (pushY / pushLen) * pushForce;
+                }
+
+                // 视觉反馈：根据伤害大小调整爆炸规模
+                BattleForm.Instance?.AddExplosion(mx, my, Color.Orange, totalDmg > 200 ? 4 : 2, "SPARK");
+                
+                // 撞击反作用力 (略微损耗动能)
+                Dx *= 0.95f;
+                Dy *= 0.95f;
             }
         }
 

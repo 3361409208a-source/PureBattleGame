@@ -92,7 +92,8 @@ public class Monster
             string[] types = { "SLIME", "SPIDER", "BAT", "WORM" };
             Type = types[Rand.Next(types.Length)];
         }
-
+        // 核心血量缩放：从 100 提升至 400 基础，并随波数大幅成長
+        MaxHP = 400 + (wave - 1) * 200; 
         HP = MaxHP;
     }
 

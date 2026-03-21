@@ -2351,16 +2351,20 @@ public partial class BattleForm : Form
         }
 
         if (panel.Controls["UpgGuardian"] is Button uG)
-            _upgradeToolTip.SetToolTip(uG, $"【守卫者升级】(当前 Lv.{_guardianLevel})\n" +
-                $"- 冲撞伤害: {(int)(40 * (1 + (_guardianLevel - 1) * 0.25f))}\n" +
-                $"- 保护半径: 150 像素\n" +
-                $"- 下级预览: 冲撞伤害提升 25%");
+        {
+            int currentDmg = 100 + (_guardianLevel - 1) * 60;
+            float currentOrbit = (_walls.Any(w => w.Layer == 1 && w.HP > 0)) ? 420f : 140f;
+            _upgradeToolTip.SetToolTip(uG, $"【守护者升级】(当前 Lv.{_guardianLevel})\n" +
+                $"- 冲击伤害: {currentDmg}\n" +
+                $"- 当前巡逻半径: {currentOrbit:F0} 像素\n" +
+                $"- 下级预览: 伤害 +60, 速度 +15%");
+        }
             
         // 购买按钮提示
         if (panel.Controls["BuyWorker"] is Button bW) _upgradeToolTip.SetToolTip(bW, "【工程单位】不具备攻击力，自动采集蓝色矿石（Minerals）。");
         if (panel.Controls["BuyHealer"] is Button bH) _upgradeToolTip.SetToolTip(bH, "【后勤单位】极速回血，优先保护基地与濒危队友。");
         if (panel.Controls["BuyShooter"] is Button bS) _upgradeToolTip.SetToolTip(bS, "【输出主力】全自动武器系统，随等级提升解锁更多弹药。");
-        if (panel.Controls["BuyGuardian"] is Button bG) _upgradeToolTip.SetToolTip(bG, "【重型肉盾】高伤害近战冲撞，将敌人从基地身边无情击退。");
+        if (panel.Controls["BuyGuardian"] is Button bG) _upgradeToolTip.SetToolTip(bG, "【重型冲撞者】在基地周围固定轨道快速巡逻，通过高速撞击阻击并击退任何试图靠近的怪物。");
     }
 
     private string GetShooterUnlockInfo(int level)
@@ -2491,18 +2495,29 @@ public partial class BattleForm : Form
             case RobotClass.Worker: radius = size * 0.5f; speed = 3.0f; type = "DRILL"; break;
             case RobotClass.Shooter: radius = size * 0.8f; speed = 2.0f; type = "SHELL"; break;
             case RobotClass.Healer: radius = size * 1.0f; speed = 1.2f; type = "NANO"; break;
-            case RobotClass.Guardian: radius = size * 1.0f; speed = 0.6f; type = "PLATE"; break;
+            case RobotClass.Guardian: radius = size * 1.1f; speed = 1.0f; type = "SHIELD_PLATE"; break;
         }
         for (int i = 0; i < count; i++) {
             float ang = (Environment.TickCount/1000f) * speed + (float)(i * Math.PI * 2 / count);
             float bx = (float)(Math.Sin(ang) * radius), by = (float)(Math.Cos(ang) * radius * tilt), z = (float)Math.Cos(ang);
             if (backLayer && z > 0) continue; if (!backLayer && z <= 0) continue;
             float ps = 4 + z * 2, alpha = 150 + z * 100;
-            using var br = new SolidBrush(Color.FromArgb((int)Math.Clamp(alpha, 0, 255), robot.PrimaryColor));
-            if (type == "NANO") {
-                g.FillRectangle(Brushes.LimeGreen, cx + bx - 1, cy + by - 1, 3, 3);
-                if (Environment.TickCount % 500 < 100) g.DrawLine(Pens.White, cx+bx-3, cy+by, cx+bx+3, cy+by);
-            } else g.FillEllipse(br, cx + bx - ps/2, cy + by - ps/2, ps, ps);
+            if (type == "SHIELD_PLATE")
+            {
+                // 守护兵专属重型盾片
+                using var sb = new SolidBrush(Color.FromArgb((int)alpha, robot.SecondaryColor));
+                g.FillRectangle(sb, cx + bx - 6, cy + by - 3, 12, 6);
+                using var sp = new Pen(Color.FromArgb((int)alpha, Color.White), 1);
+                g.DrawRectangle(sp, cx + bx - 6, cy + by - 3, 12, 6);
+            }
+            else
+            {
+                using var br = new SolidBrush(Color.FromArgb((int)Math.Clamp(alpha, 0, 255), robot.PrimaryColor));
+                if (type == "NANO") {
+                    g.FillRectangle(Brushes.LimeGreen, cx + bx - 1, cy + by - 1, 3, 3);
+                    if (Environment.TickCount % 500 < 100) g.DrawLine(Pens.White, cx+bx-3, cy+by, cx+bx+3, cy+by);
+                } else g.FillEllipse(br, cx + bx - ps/2, cy + by - ps/2, ps, ps);
+            }
         }
     }
 
@@ -2618,21 +2633,39 @@ public partial class BattleForm : Form
         using var bodyBrush = new SolidBrush(robot.PrimaryColor);
         using var darkBrush = new SolidBrush(robot.SecondaryColor);
         
-        // 1. 重型六边形装甲
-        PointF[] hex = new PointF[6];
-        for (int i = 0; i < 6; i++) {
-            float a = i * (float)Math.PI / 3;
-            hex[i] = new PointF(cx + (float)Math.Cos(a) * (size / 1.8f), cy + (float)Math.Sin(a) * (size / 1.8f));
-        }
-        g.FillPolygon(bodyBrush, hex);
-        using var bp = new Pen(darkBrush, 3); g.DrawPolygon(bp, hex);
+        // 1. 旋转动感背影 (反应速度感)
+        float rotSpeed = (float)Math.Sqrt(robot.Dx * robot.Dx + robot.Dy * robot.Dy);
+        float spinAngle = Environment.TickCount / 100f * (1 + rotSpeed * 0.5f);
         
-        // 2. 能量核心
-        float hPulse = 0.5f + (float)Math.Sin(Environment.TickCount / 100.0) * 0.5f;
-        using var coreB = new SolidBrush(Color.FromArgb((int)(100 + 100 * hPulse), Color.Orange));
-        g.FillEllipse(coreB, cx - 5, cy - 5, 10, 10);
+        // 2. 重型多重装甲 (八边形结构)
+        PointF[] oct = new PointF[8];
+        for (int i = 0; i < 8; i++) {
+            float a = i * (float)Math.PI / 4 + spinAngle;
+            float r = (i % 2 == 0) ? (size / 1.7f) : (size / 2.0f); // 交错结构
+            oct[i] = new PointF(cx + (float)Math.Cos(a) * r, cy + (float)Math.Sin(a) * r);
+        }
+        g.FillPolygon(bodyBrush, oct);
+        using var bp = new Pen(darkBrush, 3); g.DrawPolygon(bp, oct);
+        
+        // 3. 冲击尖刺 (在移动方向的前端)
+        if (rotSpeed > 0.5f) {
+            float moveAngle = (float)Math.Atan2(robot.Dy, robot.Dx);
+            PointF[] spike = {
+                new PointF(cx + (float)Math.Cos(moveAngle) * size * 0.9f, cy + (float)Math.Sin(moveAngle) * size * 0.9f),
+                new PointF(cx + (float)Math.Cos(moveAngle + 0.5f) * size * 0.5f, cy + (float)Math.Sin(moveAngle + 0.5f) * size * 0.5f),
+                new PointF(cx + (float)Math.Cos(moveAngle - 0.5f) * size * 0.5f, cy + (float)Math.Sin(moveAngle - 0.5f) * size * 0.5f)
+            };
+            using var spikeBrush = new SolidBrush(Color.FromArgb(200, Color.OrangeRed));
+            g.FillPolygon(spikeBrush, spike);
+        }
 
-        DrawEyes(g, robot, cx, cy, 2);
+        // 4. 高能核心 (呼吸灯)
+        float hPulse = 0.5f + (float)Math.Sin(Environment.TickCount / 80.0) * 0.5f;
+        using var coreB = new SolidBrush(Color.FromArgb((int)(150 + 105 * hPulse), Color.Orange));
+        g.FillEllipse(coreB, cx - 7, cy - 7, 14, 14);
+        using var coreP = new Pen(Color.White, 2); g.DrawEllipse(coreP, cx - 7, cy - 7, 14, 14);
+
+        DrawEyes(g, robot, cx, cy, 3);
     }
 
     private void DrawEngineerAppearance(Graphics g, Robot robot, float x, float y, float size, float cx, float cy)
