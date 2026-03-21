@@ -529,7 +529,7 @@ public partial class Robot
         if (_targetUpdateCooldown > 0) return;
         _targetUpdateCooldown = 15 + new Random().Next(15); 
         
-        // 【割草改动】采集型机器人：彻底放弃乱跑找矿的设定。现在它们是“主基地的挂机印钞机”！
+        // 【割草改动】采集型机器人：彻底放弃乱跑找矿的设定。现在它们是"主基地的挂机印钞机"！
         if (ClassType == RobotClass.Worker)
         {
             TargetMineral = null;
@@ -594,16 +594,21 @@ public partial class Robot
     private void UpdateWorkerLogic()
     {
         // --- 核心优化：采集兵形态进化 ---
-        // 不再只在基地中心“坐牢”，而是模拟在整个防御圈内“勤劳工作”
+        // 不再只在基地中心"坐牢"，而是模拟在整个防御圈内"勤劳工作"
         if (ChasingTarget == null && TargetMineral == null)
         {
-            // 如果没事干，5%概率随机找个远点去“巡逻采矿”
+            // 如果没事干，5%概率随机找个远点去"巡逻采矿"
             if (Rand.Next(100) < 5)
             {
                 float angle = (float)(Rand.NextDouble() * Math.PI * 2);
                 float dist = 200f + (float)Rand.NextDouble() * 800f; // 在200-1000范围内随机跑
-                ChasingTarget = new Entity { X = BattleForm.Instance.ClientSize.Width/2 + (float)Math.Cos(angle) * dist, 
-                                            Y = BattleForm.Instance.ClientSize.Height/2 + (float)Math.Sin(angle) * dist, Size = 0 };
+                ChasingTarget = new Robot(-1, "patrol_point",
+                    BattleForm.Instance.ClientSize.Width/2 + (float)Math.Cos(angle) * dist,
+                    BattleForm.Instance.ClientSize.Height/2 + (float)Math.Sin(angle) * dist,
+                    RobotClass.Worker)
+                {
+                    IsActive = false // 标记为虚拟目标点
+                };
                 ChaseTimer = 200;
             }
         }
@@ -612,7 +617,7 @@ public partial class Robot
         var baseBot = BattleForm.Instance?.GetBaseRobot();
         if (baseBot != null)
         {
-            // 给每个采集工一个独特的“工位”偏移，避免聚成一坨
+            // 给每个采集工一个独特的"工位"偏移，避免聚成一坨
             float wavePhase = (float)Math.Sin(BattleForm.Instance.CurrentWave * 0.5f + Id);
             float targetRadius = 150f + (Id % 15) * 40f + wavePhase * 30f; 
             
@@ -622,7 +627,7 @@ public partial class Robot
 
             float maxSpeed = 4.0f * SpeedMultiplier;
 
-            // 保持在宽阔的“工位”环带内
+            // 保持在宽阔的"工位"环带内
             if (dist > targetRadius + 40) { Dx += (dx / dist) * 0.4f; Dy += (dy / dist) * 0.4f; }
             else if (dist < targetRadius - 40) { Dx -= (dx / dist) * 0.4f; Dy -= (dy / dist) * 0.4f; }
             else 
@@ -694,7 +699,7 @@ public partial class Robot
 
         int engineerLevel = BattleForm.Instance?._engineerLevel ?? 1;
 
-        // 2. 超频全图远程跨层修墙 (由于是“赛博工程”，不限层级，瞬间全修)
+        // 2. 超频全图远程跨层修墙 (由于是"赛博工程"，不限层级，瞬间全修)
         _activeRepairTargets.Clear();
         if (BattleForm.Instance != null && BattleForm.Instance._walls != null)
         {
@@ -722,7 +727,7 @@ public partial class Robot
                 _activeRepairTargets.Add(w);
                 TargetWall = w; 
                 // 【平衡性削弱】修复量从 20+ 降到 1~5，防止单人奶爆全图怪物 DPS。
-                // 现在的工程兵修墙更像是“细水长流”，必须堆人手才能顶住后期压力
+                // 现在的工程兵修墙更像是"细水长流"，必须堆人手才能顶住后期压力
                 int baseRepair = 1 + (engineerLevel / 3); 
                 w.Repair(baseRepair);
             }
@@ -816,7 +821,7 @@ public partial class Robot
         HealingTargets.Clear();
         _healCooldown--;
 
-        // 【割草改动】医疗兵变为“全图光环枢纽”，围绕基地绝对安全地巡航
+        // 【割草改动】医疗兵变为"全图光环枢纽"，围绕基地绝对安全地巡航
         var baseBot = BattleForm.Instance?.GetBaseRobot();
         if (baseBot != null)
         {
@@ -933,7 +938,7 @@ public partial class Robot
             Dy = (Dy / currentSpeed) * maxSpeed;
         }
 
-        // 3. 撞击战斗 (Body Slam) - 增强碰撞检测：高速下增加“扫描半径”防止穿模
+        // 3. 撞击战斗 (Body Slam) - 增强碰撞检测：高速下增加"扫描半径"防止穿模
         float currentV = (float)Math.Sqrt(Dx * Dx + Dy * Dy);
         float extraHitRange = Math.Min(30f, currentV * 1.5f); // 速度越快，受击判定范围越大
 
@@ -953,7 +958,7 @@ public partial class Robot
             if (distM < contactDist)
             {
                 // 【修复：守卫者秒杀漏洞】之前守卫者会在0.1秒内撞击怪物数十次造成十万点真实伤害！
-                // 现在增加“物理撞击内置冷却判定”，借用怪物的受击硬闪时间，使其撞击伤害更加合理
+                // 现在增加"物理撞击内置冷却判定"，借用怪物的受击硬闪时间，使其撞击伤害更加合理
                 if (m.HitFlashTimer <= 5)
                 {
                     int totalDmg = Damage + (int)(Damage * 0.25f * currentV);
