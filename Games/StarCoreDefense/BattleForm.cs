@@ -75,6 +75,7 @@ public partial class BattleForm : Form
     private Graphics? _bufferGraphics;
     private Panel? _settingsPanel;
     private bool _isLayer1Activated = false; // 外层防线是否已激活（全满后激活，之后只要有血就生效）
+    private int _currentBuildingLayer = 1; // 当前正在建设的城墙层数（1开始，Layer 0是基础层）
 
     // 粒子系统
     private List<Particle> _particles = new List<Particle>();
@@ -2260,15 +2261,28 @@ public partial class BattleForm : Form
             int cost = 150 * _baseLevel;
             if (Minerals >= cost)
             {
+                // 检查当前层是否已建设完成（防止快速连升）
+                if (!IsLayerComplete(_currentBuildingLayer))
+                {
+                    AddFloatingText(this.ClientSize.Width / 2, this.ClientSize.Height / 2 - 50,
+                        $"环区 {_currentBuildingLayer} 尚未完工！", Color.OrangeRed);
+                    return;
+                }
+
                 Minerals -= cost;
                 _baseLevel++;
                 AudioManager.PlaySound("level_up");
-                
+
                 // Lv.10 分支：选择模块
                 if (_baseLevel == 10)
                 {
                     ShowBaseModuleSelection();
                 }
+
+                // 基地升级时扩建城墙（绑定到基地等级）
+                int newLayer = _baseLevel; // 新层数 = 基地等级
+                BuildOuterLayerBlueprint(newLayer);
+                _currentBuildingLayer = newLayer;
 
                 UpdateWallScaling(); // 更新围墙
 
@@ -2429,9 +2443,8 @@ public partial class BattleForm : Form
                 _engineerLevel++;
                 AudioManager.PlaySound("level_up");
                 foreach (var r in _robots) if (r.ClassType == RobotClass.Engineer) r.ApplyClassProperties();
-                
-                // 动态构建一层新的围墙蓝图！
-                BuildOuterLayerBlueprint(_engineerLevel);
+
+                // 注：城墙扩建已移至基地升级
 
                 UpdateUI();
             }
@@ -2521,11 +2534,15 @@ public partial class BattleForm : Form
         {
             int nextHP = 3000 + _baseLevel * 1000;
             int currentDmg = 35 + (_baseLevel - 1) * 15;
+            string layerStatus = IsLayerComplete(_currentBuildingLayer)
+                ? $"✅ 环区 {_currentBuildingLayer} 已完工，可升级"
+                : $"⏳ 环区 {_currentBuildingLayer} 建设中，完工后可升级";
             _upgradeToolTip.SetToolTip(uB, $"【基地升级】(当前 Lv.{_baseLevel})\n" +
                 $"- 最大生命: {3000 + (_baseLevel - 1) * 1000}\n" +
                 $"- 防御波伤害: {currentDmg}\n" +
                 $"- 下级预览: 生命 → {nextHP}, 伤害 → {currentDmg + 15}\n" +
-                $"- 额外效果: 升级时瞬间补满全部生命值。");
+                $"- 额外效果: 升级时瞬间补满全部生命值，并启动新的城墙环区！\n" +
+                $"- {layerStatus}");
         }
 
         if (panel.Controls["UpgWorker"] is Button uW)
@@ -2565,6 +2582,18 @@ public partial class BattleForm : Form
         if (panel.Controls["BuyHealer"] is Button bH) _upgradeToolTip.SetToolTip(bH, "【后勤单位】极速回血，优先保护基地与濒危队友。");
         if (panel.Controls["BuyShooter"] is Button bS) _upgradeToolTip.SetToolTip(bS, "【输出主力】全自动武器系统，随等级提升解锁更多弹药。");
         if (panel.Controls["BuyGuardian"] is Button bG) _upgradeToolTip.SetToolTip(bG, "【重型冲撞者】在基地周围固定轨道快速巡逻，通过高速撞击阻击并击退任何试图靠近的怪物。");
+        if (panel.Controls["BuyEngineer"] is Button bE) _upgradeToolTip.SetToolTip(bE, "【建设专家】自动维修城墙，优先建设未完成的外层防线。");
+
+        // 工程兵升级提示
+        if (panel.Controls["UpgEngineer"] is Button uE)
+        {
+            int repairAmount = 20 + (_engineerLevel - 1) * 5;
+            _upgradeToolTip.SetToolTip(uE, $"【工程兵升级】(当前 Lv.{_engineerLevel})\n" +
+                $"- 单次修复量: {repairAmount}\n" +
+                $"- 修复频率: 超频模式\n" +
+                $"- 下级预览: 修复量提高至 {repairAmount + 5}\n" +
+                $"- 注：城墙扩建现在绑定到【基地升级】");
+        }
     }
 
     private string GetShooterUnlockInfo(int level)
@@ -3168,8 +3197,10 @@ public partial class BattleForm : Form
     {
         if (layer == 0) return true;
         if (layer == 1) return _isLayer1Activated;
-        // 其它层只要有4块以上存活就认为已建成
-        return _walls.Count(w => w.Layer == layer && w.HP > 0) > 4;
+        // 其它层：该层的所有墙块都必须有 HP（HP > 0）
+        var layerWalls = _walls.Where(w => w.Layer == layer).ToList();
+        if (layerWalls.Count == 0) return false; // 该层尚未创建
+        return layerWalls.All(w => w.HP > 0);
     }
 
     public bool IsUnderThreat()
@@ -3219,7 +3250,7 @@ public partial class BattleForm : Form
         return _walls.Where(w => w.HP > 0).Max(w => (int?)w.Layer) ?? 0;
     }
 
-    // 允许工程兵无限扩张的基础蓝图生成函数
+    // 基地升级时触发城墙扩建的蓝图生成函数
     private void BuildOuterLayerBlueprint(int layerIndex)
     {
         if (_walls.Any(w => w.Layer == layerIndex)) return;
