@@ -630,12 +630,21 @@ public partial class Robot
 
     private void UpdateWorkerLogic()
     {
-        // 关键逻辑增强：如果在交战状态，工人必须退回基地内部避难
+        // 动态避战逻辑：采集工不再“一闻到硝烟就跑”
         if (BattleForm.Instance != null && BattleForm.Instance.IsUnderThreat())
         {
-            TargetMineral = null;
-            UpdateSafetyRetreat();
-            return;
+            // 判定是否真的危险：
+            // 1. 如果外墙已激活，且附近 350 像素内没有怪物，认为环境相对安全，可以继续采矿
+            // 2. 如果外墙未建成，或者有怪物已突入内圈（距离自身 < 350），则必须回撤
+            bool l1Active = BattleForm.Instance.IsLayer1Complete();
+            float monsterDist = BattleForm.Instance.GetNearestMonsterDist(X, Y);
+
+            if (!l1Active || monsterDist < 350)
+            {
+                TargetMineral = null;
+                UpdateSafetyRetreat();
+                return;
+            }
         }
 
         if (TargetMineral != null && !TargetMineral.IsActive) TargetMineral = null;

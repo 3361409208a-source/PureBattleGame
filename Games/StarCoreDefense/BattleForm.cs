@@ -2971,8 +2971,22 @@ public partial class BattleForm : Form
 
     public bool IsUnderThreat()
     {
-        // 判定条件：如果在小地图显示范围内（约 1.2倍地图半径）有任何活着的怪物，即视为不安全
         return _monsters.Any(m => m.IsActive && !m.IsDead);
+    }
+
+    public float GetNearestMonsterDist(float x, float y)
+    {
+        float minDist = float.MaxValue;
+        foreach (var m in _monsters)
+        {
+            if (m.IsActive && !m.IsDead)
+            {
+                float dx = m.X - x, dy = m.Y - y;
+                float dist = (float)Math.Sqrt(dx * dx + dy * dy);
+                if (dist < minDist) minDist = dist;
+            }
+        }
+        return minDist;
     }
 
     private void UpdateWallScaling()
