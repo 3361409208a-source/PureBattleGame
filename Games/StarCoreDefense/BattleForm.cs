@@ -96,8 +96,8 @@ public partial class BattleForm : Form
 
     // 性能诊断
     private int _fps = 0;
-    private int _bgmSwitchTimer = 0; // 音频切换缓冲（防止在零星小怪死亡时反复切歌）
-    private int _nextBattleTrack = 1; // 准备轮换的战斗音轨 (1或3)
+    private int _bgmSwitchTimer = 0; 
+    private int _activeBattleTrack = 1; // 当前选中的战斗音轨 (1或3)
     private int _frameCountForFps = 0;
     private DateTime _lastMetricUpdate = DateTime.Now;
     private TimeSpan _lastTotalProcessorTime = System.Diagnostics.Process.GetCurrentProcess().TotalProcessorTime;
@@ -488,26 +488,28 @@ public partial class BattleForm : Form
             }
         }
 
-        // 背景音乐切换逻辑：如果有活着的怪物则放战斗音乐(1/3)，否则延迟放平时音乐(2)
+        // 【断点续播 & 完整播放轮换】
         bool existsThreat = _monsters.Any(m => m.IsActive && !m.IsDead);
         
         if (existsThreat)
         {
-            // 如果之前处于非战斗状态（计时器耗尽或初始），则切换该次战斗使用的 BGM
-            if (_bgmSwitchTimer <= 0)
+            // 检查当前战斗音乐是否播放结束，若结束则轮换下一首 (MCI Mode 会变为 stopped)
+            string status = AudioManager.GetTrackStatus(_activeBattleTrack);
+            if (status.Contains("stopped") || status.Contains("not ready"))
             {
-                 // 选定当前战斗曲目后，预设下一轮战斗切换另一首
-                 AudioManager.PlayBGM(_nextBattleTrack);
-                 _nextBattleTrack = (_nextBattleTrack == 1) ? 3 : 1;
+                 // 自动轮换：曲终即换
+                 _activeBattleTrack = (_activeBattleTrack == 1) ? 3 : 1;
             }
-            _bgmSwitchTimer = 180; // 重置缓冲
+
+            _bgmSwitchTimer = 180; 
+            AudioManager.PlayBGM(_activeBattleTrack); 
         }
         else
         {
             if (_bgmSwitchTimer > 0) _bgmSwitchTimer--;
             if (_bgmSwitchTimer <= 0)
             {
-                AudioManager.PlayBGM(2); // 平时，计时器归零时停掉战斗乐
+                AudioManager.PlayBGM(2); // 切换平时音乐，战斗音乐将在原地暂停
             }
         }
 
