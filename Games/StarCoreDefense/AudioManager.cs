@@ -30,8 +30,10 @@ public static class AudioManager
     // 不同音效的独立通道数（并发池大小，大幅缩减以降低系统句柄上限）
     private static readonly Dictionary<string, int> _channelCounts = new Dictionary<string, int>
     {
-        { "shoot", 5 }, { "hit", 4 }, { "mine", 2 }, { "build", 2 },
-        { "death", 3 }, { "overload", 2 }, { "leap", 2 }, { "whirlwind", 2 },
+        { "shoot", 3 }, { "bullet", 3 }, { "rocket", 2 }, { "plasma", 2 }, 
+        { "lightning", 2 }, { "meteor", 1 }, { "black_hole", 1 }, { "death_ray", 1 },
+        { "hit", 3 }, { "mine", 2 }, { "build", 2 }, { "death", 2 }, 
+        { "overload", 1 }, { "leap", 1 }, { "whirlwind", 1 },
         { "level_up", 1 }, { "purchase", 1 }
     };
 
@@ -42,11 +44,34 @@ public static class AudioManager
         if (!Directory.Exists(_baseAssetPath)) Directory.CreateDirectory(_baseAssetPath);
 
         // 1. 自动生成缺失的基础音效 (Procedural Generation)
-        EnsureProceduralSfx("shoot", 0.08, (t) => Math.Sin(2 * Math.PI * (1200 - t * 6000) * t) * (1-t)); 
-        EnsureProceduralSfx("hit", 0.04, (t) => (new Random().NextDouble() - 0.5) * 1.5); 
+        // 柔和的激光子弹 (加了指数衰减包络线，消除刺耳短音)
+        EnsureProceduralSfx("shoot", 0.08, (t) => Math.Sin(2 * Math.PI * (800 - t * 3000) * t) * Math.Pow(1 - t, 2) * 0.6); 
+        EnsureProceduralSfx("bullet", 0.08, (t) => Math.Sin(2 * Math.PI * (800 - t * 3000) * t) * Math.Pow(1 - t, 2) * 0.6); 
+        
+        // 沉闷的火箭发射 (低频扰动 + 尾音)
+        EnsureProceduralSfx("rocket", 0.2, (t) => (new Random().NextDouble() - 0.5) * Math.Pow(1 - t, 1.5) * Math.Sin(2 * Math.PI * (100 - t * 50) * t) * 0.8);
+        
+        // 科幻等离子炮 (高频震音 vibrato)
+        EnsureProceduralSfx("plasma", 0.15, (t) => Math.Sin(2 * Math.PI * (1500 + Math.Sin(t * 100) * 200) * t) * Math.Pow(1 - t, 1.5) * 0.5);
+        
+        // 劈啪闪电 (高频脉冲夹杂噪音)
+        EnsureProceduralSfx("lightning", 0.1, (t) => (Math.Sin(2 * Math.PI * 3000 * t) > 0 ? 1 : -1) * (new Random().NextDouble() * 0.5) * Math.Pow(1 - t, 2));
+        
+        // 陨石坠落低频轰鸣
+        EnsureProceduralSfx("meteor", 0.4, (t) => Math.Sin(2 * Math.PI * (60 - t * 30) * t) * Math.Pow(1 - t, 0.5) * 0.8 + (new Random().NextDouble() - 0.5) * 0.2);
+        
+        // 黑洞长嗡鸣 (超低频调制)
+        EnsureProceduralSfx("black_hole", 0.6, (t) => Math.Sin(2 * Math.PI * 40 * t) * Math.Sin(2 * Math.PI * (10 + t * 5) * t) * 0.6);
+        
+        // 死亡射线切割 (方波合成)
+        EnsureProceduralSfx("death_ray", 0.2, (t) => Math.Sin(2 * Math.PI * 800 * t) * Math.Sign(Math.Sin(2 * Math.PI * 200 * t)) * 0.4 * (1 - t));
+
+        // 受击音效柔和化 (大幅降低白噪音刺耳程度)
+        EnsureProceduralSfx("hit", 0.05, (t) => (new Random().NextDouble() - 0.5) * Math.Pow(1 - t, 3) * 0.7); 
+        
         EnsureProceduralSfx("mine", 0.08, (t) => Math.Sin(2 * Math.PI * 440 * t) * Math.Sign(Math.Sin(2 * Math.PI * 20 * t))); 
         EnsureProceduralSfx("build", 0.1, (t) => Math.Sin(2 * Math.PI * (300 + t * 500) * t)); 
-        EnsureProceduralSfx("death", 0.5, (t) => Math.Sin(2 * Math.PI * (150 - t * 300) * t) * Math.Pow(1 - t, 2)); 
+        EnsureProceduralSfx("death", 0.3, (t) => Math.Sin(2 * Math.PI * (150 - t * 300) * t) * Math.Pow(1 - t, 2) * 0.8); 
         EnsureProceduralSfx("overload", 0.8, (t) => Math.Sin(2 * Math.PI * (40 + Math.Sin(t * 15) * 15) * t)); 
         EnsureProceduralSfx("leap", 0.2, (t) => Math.Sin(2 * Math.PI * (300 + t * 1000) * t) * (1 - t)); 
         EnsureProceduralSfx("whirlwind", 0.3, (t) => (new Random().NextDouble() - 0.5) * Math.Sin(2 * Math.PI * 30 * t)); 
