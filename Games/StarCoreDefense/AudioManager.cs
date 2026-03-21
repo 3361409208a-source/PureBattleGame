@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.IO;
 using System.Linq;
+using System.Windows.Media;
 
 namespace PureBattleGame.Games.StarCoreDefense;
 
@@ -30,6 +31,8 @@ public static class AudioManager
     private static readonly Dictionary<string, string> _soundPaths = new Dictionary<string, string>();
     private static readonly Dictionary<string, int> _channelIndices = new Dictionary<string, int>();
     private static readonly Dictionary<string, long> _lastPlayTime = new Dictionary<string, long>();
+    // 使用更高级稳定的 MediaPlayer 替代 MCI 解决 WAV 音量不支持以及卡死断音问题
+    private static readonly Dictionary<string, MediaPlayer[]> _mediaPlayers = new Dictionary<string, MediaPlayer[]>();
     
     // 不同音效的独立通道数（并发池大小，大幅缩减以降低系统句柄上限）
     private static readonly Dictionary<string, int> _channelCounts = new Dictionary<string, int>
@@ -82,7 +85,7 @@ public static class AudioManager
         EnsureProceduralSfx("level_up", 0.4, (t) => Math.Sin(2 * Math.PI * (t < 0.2 ? 523 : 659) * t)); 
         EnsureProceduralSfx("purchase", 0.2, (t) => Math.Sin(2 * Math.PI * 880 * t) * (1 - t)); 
 
-        // 2. 预热所有音效到 MCI 通道池
+        // 2. 预热所有音效到 MediaPlayer 通道池
         foreach (var file in Directory.GetFiles(_baseAssetPath, "*.wav"))
         {
             try
@@ -92,12 +95,14 @@ public static class AudioManager
                 _channelIndices[name] = 0;
                 _lastPlayTime[name] = 0;
 
-                int count = _channelCounts.ContainsKey(name) ? _channelCounts[name] : 4;
+                int count = _channelCounts.ContainsKey(name) ? _channelCounts[name] : 2;
+                _mediaPlayers[name] = new MediaPlayer[count];
                 for (int i = 0; i < count; i++)
                 {
-                    string alias = $"{name}_{i}";
-                    mciSendString($"close {alias}", null, 0, IntPtr.Zero);
-                    mciSendString($"open \"{file}\" alias {alias}", null, 0, IntPtr.Zero);
+                    var player = new MediaPlayer();
+                    // 异步加载不会阻塞
+                    player.Open(new Uri(file, UriKind.Absolute));
+                    _mediaPlayers[name][i] = player;
                 }
             }
             catch { }
@@ -134,17 +139,17 @@ public static class AudioManager
         try
         {
             int count = _channelCounts.ContainsKey(name) ? _channelCounts[name] : 2;
+            if (!_mediaPlayers.ContainsKey(name)) return;
+            
             int idx = _channelIndices[name];
-            string alias = $"{name}_{idx}";
+            var player = _mediaPlayers[name][idx];
 
             _channelIndices[name] = (idx + 1) % count;
 
-            // 每次播放前强制根据当前用户的音量设置应用衰减
-            mciSendString($"setaudio {alias} volume to {SfxVolume}", null, 0, IntPtr.Zero);
-            
-            // 恢复单线程播放。前面通道数上限已经削减完毕，
-            // 且 MCI 原生异步无阻塞，再用从后台线程调反而会由于线程隔离导致没有声音。
-            mciSendString($"play {alias} from 0", null, 0, IntPtr.Zero);
+            // 完美支持 0.0 - 1.0 的平滑独立音量衰减
+            player.Volume = SfxVolume / 1000.0;
+            player.Position = TimeSpan.Zero;
+            player.Play();
         }
         catch { }
     }
