@@ -40,6 +40,9 @@ public partial class BattleForm : Form
     private int _waveTimer = 120; // 【割草改动】开局2秒后直接开干，不磨叽
     private int _monstersToSpawnInWave = 0;
     private int _spawnInterval = 0;
+    private int _baseFireworkTimer = 0; // 5秒周期性火球计时器
+    private int _waveStartTimer = 0;    // 波次开始后的帧数
+    private bool _hasFiredWaveMeteor = false; // 每波首发标记
 
     // 全局升级系统
     public float GlobalDamageMultiplier { get; set; } = 1.0f;
@@ -506,7 +509,7 @@ public partial class BattleForm : Form
         }
 
         // 更新怪物
-        bool l1Active = IsLayer1Complete();
+        bool l1Active = IsLayerComplete(1);
         foreach (var monster in _monsters)
         {
             if (monster.IsActive && !monster.IsDead)
@@ -607,6 +610,27 @@ public partial class BattleForm : Form
 
                 p.Update();
 
+                // 【核心视觉：超级陨石炸裂】
+                if (p.Type == "METEOR" && p.ProjectileColor == Color.Magenta && p.LifeTime <= 1)
+                {
+                    // 模拟真实烟火：散开、下坠、加速
+                    Color[] rainbow = { Color.Red, Color.Orange, Color.Yellow, Color.Lime, Color.Cyan, Color.Magenta, Color.White };
+                    for (int ri = 0; ri < 80; ri++) 
+                    {
+                        float angle = (float)(_rand.NextDouble() * Math.PI * 2);
+                        float speed = (float)(_rand.NextDouble() * 14 + 6);
+                        Color c = rainbow[ri % rainbow.Length];
+                        float sdx = (float)Math.Cos(angle) * speed;
+                        float sdy = (float)Math.Sin(angle) * speed - 5; // 初始稍微抗重力一下
+                        
+                        var particle = new Particle(p.X, p.Y, sdx, sdy, c, _rand.Next(45, 100), (float)_rand.NextDouble() * 5 + 3, "FIREWORK_SPARK");
+                        _particles.Add(particle);
+                    }
+                    AddExplosion(p.X, p.Y, Color.White, 1, "RING"); 
+                    TriggerChainExplosion(p.X, p.Y, 700, p.Damage); 
+                    AudioManager.PlaySound("hit");
+                }
+
                 // 检测与机器人碰撞
                 foreach (var robot in _robots)
                 {
@@ -631,6 +655,13 @@ public partial class BattleForm : Form
                     {
                         if (monster.IsActive && !monster.IsDead && p.CheckCollision(monster.X, monster.Y, monster.Size))
                         {
+                            if (p.Type == "METEOR" && p.ProjectileColor == Color.Magenta) 
+                            {
+                                // 蓄力彩色陨石特殊处理：撞击时引发小规模AOE但弹头不消失(穿透)
+                                TriggerChainExplosion(monster.X, monster.Y, 150, p.Damage / 5);
+                                continue; 
+                            }
+
                             // 【修复：高级武器无范围伤害Bug】之前所有子弹都只造成单体伤害，即使是陨石！
                             if (p.ExplosionRadius > 0)
                             {
@@ -754,15 +785,6 @@ public partial class BattleForm : Form
         // 绘制围墙
         RenderWalls(g, baseX, baseY);
 
-        // 绘制粒子 (底层)
-        foreach (var p in _particles)
-        {
-            if (p.IsActive && (p.Type == "SMOKE" || p.Type == "RING"))
-            {
-                DrawParticle(g, p);
-            }
-        }
-
         // 绘制矿物
         foreach (var m in _minerals)
         {
@@ -814,6 +836,12 @@ public partial class BattleForm : Form
                 DrawRobot(g, robot);
                 if (robot == _selectedRobot) DrawSelectionRing(g, robot);
             }
+        }
+
+        // 绘制所有活跃粒子 (移到顶层确保烟火火花不被遮挡)
+        foreach (var p in _particles)
+        {
+            if (p.IsActive) DrawParticle(g, p);
         }
 
         foreach (var ft in _floatingTexts)
@@ -1319,7 +1347,7 @@ public partial class BattleForm : Form
                 if (!m.IsActive || m.IsDead) continue;
 
                 // --- 物理层面穿透：外圈开启前，怪物与采集/工程单位不发生碰撞 ---
-                bool l1Active = IsLayer1Complete();
+                bool l1Active = IsLayerComplete(1);
                 if (!l1Active && (r.ClassType == RobotClass.Worker || r.ClassType == RobotClass.Engineer)) continue;
 
                 float c1x = r.X + r.Size / 2f;
@@ -1450,10 +1478,39 @@ public partial class BattleForm : Form
                 // 【帧率抢救】怪物数量适度缩减，WinForms渲染太吃力
                 _monstersToSpawnInWave = 20 + CurrentWave * 10; 
                 _spawnInterval = 0;
+                _waveStartTimer = 0;
             }
             else
             {
                 _waveTimer--;
+            }
+        }
+        else
+        {
+            // 波次进行中
+            _waveStartTimer++;
+            _baseFireworkTimer++;
+
+            // 5秒一个周期
+            if (_baseFireworkTimer > 300) _baseFireworkTimer = 0;
+
+            // 蓄力视觉阶段
+            if (_baseFireworkTimer >= 240)
+            {
+                var br = GetBaseRobot();
+                if (br != null)
+                {
+                    float angle = (float)(_rand.NextDouble() * Math.PI * 2);
+                    float dist = 80 - (_baseFireworkTimer - 240) * 1.25f;
+                    float px = (br.X + br.Size/2) + (float)Math.Cos(angle) * dist;
+                    float py = (br.Y + br.Size/2) + (float)Math.Sin(angle) * dist;
+                    AddExplosion(px, py, Color.Magenta, 1, "SPARK");
+                }
+            }
+
+            if (_baseFireworkTimer == 299)
+            {
+                FireBaseWaveMeteor();
             }
         }
 
@@ -1487,6 +1544,56 @@ public partial class BattleForm : Form
                 // 视野也同步稍微拉远一点点，最高不超过 8.0 倍
                 _worldViewFactor = Math.Min(8.0f, _worldViewFactor + 0.15f);
             }
+        }
+    }
+
+    private void FireBaseWaveMeteor()
+    {
+        var b = GetBaseRobot();
+        if (b == null) return;
+        float bx = b.X + b.Size / 2f, by = b.Y + b.Size / 2f;
+        
+        // 寻找最近的怪物作为目标
+        Monster? target = null;
+        float minDist = float.MaxValue;
+        foreach(var m in _monsters) {
+            if(m.IsActive && !m.IsDead) {
+                float dx = m.X - bx, dy = m.Y - by;
+                float d = dx*dx + dy*dy;
+                if(d < minDist) { minDist = d; target = m; }
+            }
+        }
+
+        float tx = bx, ty = by - 600; // 默认目标：上方
+        if (target != null) {
+            tx = target.X + target.Size / 2;
+            ty = target.Y + target.Size / 2;
+        }
+
+        AudioManager.PlaySound("overload");
+        AddExplosion(bx, by, Color.Gold, 20, "RING");
+
+        lock (_projectileLock)
+        {
+            // 追踪型彩色核弹 (伤害下调，射速加快)
+            var p = new Projectile(b, bx, by, tx, ty, "METEOR") 
+            { 
+                Size = 45, 
+                Damage = 3000 + CurrentWave * 800,
+                LifeTime = 80,  
+                ExplosionRadius = 450, 
+                ProjectileColor = Color.Magenta
+            };
+            
+            // 计算朝向目标的初始速度
+            float adx = tx - bx, ady = ty - by;
+            float alen = (float)Math.Sqrt(adx*adx + ady*ady);
+            if(alen > 0) {
+                p.Dx = (adx / alen) * 16f;
+                p.Dy = (ady / alen) * 16f;
+            }
+
+            _projectiles.Add(p);
         }
     }
 
@@ -3057,9 +3164,12 @@ public partial class BattleForm : Form
         }
     }
 
-    public bool IsLayer1Complete()
+    public bool IsLayerComplete(int layer)
     {
-        return _isLayer1Activated;
+        if (layer == 0) return true;
+        if (layer == 1) return _isLayer1Activated;
+        // 其它层只要有4块以上存活就认为已建成
+        return _walls.Count(w => w.Layer == layer && w.HP > 0) > 4;
     }
 
     public bool IsUnderThreat()
@@ -3084,27 +3194,17 @@ public partial class BattleForm : Form
 
     private void UpdateWallScaling()
     {
-        float targetRadius0 = 130 + _baseLevel * 15;
-        float targetRadius1 = 450 + _baseLevel * 10;
-        float targetThickness0 = 8 + _baseLevel * 2;
-        float targetThickness1 = 15 + _baseLevel * 5;
-        int targetMaxHP0 = 1000 + _baseLevel * 500;
-        int targetMaxHP1 = 5000 + _baseLevel * 2000;
-
+        // 动态计算每一层应有的半径，确保不重叠
+        // 基础半径 150，每层间距 300，且随基地等级略微扩张
         foreach (var wall in _walls)
         {
-            if (wall.Layer == 0)
-            {
-                wall.Radius = wall.Radius * 0.95f + targetRadius0 * 0.05f;
-                wall.Thickness = targetThickness0;
-                wall.MaxHP = targetMaxHP0;
-            }
-            else
-            {
-                wall.Radius = wall.Radius * 0.95f + targetRadius1 * 0.05f;
-                wall.Thickness = targetThickness1;
-                wall.MaxHP = targetMaxHP1;
-            }
+            float targetRadius = (150 + wall.Layer * 300) + _baseLevel * 10;
+            float targetThickness = (8 + wall.Layer * 5) + _baseLevel * 2;
+            int targetMaxHP = (1000 + wall.Layer * 4000) + _baseLevel * 1000;
+
+            wall.Radius = wall.Radius * 0.95f + targetRadius * 0.05f;
+            wall.Thickness = targetThickness;
+            wall.MaxHP = targetMaxHP;
         }
     }
 

@@ -218,14 +218,13 @@ public static class AudioManager
 
         if (_currentBGMTrack == track) 
         {
-            // 防止放着放着突然没声音：MCI 的 pause 经常会丢失 repeat 标签。
-            // 当这首歌应该在放但其实已经停了时，重新激活它！
             if (!IsMutedBGM)
             {
                 string currStatus = GetTrackStatus(track);
+                // 核心修复：MCI 系统如果检测到已停止 (比如曲子播放完了或者切换驱动后状态异常)，必须立即使用 repeat 重播
                 if (currStatus.Contains("stopped") || string.IsNullOrEmpty(currStatus))
                 {
-                    mciSendString($"play bgm{track} from 0", null, 0, IntPtr.Zero);
+                    mciSendString($"play bgm{track} repeat", null, 0, IntPtr.Zero);
                 }
             }
             return;

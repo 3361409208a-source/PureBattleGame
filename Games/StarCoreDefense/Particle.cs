@@ -41,7 +41,13 @@ public class Particle
         Dx *= 0.95f;
         Dy *= 0.95f;
 
-        if (Type == "SMOKE")
+        if (Type == "FIREWORK_SPARK")
+        {
+            Dy += 0.35f;  // 强力重力下坠
+            Dx *= 0.98f;  // 稍微减少空气阻力，让抛物线更长
+            Size *= 0.97f; // 逐渐变小消失
+        }
+        else if (Type == "SMOKE")
         {
             Size += 0.2f; // 烟雾扩散
             Dy -= 0.05f;  // 烟雾上升

@@ -22,6 +22,7 @@ public class Projectile
     public bool IsActive { get; set; } = true;
     public string Type { get; set; } = "BULLET"; // BULLET, ROCKET, PLASMA, CANNON, LIGHTNING, SPIT, INK
     public int LifeTime { get; set; }
+    public int Damage { get; set; } // 新增伤害属性
     public List<PointF> Trail { get; set; } = new List<PointF>();
 
     public bool IsCluster { get; set; } = false;

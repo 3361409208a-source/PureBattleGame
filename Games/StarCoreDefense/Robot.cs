@@ -593,52 +593,71 @@ public partial class Robot
 
     private void UpdateWorkerLogic()
     {
-        // 【解压改动】不再乱跑，所有Worker全职在内圈转化为“挂机资源印钞机”
+        // --- 核心优化：采集兵形态进化 ---
+        // 不再只在基地中心“坐牢”，而是模拟在整个防御圈内“勤劳工作”
+        if (ChasingTarget == null && TargetMineral == null)
+        {
+            // 如果没事干，5%概率随机找个远点去“巡逻采矿”
+            if (Rand.Next(100) < 5)
+            {
+                float angle = (float)(Rand.NextDouble() * Math.PI * 2);
+                float dist = 200f + (float)Rand.NextDouble() * 800f; // 在200-1000范围内随机跑
+                ChasingTarget = new Entity { X = BattleForm.Instance.ClientSize.Width/2 + (float)Math.Cos(angle) * dist, 
+                                            Y = BattleForm.Instance.ClientSize.Height/2 + (float)Math.Sin(angle) * dist, Size = 0 };
+                ChaseTimer = 200;
+            }
+        }
+
+        // 基础移动逻辑：绕基地大圆周运动 + 随机小偏移
         var baseBot = BattleForm.Instance?.GetBaseRobot();
         if (baseBot != null)
         {
-            float targetRadius = 50f + (Id % 10) * 10f; // 环绕半径
+            // 给每个采集工一个独特的“工位”偏移，避免聚成一坨
+            float wavePhase = (float)Math.Sin(BattleForm.Instance.CurrentWave * 0.5f + Id);
+            float targetRadius = 150f + (Id % 15) * 40f + wavePhase * 30f; 
+            
             float dx = (baseBot.X + baseBot.Size / 2) - (X + Size / 2);
             float dy = (baseBot.Y + baseBot.Size / 2) - (Y + Size / 2);
             float dist = Math.Max(1, (float)Math.Sqrt(dx * dx + dy * dy));
 
-            float maxSpeed = 3.0f * SpeedMultiplier;
+            float maxSpeed = 4.0f * SpeedMultiplier;
 
-            if (dist > targetRadius + 15) { Dx += (dx / dist) * 0.3f; Dy += (dy / dist) * 0.3f; }
-            else if (dist < targetRadius - 15) { Dx -= (dx / dist) * 0.3f; Dy -= (dy / dist) * 0.3f; }
+            // 保持在宽阔的“工位”环带内
+            if (dist > targetRadius + 40) { Dx += (dx / dist) * 0.4f; Dy += (dy / dist) * 0.4f; }
+            else if (dist < targetRadius - 40) { Dx -= (dx / dist) * 0.4f; Dy -= (dy / dist) * 0.4f; }
             else 
             { 
-                float tangentDx = -(dy / dist) * maxSpeed * 0.5f;
-                float tangentDy =  (dx / dist) * maxSpeed * 0.5f;
-                if (Id % 2 == 0) { tangentDx = -tangentDx; tangentDy = -tangentDy; } // 左右互逆
-                Dx = Dx * 0.9f + tangentDx * 0.1f;
-                Dy = Dy * 0.9f + tangentDy * 0.1f;
+                // 在环带内顺时针/逆时针穿梭，模拟扫射资源
+                float tangentDx = -(dy / dist) * maxSpeed * 0.7f;
+                float tangentDy =  (dx / dist) * maxSpeed * 0.7f;
+                if (Id % 3 == 0) { tangentDx = -tangentDx; tangentDy = -tangentDy; } 
+                
+                // 加入一点随机波动，看起来像在扫描地面
+                tangentDx += (float)(Rand.NextDouble() - 0.5) * 2f;
+                tangentDy += (float)(Rand.NextDouble() - 0.5) * 2f;
+
+                Dx = Dx * 0.92f + tangentDx * 0.08f;
+                Dy = Dy * 0.92f + tangentDy * 0.08f;
             }
             
-            // 极速印钞逻辑
+            // 生产逻辑（保持高速印钞）
             _miningTimer++;
             int workerLevel = BattleForm.Instance?._workerLevel ?? 1;
-            
-            // 等级越高，印钞越快（最快3帧一次爆钱，就像角子机）
-            int interval = Math.Max(3, 40 - workerLevel * 4); 
+            int interval = Math.Max(2, 35 - workerLevel * 4); 
 
             if (_miningTimer >= interval)
             {
                 _miningTimer = 0;
                 if (BattleForm.Instance != null)
                 {
-                    int goldYield = 10 + workerLevel * 4;
-                    int mineralYield = (Rand.Next(100) < (5 + workerLevel)) ? 1 : 0; // 几率爆原矿
+                    int goldYield = 8 + workerLevel * 3; // 稍微调低基础产出
+                    int mineralYield = (Rand.Next(100) < (3 + workerLevel)) ? 1 : 0; 
                     
                     BattleForm.Instance.Gold += goldYield;
                     BattleForm.Instance.Minerals += mineralYield;
                     
-                    // 每5次闪现一次特效和数字，防止满屏幕黄字
-                    if (Rand.Next(100) < 20)
-                    {
-                        BattleForm.Instance.AddFloatingText(X + Size / 2, Y - 10, $"+{goldYield}", Color.Gold);
+                    if (Rand.Next(100) < 3) // 极低概率喷个火花
                         BattleForm.Instance.AddExplosion(X + Size / 2, Y + Size / 2, Color.Gold, 1, "SPARK");
-                    }
                 }
             }
         }
