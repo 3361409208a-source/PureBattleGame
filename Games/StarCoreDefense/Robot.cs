@@ -1248,13 +1248,76 @@ public partial class Robot
         {
             float pTargetX = targetX + (float)((Rand.NextDouble() - 0.5) * scatter);
             float pTargetY = targetY + (float)((Rand.NextDouble() - 0.5) * scatter);
-            
-            var p = new Projectile(this, centerX, centerY, pTargetX, pTargetY, type);
+
+            var p = GameObjectPools.Projectiles.Acquire();
+            p.Owner = this;
+            p.X = centerX; p.Y = centerY;
+            p.OriginX = centerX; p.OriginY = centerY;
+            p.TargetX = pTargetX; p.TargetY = pTargetY;
+            p.Type = type;
+            p.ProjectileColor = PrimaryColor;
+            p.IsActive = true;
+            p.LifeTime = GetProjectileLifeTime(type);
+            p.Damage = Damage;
+            p.Trail.Clear();
+            p.HitEntityIds.Clear();
+            // 计算速度
+            float dx = pTargetX - centerX;
+            float dy = pTargetY - centerY;
+            float dist = Math.Max(1, (float)Math.Sqrt(dx * dx + dy * dy));
+            float speed = GetProjectileSpeed(type);
+            p.Dx = (dx / dist) * speed;
+            p.Dy = (dy / dist) * speed;
+            // 设置特殊属性
+            if (type == "ROCKET")
+            {
+                p.PenetrationCount = 5 + Level / 2;
+                p.Size = 10;
+            }
+            else if (type == "LIGHTNING")
+            {
+                p.ChainCount = 3 + Level / 3;
+            }
+
             // 基础追踪能力：所有攻击型单位等级 5 以上具备基本追踪，火箭 1 级即追踪
             if (level >= 5 || ClassType == RobotClass.Rocket) p.TrackingMonster = monster;
-            
+
             BattleForm.Instance?.AddProjectile(p);
         }
+    }
+
+    private int GetProjectileLifeTime(string type)
+    {
+        return type switch
+        {
+            "LIGHTNING" => 45,
+            "CANNON" => 100,
+            "BLACK_HOLE" => 300,
+            "METEOR" => 150,
+            "DEATH_RAY" => 45,
+            "SPIT" => 80,
+            "INK" => 80,
+            "ROCKET" => 120,
+            "PLASMA" => 65,
+            _ => 90
+        };
+    }
+
+    private float GetProjectileSpeed(string type)
+    {
+        return type switch
+        {
+            "ROCKET" => 40.0f,
+            "CANNON" => 12.0f,
+            "PLASMA" => 25.0f,
+            "LIGHTNING" => 45.0f,
+            "SPIT" => 15.0f,
+            "INK" => 14.0f,
+            "METEOR" => 18.0f,
+            "BLACK_HOLE" => 4.0f,
+            "DEATH_RAY" => 40.0f,
+            _ => 25.0f
+        };
     }
 
     private void PerformUltimateAttack(float startX, float startY, float targetX, float targetY, object target)
@@ -1275,20 +1338,20 @@ public partial class Robot
                 {
                     float offsetX = (float)(Rand.NextDouble() - 0.5) * 200;
                     float offsetY = (float)(Rand.NextDouble() - 0.5) * 200;
-                    var p = new Projectile(this, startX, startY, targetX + offsetX, targetY + offsetY, "METEOR");
+                    var p = CreatePooledProjectile(startX, startY, targetX + offsetX, targetY + offsetY, "METEOR");
                     BattleForm.Instance?.AddProjectile(p);
                 }
                 break;
 
             case "BLACK_HOLE":
                 // 黑洞：缓慢飞行的控制球
-                var bh = new Projectile(this, startX, startY, targetX, targetY, "BLACK_HOLE");
+                var bh = CreatePooledProjectile(startX, startY, targetX, targetY, "BLACK_HOLE");
                 BattleForm.Instance?.AddProjectile(bh);
                 break;
 
             case "DEATH_RAY":
                 // 死光：直接连接目标的激光
-                var ray = new Projectile(this, startX, startY, targetX, targetY, "DEATH_RAY");
+                var ray = CreatePooledProjectile(startX, startY, targetX, targetY, "DEATH_RAY");
                 if (target is Robot r) ray.TrackingTarget = r;
                 else if (target is Monster m) ray.TrackingMonster = m;
                 BattleForm.Instance?.AddProjectile(ray);
@@ -1311,8 +1374,60 @@ public partial class Robot
         float centerX = X + Size / 2;
         float centerY = Y + Size / 2;
 
-        var p = new Projectile(this, centerX, centerY, tx, ty, CurrentAttackType);
+        var p = CreatePooledProjectile(centerX, centerY, tx, ty, CurrentAttackType);
         BattleForm.Instance?.AddProjectile(p);
+    }
+
+    /// <summary>
+    /// 从对象池创建投射物
+    /// </summary>
+    private Projectile CreatePooledProjectile(float startX, float startY, float targetX, float targetY, string type)
+    {
+        var p = GameObjectPools.Projectiles.Acquire();
+        p.Owner = this;
+        p.X = startX; p.Y = startY;
+        p.OriginX = startX; p.OriginY = startY;
+        p.TargetX = targetX; p.TargetY = targetY;
+        p.Type = type;
+        p.ProjectileColor = PrimaryColor;
+        p.IsActive = true;
+        p.LifeTime = GetProjectileLifeTime(type);
+        p.Damage = Damage;
+        p.Trail.Clear();
+        p.HitEntityIds.Clear();
+        p.IsCluster = false;
+        p.ExplosionRadius = 0;
+        p.Size = 0;
+        p.IsMonsterProjectile = false;
+        p.ChainCount = 0;
+        p.PenetrationCount = 0;
+
+        // 计算速度
+        float dx = targetX - startX;
+        float dy = targetY - startY;
+        float dist = Math.Max(1, (float)Math.Sqrt(dx * dx + dy * dy));
+        float speed = GetProjectileSpeed(type);
+        p.Dx = (dx / dist) * speed;
+        p.Dy = (dy / dist) * speed;
+
+        // 设置特殊属性
+        if (type == "METEOR")
+        {
+            p.Size = 20;
+            p.ExplosionRadius = 100;
+        }
+        else if (type == "BLACK_HOLE")
+        {
+            p.ExplosionRadius = 250;
+            p.LifeTime = 300;
+            p.Size = 15;
+        }
+        else if (type == "DEATH_RAY")
+        {
+            // 死光不需要特殊处理
+        }
+
+        return p;
     }
 
     // 移除废弃的LaunchRemoteAttack

@@ -249,9 +249,23 @@ public class Monster
                         float angle = i * (float)Math.PI * 2 / projectiles;
                         float projDx = (float)Math.Cos(angle) * 100;
                         float projDy = (float)Math.Sin(angle) * 100;
-                        
-                        var p = new Projectile(null, X + Size/2, Y + Size/2, 
-                                             X + Size/2 + projDx, Y + Size/2 + projDy, "INK");
+                        float startX = X + Size/2;
+                        float startY = Y + Size/2;
+
+                        var p = GameObjectPools.Projectiles.Acquire();
+                        p.Owner = null;
+                        p.X = startX; p.Y = startY;
+                        p.OriginX = startX; p.OriginY = startY;
+                        p.TargetX = startX + projDx;
+                        p.TargetY = startY + projDy;
+                        p.Type = "INK";
+                        p.ProjectileColor = Color.Purple;
+                        p.IsActive = true;
+                        p.LifeTime = 80;
+                        p.Dx = (float)Math.Cos(angle) * 14.0f;
+                        p.Dy = (float)Math.Sin(angle) * 14.0f;
+                        p.Trail.Clear();
+                        p.HitEntityIds.Clear();
                         p.IsMonsterProjectile = true;
                         BattleForm.Instance?.AddProjectile(p);
                     }
@@ -259,8 +273,29 @@ public class Monster
                 else // 精准远程/精英重击
                 {
                     string projType = IsElite ? "CANNON" : "SPIT";
-                    var p = new Projectile(null, X + Size/2, Y + Size/2, TargetX, TargetY, projType);
+                    float startX = X + Size/2;
+                    float startY = Y + Size/2;
+
+                    var p = GameObjectPools.Projectiles.Acquire();
+                    p.Owner = null;
+                    p.X = startX; p.Y = startY;
+                    p.OriginX = startX; p.OriginY = startY;
+                    p.TargetX = TargetX;
+                    p.TargetY = TargetY;
+                    p.Type = projType;
+                    p.ProjectileColor = Color.Purple;
+                    p.IsActive = true;
+                    p.LifeTime = projType == "CANNON" ? 100 : 80;
+                    p.Trail.Clear();
+                    p.HitEntityIds.Clear();
                     p.IsMonsterProjectile = true;
+                    // 计算速度
+                    float speedX = TargetX - startX;
+                    float speedY = TargetY - startY;
+                    float speedDist = Math.Max(1, (float)Math.Sqrt(speedX * speedX + speedY * speedY));
+                    float projSpeed = projType == "CANNON" ? 12.0f : 15.0f;
+                    p.Dx = (speedX / speedDist) * projSpeed;
+                    p.Dy = (speedY / speedDist) * projSpeed;
                     BattleForm.Instance?.AddProjectile(p);
                 }
             }

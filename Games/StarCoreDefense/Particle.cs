@@ -16,7 +16,12 @@ public class Particle
     public bool IsActive { get; set; } = true;
 
     // 特效类型: "NORMAL", "SPARK", "SMOKE", "RING"
-    public string Type { get; set; } = "NORMAL"; 
+    public string Type { get; set; } = "NORMAL";
+
+    // 无参构造函数（用于对象池）
+    public Particle()
+    {
+    }
 
     public Particle(float x, float y, float dx, float dy, Color color, int life, float size, string type = "NORMAL")
     {

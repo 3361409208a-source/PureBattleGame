@@ -35,6 +35,11 @@ public class Projectile
     public int PenetrationCount { get; set; } = 0; // 剩余穿透次数
     public HashSet<int> HitEntityIds { get; } = new HashSet<int>(); // 已命中的实体ID，防止重复命中,防止无限套娃
 
+    // 无参构造函数（用于对象池）
+    public Projectile()
+    {
+    }
+
     public Projectile(Robot? owner, float x, float y, float tx, float ty, string type = "BULLET", Robot? target = null)
     {
         Owner = owner;

@@ -685,6 +685,7 @@ public partial class BattleForm : Form
             p.Update();
             if (!p.IsActive)
             {
+                GameObjectPools.Particles.Release(p);
                 _particles.RemoveAt(i);
             }
         }
@@ -695,7 +696,11 @@ public partial class BattleForm : Form
             var ft = _floatingTexts[i];
             ft.Y += ft.Dy;
             ft.Life--;
-            if (!ft.IsActive) _floatingTexts.RemoveAt(i);
+            if (!ft.IsActive)
+            {
+                GameObjectPools.FloatingTexts.Release(ft);
+                _floatingTexts.RemoveAt(i);
+            }
         }
 
         // 更新投射物
@@ -706,6 +711,7 @@ public partial class BattleForm : Form
                 var p = _projectiles[i];
                 if (!p.IsActive)
                 {
+                    GameObjectPools.Projectiles.Release(p);
                     _projectiles.RemoveAt(i);
                     continue;
                 }
@@ -716,6 +722,7 @@ public partial class BattleForm : Form
                 if (p.X < -200 || p.X > this.ClientSize.Width + 200 || p.Y < -200 || p.Y > this.ClientSize.Height + 200)
                 {
                     p.IsActive = false;
+                    GameObjectPools.Projectiles.Release(p);
                     _projectiles.RemoveAt(i);
                     continue;
                 }
@@ -733,7 +740,14 @@ public partial class BattleForm : Form
                         float sdx = (float)Math.Cos(angle) * speed;
                         float sdy = (float)Math.Sin(angle) * speed - 5; // 初始稍微抗重力一下
                         
-                        var particle = new Particle(p.X, p.Y, sdx, sdy, c, _rand.Next(45, 100), (float)_rand.NextDouble() * 5 + 3, "FIREWORK_SPARK");
+                        var particle = GameObjectPools.Particles.Acquire();
+                        particle.X = p.X; particle.Y = p.Y;
+                        particle.Dx = sdx; particle.Dy = sdy;
+                        particle.Color = c;
+                        particle.Life = _rand.Next(45, 100); particle.MaxLife = particle.Life;
+                        particle.Size = (float)_rand.NextDouble() * 5 + 3;
+                        particle.IsActive = true;
+                        particle.Type = "FIREWORK_SPARK";
                         _particles.Add(particle);
                     }
                     AddExplosion(p.X, p.Y, Color.White, 1, "RING"); 
@@ -819,7 +833,24 @@ public partial class BattleForm : Form
 
                                     foreach (var nt in nextTargets)
                                     {
-                                        var chainBolt = new Projectile(p.Owner, monster.X + monster.Size/2, monster.Y + monster.Size/2, nt.X + nt.Size/2, nt.Y + nt.Size/2, "LIGHTNING");
+                                        var chainBolt = GameObjectPools.Projectiles.Acquire();
+                                        chainBolt.Owner = p.Owner;
+                                        chainBolt.X = monster.X + monster.Size/2;
+                                        chainBolt.Y = monster.Y + monster.Size/2;
+                                        chainBolt.OriginX = chainBolt.X;
+                                        chainBolt.OriginY = chainBolt.Y;
+                                        chainBolt.TargetX = nt.X + nt.Size/2;
+                                        chainBolt.TargetY = nt.Y + nt.Size/2;
+                                        chainBolt.Type = "LIGHTNING";
+                                        chainBolt.ProjectileColor = p.ProjectileColor;
+                                        chainBolt.IsActive = true;
+                                        chainBolt.LifeTime = 45;
+                                        chainBolt.Damage = p.Damage;
+                                        float dx2 = chainBolt.TargetX - chainBolt.X;
+                                        float dy2 = chainBolt.TargetY - chainBolt.Y;
+                                        float dist2 = Math.Max(1, (float)Math.Sqrt(dx2 * dx2 + dy2 * dy2));
+                                        chainBolt.Dx = (dx2 / dist2) * 45.0f;
+                                        chainBolt.Dy = (dy2 / dist2) * 45.0f;
                                         chainBolt.ChainCount = p.ChainCount - 1;
                                         chainBolt.Damage = (int)(p.Damage * 0.8f); // 链条衰减
                                         foreach(var id in p.HitEntityIds) chainBolt.HitEntityIds.Add(id);
@@ -1667,15 +1698,24 @@ public partial class BattleForm : Form
         lock (_projectileLock)
         {
             // 追踪型彩色核弹 (伤害下调，射速加快)
-            var p = new Projectile(b, bx, by, tx, ty, "METEOR") 
-            { 
-                Size = 45, 
-                Damage = 3000 + CurrentWave * 800,
-                LifeTime = 80,  
-                ExplosionRadius = 450, 
-                ProjectileColor = Color.Magenta
-            };
-            
+            var p = GameObjectPools.Projectiles.Acquire();
+            p.Owner = b;
+            p.X = bx; p.Y = by;
+            p.OriginX = bx; p.OriginY = by;
+            p.TargetX = tx; p.TargetY = ty;
+            p.Type = "METEOR";
+            p.Size = 45;
+            p.Damage = 3000 + CurrentWave * 800;
+            p.LifeTime = 80;
+            p.ExplosionRadius = 450;
+            p.ProjectileColor = Color.Magenta;
+            p.IsActive = true;
+            p.IsCluster = false;
+            p.PenetrationCount = 0;
+            p.ChainCount = 0;
+            p.HitEntityIds.Clear();
+            p.Trail.Clear();
+
             // 计算朝向目标的初始速度
             float adx = tx - bx, ady = ty - by;
             float alen = (float)Math.Sqrt(adx*adx + ady*ady);
@@ -1768,9 +1808,15 @@ public partial class BattleForm : Form
     {
         _robots.Clear();
         _monsters.Clear();
+        // 释放对象回对象池后再清空列表
+        foreach (var p in _projectiles) GameObjectPools.Projectiles.Release(p);
         _projectiles.Clear();
+        foreach (var p in _particles) GameObjectPools.Particles.Release(p);
         _particles.Clear();
+        foreach (var ft in _floatingTexts) GameObjectPools.FloatingTexts.Release(ft);
         _floatingTexts.Clear();
+        // 清空对象池（游戏重置时不需要保留任何对象）
+        GameObjectPools.ClearAll();
         _isGameEnding = false;
         _winner = null;
         _robotIdCounter = 1;
@@ -1814,16 +1860,15 @@ public partial class BattleForm : Form
 
     public void AddFloatingText(float x, float y, string text, Color color)
     {
-        _floatingTexts.Add(new FloatingText
-        {
-            X = x,
-            Y = y,
-            Dy = -1.5f - (float)_rand.NextDouble(),
-            Text = text,
-            TextColor = color,
-            Life = 40,
-            MaxLife = 40
-        });
+        var ft = GameObjectPools.FloatingTexts.Acquire();
+        ft.X = x;
+        ft.Y = y;
+        ft.Dy = -1.5f - (float)_rand.NextDouble();
+        ft.Text = text;
+        ft.TextColor = color;
+        ft.Life = 40;
+        ft.MaxLife = 40;
+        _floatingTexts.Add(ft);
     }
 
     public void TriggerChainExplosion(float x, float y, float radius, int damage)
@@ -1877,7 +1922,16 @@ public partial class BattleForm : Form
                 life = _rand.Next(10, 30);
             }
 
-            _particles.Add(new Particle(x, y, (float)Math.Cos(angle) * speed, (float)Math.Sin(angle) * speed, color, life, size, type));
+            var particle = GameObjectPools.Particles.Acquire();
+            particle.X = x; particle.Y = y;
+            particle.Dx = (float)Math.Cos(angle) * speed;
+            particle.Dy = (float)Math.Sin(angle) * speed;
+            particle.Color = color;
+            particle.Life = life; particle.MaxLife = life;
+            particle.Size = size;
+            particle.IsActive = true;
+            particle.Type = type;
+            _particles.Add(particle);
         }
     }
 
