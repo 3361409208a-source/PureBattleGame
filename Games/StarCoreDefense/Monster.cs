@@ -62,6 +62,9 @@ public class Monster
     public float ArmorResist { get; set; } = 0f; // 物理抗性 0~1
     public bool IsRanged { get; set; } = false;  // 远程型：保持距离
     public bool IsElite { get; set; } = false;   // 精英型：金边特效
+    public bool IsMiniBoss { get; set; } = false; // 小Boss：每5波
+    public bool IsBoss { get; set; } = false;     // 大Boss：每10波
+    public float SpeedMultiplier { get; set; } = 1.0f; // 速度倍率
     public int GoldReward { get; set; } = 50;    // 独立奖励
     public int AttackerCount { get; set; } = 0;  // 当前有多少机器人在攻击本怪物
     public int SlowTimer { get; set; } = 0;      // 减速时间
@@ -214,9 +217,10 @@ public class Monster
             float dy = TargetY - (Y + Size / 2);
             float dist = (float)Math.Sqrt(dx * dx + dy * dy);
             
-            // 【割草改动】移速极大幅度降低，变成慢吞吞的“僵尸海”，给玩家倾泻火力的空间
+            // 【割草改动】移速极大幅度降低，变成慢吞吞的”僵尸海”，给玩家倾泻火力的空间
             float wave = BattleForm.Instance?.CurrentWave ?? 1;
             float moveSpeed = ((IsElite ? 0.2f : (ArmorResist > 0 ? 0.1f : 0.15f)) + (wave * 0.003f)) / 2.0f; // 【速度减半】
+            moveSpeed *= SpeedMultiplier; // 应用速度倍率（Boss减速用）
             float keepDist = IsRanged ? 400f : 50f; // 远程兵保持射程
 
             if (dist > keepDist)

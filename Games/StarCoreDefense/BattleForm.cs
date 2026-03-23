@@ -33,18 +33,19 @@ public partial class BattleForm : Form
     private static readonly SolidBrush _perfBgBrush = new SolidBrush(Color.FromArgb(120, 0, 0, 0));
     private static readonly SolidBrush _uiBgBrush = new SolidBrush(Color.FromArgb(180, 20, 20, 25));
 
-    private Dictionary<Color, Brush> _brushCache = new Dictionary<Color, Brush>(); 
+    private Dictionary<Color, Brush> _brushCache = new Dictionary<Color, Brush>();
     private Dictionary<string, Pen> _penCache = new Dictionary<string, Pen>(); // (Color, Width) 组合键
     private List<FloatingText> _floatingTexts = new List<FloatingText>();
+    private bool _needsCacheCleanup = false; // 标记需要在帧结束时清理缓存
 
     private Brush GetBrush(Color c) {
         // 关键性能优化：Alpha 进行 12 步进取整，减少 _brushCache 产生的总数
         int sa = (c.A / 12) * 12;
         Color keyColor = Color.FromArgb(sa, c.R, c.G, c.B);
         if (!_brushCache.TryGetValue(keyColor, out var b)) {
+            // 避免在绘制过程中清理缓存，改为标记延迟清理
             if (_brushCache.Count > 1000) {
-                foreach (var brush in _brushCache.Values) brush.Dispose();
-                _brushCache.Clear();
+                _needsCacheCleanup = true;
             }
             b = new SolidBrush(keyColor);
             _brushCache[keyColor] = b;
@@ -54,18 +55,29 @@ public partial class BattleForm : Form
 
     private Pen GetPen(Color c, float w) {
         // 核心性能优化：宽度步进 0.5，Alpha 步进 12
-        float sw = (float)Math.Round(w * 2) / 2f; 
+        float sw = (float)Math.Round(w * 2) / 2f;
         int sa = (c.A / 12) * 12;
         string key = $"{c.R}_{c.G}_{c.B}_{sa}_{sw}";
         if (!_penCache.TryGetValue(key, out var p)) {
+            // 避免在绘制过程中清理缓存，改为标记延迟清理
             if (_penCache.Count > 800) {
-                foreach (var pen in _penCache.Values) pen.Dispose();
-                _penCache.Clear();
+                _needsCacheCleanup = true;
             }
             p = new Pen(Color.FromArgb(sa, c.R, c.G, c.B), sw);
             _penCache[key] = p;
         }
         return p;
+    }
+
+    /// <summary>
+    /// 清理 GDI 缓存，释放 Brush 和 Pen 句柄
+    /// 在帧结束时调用，避免在绘制过程中释放导致句柄泄漏
+    /// </summary>
+    private void CleanupGdiCache() {
+        foreach (var brush in _brushCache.Values) brush.Dispose();
+        _brushCache.Clear();
+        foreach (var pen in _penCache.Values) pen.Dispose();
+        _penCache.Clear();
     }
 
     // 游戏参数
@@ -879,6 +891,12 @@ public partial class BattleForm : Form
             }
         }
 
+        // 在帧结束时清理缓存（避免在绘制过程中清理导致句柄泄漏）
+        if (_needsCacheCleanup) {
+            CleanupGdiCache();
+            _needsCacheCleanup = false;
+        }
+
         // 重绘
         this.Invalidate();
         // 强制刷新顶部面板绘图
@@ -910,6 +928,7 @@ public partial class BattleForm : Form
             _bufferGraphics?.Dispose();
             _bufferGraphics = null;
             _backBuffer?.Dispose();
+            _backBuffer = null; // 关键：设为 null 防止 OnPaint 使用已释放的 Bitmap
 
             // 限制最大缓冲区尺寸，防止内存溢出
             int maxSize = 4096;
@@ -1235,6 +1254,17 @@ public partial class BattleForm : Form
             // 在屏幕空间显示预览，转换为世界坐标并在 Render 中绘制
             _monsterSpawnPoint = e.Location;
         }
+
+        // 鼠标按住时更新闪电位置
+        if (_isLmbDown)
+        {
+            var baseBot = GetBaseRobot();
+            float baseX = baseBot?.X + baseBot?.Size / 2 ?? 0;
+            float baseY = baseBot?.Y + baseBot?.Size / 2 ?? 0;
+            float scale = 1.0f / _worldViewFactor;
+            _mouseWorldX = (e.X - (this.ClientSize.Width / 2f + _panX)) / scale + baseX;
+            _mouseWorldY = (e.Y - (this.ClientSize.Height / 2f + _panY)) / scale + baseY;
+        }
     }
 
     private void BattleForm_MouseUp(object? sender, MouseEventArgs e)
@@ -1536,8 +1566,8 @@ public partial class BattleForm : Form
         {
             if (_waveTimer <= 0)
             {
-                // 【割草改动】怪物血量提升 10 倍，数量下调 1.5 倍。
-                _monstersToSpawnInWave = (int)((20 + CurrentWave * 10) * 3.33); 
+                // 【割草改动】更多敌人！每波基础50只，每波增加25只
+                _monstersToSpawnInWave = (int)((50 + CurrentWave * 25) * 2); 
                 _spawnInterval = 0;
                 _waveStartTimer = 0;
             }
@@ -1678,15 +1708,41 @@ public partial class BattleForm : Form
 
         var monster = new Monster(spawnX, spawnY, wave);
         // 【割草改动】敌人血量 * 10：不再是一碰就碎的杂兵，让战场更有打击感。
-        monster.MaxHP = (200 + wave * 60) * 10; 
+        monster.MaxHP = (200 + wave * 60) * 10;
         monster.HP = monster.MaxHP;
 
-        if (wave % 10 == 0 && _monstersToSpawnInWave == 1) // Boss
+        // 精英怪：每波随机生成，越往后概率越高
+        bool isElite = _rand.Next(100) < Math.Min(5 + wave * 2, 30);
+        if (isElite && wave > 2)
         {
-            monster.MaxHP *= 15;
+            monster.IsElite = true;
+            monster.MaxHP = (int)(monster.MaxHP * 2.5);
             monster.HP = monster.MaxHP;
-            monster.Size = 100;
-            AddFloatingText(spawnX, spawnY, "LEVEL BOSS INCOMING!", Color.Red);
+            monster.Size = 50;
+            monster.SpeedMultiplier *= 0.8f; // 精英稍微慢一点但血厚
+            AddFloatingText(spawnX, spawnY, "ELITE!", Color.Gold);
+        }
+
+        // 小Boss：每5波生成一个
+        if (wave % 5 == 0 && _monstersToSpawnInWave == 1 && wave % 10 != 0)
+        {
+            monster.IsMiniBoss = true;
+            monster.MaxHP = (int)(monster.MaxHP * 8);
+            monster.HP = monster.MaxHP;
+            monster.Size = 75;
+            monster.SpeedMultiplier *= 0.6f;
+            AddFloatingText(spawnX, spawnY, "MINI BOSS!", Color.Orange);
+        }
+
+        // 大Boss：每10波生成
+        if (wave % 10 == 0 && _monstersToSpawnInWave == 1)
+        {
+            monster.IsBoss = true;
+            monster.MaxHP = (int)(monster.MaxHP * 20);
+            monster.HP = monster.MaxHP;
+            monster.Size = 120;
+            monster.SpeedMultiplier *= 0.4f;
+            AddFloatingText(spawnX, spawnY, "★ BOSS INCOMING! ★", Color.Red);
         }
 
         _monsters.Add(monster);
@@ -2114,11 +2170,7 @@ public partial class BattleForm : Form
             _ => p.ProjectileColor
         };
 
-        if (!_brushCache.TryGetValue(color, out var brush))
-        {
-            brush = new SolidBrush(color);
-            _brushCache[color] = brush;
-        }
+        var brush = GetBrush(color);
 
         float size = p.Size > 0 ? p.Size : (p.Type switch
         {
@@ -2147,8 +2199,8 @@ public partial class BattleForm : Form
             float stepY = (endY - startY) / segments;
             
             PointF lastPt = new PointF(startX, startY);
-            var glowPen = GetPen(color, size * 1.5f);
-            var corePen = GetPen(Color.White, size * 0.5f);
+            var glowPen = GetPen(color, 4.5f);
+            var corePen = GetPen(Color.White, 1.5f);
             
             for (int i = 1; i <= segments; i++)
             {
@@ -2173,10 +2225,8 @@ public partial class BattleForm : Form
             if (v > 0)
             {
                 float lex = p.X - (p.Dx / v) * 15, ley = p.Y - (p.Dy / v) * 15;
-                using var laserPen = new Pen(color, size);
-                g.DrawLine(laserPen, lex, ley, p.X, p.Y);
-                using var corePen = new Pen(Color.White, size * 0.4f);
-                g.DrawLine(corePen, lex, ley, p.X, p.Y);
+                g.DrawLine(GetPen(color, 3), lex, ley, p.X, p.Y);
+                g.DrawLine(GetPen(Color.White, 1.5f), lex, ley, p.X, p.Y);
             }
         }
         else if (p.Type == "ROCKET")
@@ -2206,7 +2256,7 @@ public partial class BattleForm : Form
             if (p.Owner != null)
             {
                 float startX = p.Owner.X + p.Owner.Size / 2, startY = p.Owner.Y + p.Owner.Size / 2;
-                g.DrawLine(GetPen(Color.Red, 20 + (float)Math.Sin(Environment.TickCount/20.0)*5), startX, startY, p.X, p.Y);
+                g.DrawLine(GetPen(Color.Red, 25), startX, startY, p.X, p.Y);
                 g.DrawLine(GetPen(Color.FromArgb(100, Color.OrangeRed), 40), startX, startY, p.X, p.Y);
             }
         }
@@ -2694,7 +2744,7 @@ public partial class BattleForm : Form
                 var br = GetBaseRobot();
                 var wp = robot.TargetWall.GetWorldPosition(br?.X ?? 0, br?.Y ?? 0);
                 float wave = (float)Math.Sin(Environment.TickCount / 50.0) * 1;
-                g.DrawLine(GetPen(Color.FromArgb(150, Color.DeepSkyBlue), 2 + wave), centerX, centerY, wp.X, wp.Y);
+                g.DrawLine(GetPen(Color.FromArgb(150, Color.DeepSkyBlue), 3), centerX, centerY, wp.X, wp.Y);
                 g.FillEllipse(Brushes.White, wp.X - 2, wp.Y - 2, 4, 4);
             }
 
@@ -2771,17 +2821,20 @@ public partial class BattleForm : Form
             float bx = (float)(Math.Sin(ang) * radius), by = (float)(Math.Cos(ang) * radius * tilt), z = (float)Math.Cos(ang);
             if (backLayer && z > 0) continue; if (!backLayer && z <= 0) continue;
             float ps = 4 + z * 2, alpha = 150 + z * 100;
+            // 量化 alpha 避免缓存爆炸
+            int quantizedAlpha = (int)(alpha / 20) * 20;
+            quantizedAlpha = Math.Clamp(quantizedAlpha, 0, 255);
             if (type == "SHIELD_PLATE")
             {
-                g.FillRectangle(GetBrush(Color.FromArgb((int)alpha, robot.SecondaryColor)), cx + bx - 6, cy + by - 3, 12, 6);
-                g.DrawRectangle(GetPen(Color.FromArgb((int)alpha, Color.White), 1), cx + bx - 6, cy + by - 3, 12, 6);
+                g.FillRectangle(GetBrush(Color.FromArgb(quantizedAlpha, robot.SecondaryColor)), cx + bx - 6, cy + by - 3, 12, 6);
+                g.DrawRectangle(GetPen(Color.FromArgb(quantizedAlpha, Color.White), 1), cx + bx - 6, cy + by - 3, 12, 6);
             }
             else
             {
                 if (type == "NANO") {
                     g.FillRectangle(Brushes.LimeGreen, cx + bx - 1, cy + by - 1, 3, 3);
                     if (Environment.TickCount % 500 < 100) g.DrawLine(Pens.White, cx+bx-3, cy+by, cx+bx+3, cy+by);
-                } else g.FillEllipse(GetBrush(Color.FromArgb((int)Math.Clamp(alpha, 0, 255), robot.PrimaryColor)), cx + bx - ps/2, cy + by - ps/2, ps, ps);
+                } else g.FillEllipse(GetBrush(Color.FromArgb(quantizedAlpha, robot.PrimaryColor)), cx + bx - ps/2, cy + by - ps/2, ps, ps);
             }
         }
     }
@@ -2808,9 +2861,12 @@ public partial class BattleForm : Form
             float ang = time + (float)(i * Math.PI * 2 / 12), tilt = (float)Math.Sin(time * 0.5f) * 0.3f;
             float x = (float)(Math.Cos(ang) * radius), y = (float)(Math.Sin(ang) * radius * tilt), z = (float)Math.Sin(ang);
             if (backLayer && z > 0) continue; if (!backLayer && z <= 0) continue;
-            float ps = 6 + z * 3; 
+            float ps = 6 + z * 3;
             Color baseColor = backLayer ? Color.DarkBlue : Color.Cyan;
-            Color c = Color.FromArgb(150 + (int)(z*100), baseColor);
+            // 量化 alpha 避免缓存爆炸
+            int alpha2866 = (int)((150 + z * 100) / 20) * 20;
+            alpha2866 = Math.Clamp(alpha2866, 0, 255);
+            Color c = Color.FromArgb(alpha2866, baseColor);
             g.FillRectangle(GetBrush(c), cx + x - ps/2, cy + y - ps/2, ps, ps);
             g.DrawRectangle(Pens.White, cx + x - ps/2, cy + y - ps/2, ps, ps);
         }
@@ -2881,7 +2937,10 @@ public partial class BattleForm : Form
                 g.FillEllipse(bodyBrush, x, y, size, size);
                 g.FillEllipse(Brushes.Black, cx - size / 3, cy - size / 3, size * 2 / 3, size * 2 / 3);
                 float pulse = 0.5f + (float)Math.Sin(Environment.TickCount / 100.0) * 0.5f;
-                Color coreColor = Color.FromArgb((int)(100 + 155 * pulse), robot.PrimaryColor);
+                // 量化 alpha 避免缓存爆炸
+                int alpha2940 = (int)((100 + 155 * pulse) / 20) * 20;
+                alpha2940 = Math.Clamp(alpha2940, 0, 255);
+                Color coreColor = Color.FromArgb(alpha2940, robot.PrimaryColor);
                 g.FillEllipse(GetBrush(coreColor), cx - size / 5, cy - size / 5, size * 2 / 5, size * 2 / 5);
                 // 重炮管
                 float px = cx + (float)Math.Cos(ang) * size, py = cy + (float)Math.Sin(ang) * size;
@@ -2927,7 +2986,10 @@ public partial class BattleForm : Form
         float pulse = 0.5f + (float)Math.Sin(Environment.TickCount / 150.0) * 0.5f;
         
         // 2. 治疗光晕
-        Color ringColor = Color.FromArgb((int)(80 * pulse), Color.LimeGreen);
+        // 量化 alpha 避免缓存爆炸
+        int alpha2989 = (int)((80 * pulse) / 12) * 12;
+        alpha2989 = Math.Clamp(alpha2989, 0, 255);
+        Color ringColor = Color.FromArgb(alpha2989, Color.LimeGreen);
         float ringSize = size * (1.2f + 0.2f * pulse);
         g.FillEllipse(GetBrush(ringColor), cx - ringSize / 2, cy - ringSize / 2, ringSize, ringSize);
 
@@ -2952,7 +3014,11 @@ public partial class BattleForm : Form
         // 【增加能量力场视觉】
         float pulse = 0.5f + (float)Math.Sin(Environment.TickCount / 150.0) * 0.5f;
         float shieldRadius = size * (0.9f + pulse * 0.15f);
-        g.DrawEllipse(GetPen(Color.FromArgb((int)(100 + pulse * 50), Color.Cyan), 3 + pulse * 4), cx - shieldRadius, cy - shieldRadius, shieldRadius * 2, shieldRadius * 2);
+        // 量化 alpha 和宽度避免缓存爆炸
+        int alpha3017 = (int)((100 + pulse * 50) / 12) * 12;
+        alpha3017 = Math.Clamp(alpha3017, 0, 255);
+        float penWidth3017 = (float)Math.Round((3 + pulse * 4) * 2) / 2f;
+        g.DrawEllipse(GetPen(Color.FromArgb(alpha3017, Color.Cyan), penWidth3017), cx - shieldRadius, cy - shieldRadius, shieldRadius * 2, shieldRadius * 2);
 
         // 2. 重型多重装甲 (极具攻击性的锯齿刃状结构)
         PointF[] oct = new PointF[12]; // 改为 12 边形锯齿
@@ -2991,7 +3057,10 @@ public partial class BattleForm : Form
 
         // 4. 高能核心 (呼吸灯)
         float hPulse = 0.5f + (float)Math.Sin(Environment.TickCount / 80.0) * 0.5f;
-        Color coreColor = Color.FromArgb((int)(150 + 105 * hPulse), Color.Orange);
+        // 量化 alpha 避免缓存爆炸
+        int alpha3060 = (int)((150 + 105 * hPulse) / 20) * 20;
+        alpha3060 = Math.Clamp(alpha3060, 0, 255);
+        Color coreColor = Color.FromArgb(alpha3060, Color.Orange);
         g.FillEllipse(GetBrush(coreColor), cx - 7, cy - 7, 14, 14);
         g.DrawEllipse(GetPen(Color.White, 2), cx - 7, cy - 7, 14, 14);
 
@@ -3591,10 +3660,11 @@ public partial class BattleForm : Form
     {
         if (!_isLmbDown) return;
 
-        // 1. 绘制鼠标中心扩散圈
+        // 1. 绘制鼠标中心扩散圈 (使用固定透明度避免缓存爆炸)
         float pulse = (Environment.TickCount % 600) / 600f;
         float radius = pulse * 120;
-        var p = GetPen(Color.FromArgb((int)(150 * (1 - pulse)), Color.Aqua), 3);
+        int pulseAlpha = (int)((1 - pulse) * 150) / 20 * 20; // 量化到20的倍数
+        var p = GetPen(Color.FromArgb(pulseAlpha, Color.Aqua), 3);
         g.DrawEllipse(p, _mouseWorldX - radius, _mouseWorldY - radius, radius * 2, radius * 2);
 
         // 2. 绘制链接到敌人的电离弧
@@ -3627,6 +3697,23 @@ public partial class BattleForm : Form
     }
 
     public List<Monster> GetAllMonsters() => _monsters;
+
+    /// <summary>
+    /// 释放所有 GDI 资源，防止内存泄漏
+    /// </summary>
+    protected override void Dispose(bool disposing) {
+        if (disposing) {
+            // 释放双缓冲资源
+            _bufferGraphics?.Dispose();
+            _bufferGraphics = null;
+            _backBuffer?.Dispose();
+            _backBuffer = null;
+
+            // 清理缓存的 Brush 和 Pen
+            CleanupGdiCache();
+        }
+        base.Dispose(disposing);
+    }
 }
 
 /// <summary>

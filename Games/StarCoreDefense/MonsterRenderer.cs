@@ -110,5 +110,46 @@ public static class MonsterRenderer
             float floatOffset = (30 - m.DamageTextTimer) * 1.5f;
             g.DrawString(m.DamageText, _damageFont, _damageBrush, cx, m.Y - 20 - floatOffset, _centerFormat);
         }
+
+        // 精英怪特效：金色光环
+        if (m.IsElite)
+        {
+            using var elitePen = new Pen(Color.Gold, 3);
+            g.DrawEllipse(elitePen, m.X - 3, m.Y - 3, size + 6, size + 6);
+        }
+
+        // 小Boss特效：橙色旋转光环
+        if (m.IsMiniBoss)
+        {
+            float angle = (Environment.TickCount / 20f) % 360;
+            using var miniBossPen = new Pen(Color.Orange, 4);
+            using var miniBossBrush = new SolidBrush(Color.FromArgb(100, Color.Orange));
+            g.DrawArc(miniBossPen, m.X - 8, m.Y - 8, size + 16, size + 16, angle, 270);
+            g.FillEllipse(miniBossBrush, cx - 5, m.Y - 18, 10, 10);
+        }
+
+        // 大Boss特效：红色脉冲光环 + 皇冠标记
+        if (m.IsBoss)
+        {
+            float pulse = 1 + (float)Math.Sin(Environment.TickCount / 100.0) * 0.2f;
+            using var bossPen = new Pen(Color.Red, 5);
+            using var glowBrush = new SolidBrush(Color.FromArgb(80, Color.Red));
+            float glowSize = (size + 20) * pulse;
+            float glowX = cx - glowSize / 2;
+            float glowY = cy - glowSize / 2;
+            g.FillEllipse(glowBrush, glowX, glowY, glowSize, glowSize);
+            g.DrawEllipse(bossPen, m.X - 10, m.Y - 10, size + 20, size + 20);
+
+            // 绘制皇冠
+            using var crownBrush = new SolidBrush(Color.Yellow);
+            PointF[] crown = {
+                new PointF(cx - 12, m.Y - 15),
+                new PointF(cx - 6, m.Y - 25),
+                new PointF(cx, m.Y - 18),
+                new PointF(cx + 6, m.Y - 25),
+                new PointF(cx + 12, m.Y - 15)
+            };
+            g.FillPolygon(crownBrush, crown);
+        }
     }
 }
