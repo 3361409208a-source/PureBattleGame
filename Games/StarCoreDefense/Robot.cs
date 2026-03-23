@@ -49,6 +49,7 @@ public partial class Robot
     // 兵种类型
     public RobotClass ClassType { get; set; } = RobotClass.Gunner;
     public RobotRank Rank { get; set; } = RobotRank.Normal;
+    public int Level { get; set; } = 1; // 兵种当前等级
 
     // 基本信息
     public int Id { get; set; }
@@ -90,6 +91,8 @@ public partial class Robot
 
     // 攻击状态
     public bool IsFiringLaser { get; set; } = false;
+    public bool IsFiringLightning { get; set; } = false; // 新增：持续电击状态
+    public List<Monster> LightningTargets { get; } = new List<Monster>(); // 新增：当前的电击目标链
     public float LaserTargetX { get; set; }
     public float LaserTargetY { get; set; }
     public Robot? TargetRobot { get; set; }
@@ -320,52 +323,57 @@ public partial class Robot
                 HP = MaxHP;
                 break;
             case RobotClass.Gunner:
-                int lvG = BattleForm.Instance?._shooterLevel ?? 1; // 暂时映射到旧变量或添加新变量
+                Level = BattleForm.Instance?._shooterLevel ?? 1;
+                int lvG = Level; 
                 PrimaryColor = Color.FromArgb(255, 107, 107);
                 Size = 23;
                 MaxHP = (int)(1000 * (1 + 0.2f * (lvG - 1)));
-                Damage = 100 + (lvG - 1) * 35;
-                AttackInterval = Math.Max(5, 12 - (lvG - 1) / 2);
+                Damage = (110 + (lvG - 1) * 35) * 11; // 【伤害激增 1000%】
+                AttackInterval = Math.Max(1, (12 - (lvG - 1) / 2) / 11); // 【射速提升 1000%】
                 CurrentAttackType = "BULLET";
                 HP = MaxHP;
                 break;
             case RobotClass.Rocket:
-                int lvR = BattleForm.Instance?._rocketLevel ?? 1;
+                Level = BattleForm.Instance?._rocketLevel ?? 1;
+                int lvR = Level;
                 PrimaryColor = Color.FromArgb(255, 165, 0);
                 Size = 26;
                 MaxHP = (int)(1200 * (1 + 0.2f * (lvR - 1)));
-                Damage = 250 + (lvR - 1) * 80;
-                AttackInterval = Math.Max(20, 60 - (lvR - 1) * 4);
+                Damage = (250 + (lvR - 1) * 80) * 11; // 【伤害激增 1000%】
+                AttackInterval = Math.Max(1, (60 - (lvR - 1) * 4) / 11); // 【射速提升 1000%】
                 CurrentAttackType = "ROCKET";
                 HP = MaxHP;
                 break;
             case RobotClass.Plasma:
-                int lvP = BattleForm.Instance?._plasmaLevel ?? 1;
+                Level = BattleForm.Instance?._plasmaLevel ?? 1;
+                int lvP = Level;
                 PrimaryColor = Color.FromArgb(170, 100, 255);
                 Size = 21;
                 MaxHP = (int)(800 * (1 + 0.15f * (lvP - 1)));
-                Damage = 45 + (lvP - 1) * 15;
-                AttackInterval = Math.Max(2, 6 - (lvP - 1) / 3);
+                Damage = (45 + (lvP - 1) * 15) * 11; // 【伤害激增 1000%】
+                AttackInterval = Math.Max(1, (6 - (lvP - 1) / 3) / 11); // 【射速提升 1000%】
                 CurrentAttackType = "PLASMA";
                 HP = MaxHP;
                 break;
             case RobotClass.Laser:
-                int lvL = BattleForm.Instance?._laserLevel ?? 1;
+                Level = BattleForm.Instance?._laserLevel ?? 1;
+                int lvL = Level;
                 PrimaryColor = Color.FromArgb(0, 255, 255);
                 Size = 22;
                 MaxHP = (int)(900 * (1 + 0.18f * (lvL - 1)));
-                Damage = 150 + (lvL - 1) * 50;
-                AttackInterval = Math.Max(15, 45 - (lvL - 1) * 2);
+                Damage = (150 + (lvL - 1) * 50) * 3 * 11; // 【伤害激增 1000%】
+                AttackInterval = Math.Max(1, (45 - (lvL - 1) * 2) / 11); // 【射速提升 1000%】
                 CurrentAttackType = "LASER";
                 HP = MaxHP;
                 break;
             case RobotClass.Lightning:
-                int lvLt = BattleForm.Instance?._lightningLevel ?? 1;
+                Level = BattleForm.Instance?._lightningLevel ?? 1;
+                int lvLt = Level;
                 PrimaryColor = Color.FromArgb(255, 255, 100);
                 Size = 22;
                 MaxHP = (int)(1100 * (1 + 0.22f * (lvLt - 1)));
-                Damage = 120 + (lvLt - 1) * 40;
-                AttackInterval = Math.Max(10, 30 - (lvLt - 1) * 2);
+                Damage = (120 + (lvLt - 1) * 40) * 11; // 【伤害激增 1000%】
+                AttackInterval = Math.Max(1, (30 - (lvLt - 1) * 2) / 11); // 【射速提升 1000%】
                 CurrentAttackType = "LIGHTNING";
                 HP = MaxHP;
                 break;
@@ -375,7 +383,7 @@ public partial class Robot
                 Size = 34;
                 SpeedMultiplier = 1.0f + 0.15f * (gLevel - 1); 
                 MaxHP = (int)(2500 * (1 + 0.25f * (gLevel - 1))); 
-                Damage = 45 + (gLevel - 1) * 25; 
+                Damage = (45 + (gLevel - 1) * 25) * 11; // 【伤害激增 1000%】
                 HP = MaxHP;
                 break;
             case RobotClass.Engineer:
@@ -1097,14 +1105,14 @@ public partial class Robot
             }
             else // 极端情况：没找到城墙驻点 (如全部被毁)，则维持距离射击
             {
-                float idealDistance = 150f;
+                float idealDistance = 300f; // 【范围倍增：150 -> 300】
                 if (dist > idealDistance + 30) { Dx += (dx / dist) * 0.2f; Dy += (dy / dist) * 0.2f; }
                 else if (dist < idealDistance - 30) { Dx -= (dx / dist) * 0.4f; Dy -= (dy / dist) * 0.4f; }
                 else { Dx *= 0.9f; Dy *= 0.9f; }
             }
 
             // 发射攻击 (超远距离、必触发)
-            if (ShootCooldown <= 0 && dist <= 600)
+            if (ShootCooldown <= 0 && dist <= 1200) // 【范围倍增：600 -> 1200】
             {
                 LaunchAttackAtMonster(MonsterTarget);
             }
@@ -1158,7 +1166,7 @@ public partial class Robot
                 level = BattleForm.Instance?._shooterLevel ?? 1;
                 ShootCooldown = AttackInterval;
                 projectileCount = 2 + (level / 3);
-                scatter = 40f;
+                scatter = 200f; // 【散播火力：大幅增加散射范围以覆盖多目标】
                 break;
             case RobotClass.Rocket:
                 level = BattleForm.Instance?._rocketLevel ?? 1;
@@ -1174,18 +1182,33 @@ public partial class Robot
                 break;
             case RobotClass.Laser:
                 level = BattleForm.Instance?._laserLevel ?? 1;
-                ShootCooldown = AttackInterval;
+                ShootCooldown = 35; // 【改为重型点射 约为 0.6s 一发】
                 projectileCount = 1;
-                IsFiringLaser = true;
-                LaserTargetX = targetX;
-                LaserTargetY = targetY;
-                _delayedAttackTimer = 15;
-                return; // Laser handled by timer
+                type = "LASER"; 
+                IsFiringLaser = false;
+                break;
             case RobotClass.Lightning:
                 level = BattleForm.Instance?._lightningLevel ?? 1;
                 ShootCooldown = AttackInterval;
-                projectileCount = 1 + (level / 4);
-                break;
+                projectileCount = 4 + (level / 2); // 【根据需求调整：闪电变为多目标持续电能链接】
+                IsFiringLightning = true;
+                _delayedAttackTimer = 30; // 维持 0.5 秒左右的链接效果
+                LightningTargets.Clear();
+                
+                // 瞬发寻找范围内所有受害者并锁定
+                if (BattleForm.Instance != null)
+                {
+                    var cx = X + Size / 2;
+                    var cy = Y + Size / 2;
+                    var nearby = BattleForm.Instance._monsters
+                        .Where(m => m.IsActive && !m.IsDead && Math.Sqrt(Math.Pow(m.X - cx, 2) + Math.Pow(m.Y - cy, 2)) < 1200)
+                        .OrderBy(m => Math.Sqrt(Math.Pow(m.X - cx, 2) + Math.Pow(m.Y - cy, 2)))
+                        .Take(projectileCount)
+                        .ToList();
+                    
+                    foreach(var target in nearby) LightningTargets.Add(target);
+                }
+                return; // 进入延迟攻击循环处理持续伤害
             default:
                 ShootCooldown = 60;
                 break;
@@ -1271,17 +1294,21 @@ public partial class Robot
         if (_delayedAttackTimer > 0)
         {
             _delayedAttackTimer--;
-            if (_delayedAttackTimer == 0)
+            
+            // 【处理持续电弧链接伤害】
+            if (IsFiringLightning)
             {
-                IsFiringLaser = false;
-
-                // 处理对怪物的激光伤害 - 伤害随射手等级增加
-                if (MonsterTarget != null && MonsterTarget.IsActive && !MonsterTarget.IsDead)
+                foreach (var target in LightningTargets.ToList())
                 {
-                    int laserLevel = BattleForm.Instance?._laserLevel ?? 1;
-                    int laserDmg = 15 + (laserLevel - 1) * 8;
-                    MonsterTarget.TakeDamage(laserDmg); 
+                    if (target.IsActive && !target.IsDead)
+                    {
+                        if (_delayedAttackTimer % 2 == 0)
+                        {
+                            target.TakeDamage(Math.Max(1, Damage / 20));
+                        }
+                    }
                 }
+                if (_delayedAttackTimer == 0) { IsFiringLightning = false; LightningTargets.Clear(); }
             }
         }
     }
@@ -1562,7 +1589,7 @@ public partial class Robot
         }
 
         // 基础伤害 + 等级提升 (等级3以上每级+25%，Lv.1为100%伤害)
-        float factor = 1.0f + levelBonus * 0.25f;
+        float factor = (1.0f + levelBonus * 0.25f) * 11; // 【全域伤害 11 倍化】
         
         // 针对不同类型的子弹微调其成长曲线 (如有需要可以在此扩展)
         return (int)(baseDamage * factor);

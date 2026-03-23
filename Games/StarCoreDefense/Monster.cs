@@ -8,6 +8,10 @@ namespace PureBattleGame.Games.StarCoreDefense;
 /// </summary>
 public class Monster
 {
+    // 身份标识
+    private static int _idCounter = 1;
+    public int Id { get; set; }
+
     // 位置
     public float X { get; set; }
     public float Y { get; set; }
@@ -16,6 +20,11 @@ public class Monster
     public float Dx { get; set; }
     public float Dy { get; set; }
     public string Type { get; set; } = "SLIME";
+
+    public Monster()
+    {
+        Id = _idCounter++;
+    }
 
     // 大小
     public int Size { get; set; } = 35; // 58 * 0.6 ≈ 35
@@ -207,7 +216,7 @@ public class Monster
             
             // 【割草改动】移速极大幅度降低，变成慢吞吞的“僵尸海”，给玩家倾泻火力的空间
             float wave = BattleForm.Instance?.CurrentWave ?? 1;
-            float moveSpeed = (IsElite ? 0.2f : (ArmorResist > 0 ? 0.1f : 0.15f)) + (wave * 0.003f);
+            float moveSpeed = ((IsElite ? 0.2f : (ArmorResist > 0 ? 0.1f : 0.15f)) + (wave * 0.003f)) / 2.0f; // 【速度减半】
             float keepDist = IsRanged ? 400f : 50f; // 远程兵保持射程
 
             if (dist > keepDist)
@@ -222,7 +231,8 @@ public class Monster
             }
 
             // 发动攻击
-            if (AttackCooldown <= 0 && dist < (IsRanged ? 500 : 300))
+            // 发动攻击 (范围倍增：1000/600)
+            if (AttackCooldown <= 0 && dist < (IsRanged ? 1000 : 600))
             {
                 AttackCooldown = Math.Max(30, 90 - (int)wave * 2); 
                 
@@ -335,8 +345,8 @@ public class Monster
                 BattleForm.Instance.AddFloatingText(X, Y - 20, $"+ 💎", Color.Cyan);
             }
 
-            // 【平衡性削弱】降低大爆炸引发的连环斩杀线，防止瞬间叠加秒杀满血Boss
-            int explosionRadius = Size > 50 ? 150 : 80; // 大幅缩小爆炸波及范围，减少殉爆层数
+            // 【平衡性：爆炸范围倍增】
+            int explosionRadius = Size > 50 ? 300 : 160; 
             int explosionDamage = 30 + BattleForm.Instance.CurrentWave * 15; // 伤害下调至合理区间，主要清理贴身小怪
             
             // 触发群伤

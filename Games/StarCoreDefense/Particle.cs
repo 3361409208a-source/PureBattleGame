@@ -54,7 +54,8 @@ public class Particle
         }
         else if (Type == "RING")
         {
-            Size += 2.0f; // 冲击波扩散
+            // 大幅提升扩容速度，确保在 45 帧内达到足以覆盖视野的大圈 (约 15/帧 -> 675)
+            Size += 15.0f; 
         }
 
         if (Life <= 0) IsActive = false;

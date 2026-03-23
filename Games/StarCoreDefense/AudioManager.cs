@@ -51,9 +51,9 @@ public static class AudioManager
         if (!Directory.Exists(_baseAssetPath)) Directory.CreateDirectory(_baseAssetPath);
 
         // 1. 自动生成缺失的基础音效 (Procedural Generation)
-        // 柔和的激光子弹 (加了指数衰减包络线，消除刺耳短音)
-        EnsureProceduralSfx("shoot", 0.08, (t) => Math.Sin(2 * Math.PI * (800 - t * 3000) * t) * Math.Pow(1 - t, 2) * 0.6); 
-        EnsureProceduralSfx("bullet", 0.08, (t) => Math.Sin(2 * Math.PI * (800 - t * 3000) * t) * Math.Pow(1 - t, 2) * 0.6); 
+        // 柔和的激光子弹 (减弱高频部分，增加淡出)
+        EnsureProceduralSfx("shoot", 0.08, (t) => Math.Sin(2 * Math.PI * (600 - t * 2000) * t) * Math.Pow(1 - t, 3) * 0.4); 
+        EnsureProceduralSfx("bullet", 0.08, (t) => Math.Sin(2 * Math.PI * (600 - t * 2000) * t) * Math.Pow(1 - t, 3) * 0.4); 
         
         // 沉闷的火箭发射 (低频扰动 + 尾音)
         EnsureProceduralSfx("rocket", 0.2, (t) => (new Random().NextDouble() - 0.5) * Math.Pow(1 - t, 1.5) * Math.Sin(2 * Math.PI * (100 - t * 50) * t) * 0.8);
@@ -73,8 +73,8 @@ public static class AudioManager
         // 死亡射线切割 (方波合成)
         EnsureProceduralSfx("death_ray", 0.2, (t) => Math.Sin(2 * Math.PI * 800 * t) * Math.Sign(Math.Sin(2 * Math.PI * 200 * t)) * 0.4 * (1 - t));
 
-        // 受击音效柔和化 (大幅降低白噪音刺耳程度)
-        EnsureProceduralSfx("hit", 0.05, (t) => (new Random().NextDouble() - 0.5) * Math.Pow(1 - t, 3) * 0.7); 
+        // 受击音效柔和化 (大幅降低白噪音刺耳程度，改用低频撞击感)
+        EnsureProceduralSfx("hit", 0.05, (t) => (new Random().NextDouble() - 0.5) * Math.Pow(1 - t, 4) * 0.3); 
         
         EnsureProceduralSfx("mine", 0.08, (t) => Math.Sin(2 * Math.PI * 440 * t) * Math.Sign(Math.Sin(2 * Math.PI * 20 * t))); 
         EnsureProceduralSfx("build", 0.1, (t) => Math.Sin(2 * Math.PI * (300 + t * 500) * t)); 
@@ -119,8 +119,8 @@ public static class AudioManager
     // 弹幕游戏音频最佳实践：通过大幅提升同类音效的冷却时间（CD），
     // 将满屏的受击/发射音频强制“量化”为规律的节奏点。
     // 这不仅解决重叠相位带来的刺耳底噪，还彻底释放了底层音频通道并发压力。
-    public static void PlayShootSound() => PlaySound("shoot", 80);
-    public static void PlayHitSound() => PlaySound("hit", 120);
+    public static void PlayShootSound() => PlaySound("shoot", 120); // 增加 CD 减少重叠
+    public static void PlayHitSound() => PlaySound("hit", 180); // 增加 CD 减少重叠
     public static void PlayDeathSound() => PlaySound("death", 100);
     public static void PlayProjectileSound(string type) => PlaySound(type.ToLower(), 80);
 

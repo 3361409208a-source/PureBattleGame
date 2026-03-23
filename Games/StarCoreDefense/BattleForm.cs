@@ -19,9 +19,9 @@ public partial class BattleForm : Form
     public static BattleForm? Instance { get; private set; }
 
     // 游戏状态
-    private List<Robot> _robots = new List<Robot>();
-    private List<Monster> _monsters = new List<Monster>();
-    private List<Projectile> _projectiles = new List<Projectile>();
+    public List<Robot> _robots = new List<Robot>();
+    public List<Monster> _monsters = new List<Monster>();
+    public List<Projectile> _projectiles = new List<Projectile>();
     private readonly object _projectileLock = new object(); // 并发锁
     // 静态资源池 (性能核心：防止 GDI 句柄爆炸)
     private static readonly Font _uiFont = new Font("Microsoft YaHei", 10, FontStyle.Bold);
@@ -689,6 +689,14 @@ public partial class BattleForm : Form
 
                 p.Update();
 
+                // 【性能优化】移除屏幕外太远的子弹，射程翻倍后同屏子弹数剧增，必须及时清理
+                if (p.X < -200 || p.X > this.ClientSize.Width + 200 || p.Y < -200 || p.Y > this.ClientSize.Height + 200)
+                {
+                    p.IsActive = false;
+                    _projectiles.RemoveAt(i);
+                    continue;
+                }
+
                 // 【核心视觉：超级陨石炸裂】
                 if (p.Type == "METEOR" && p.ProjectileColor == Color.Magenta && p.LifeTime <= 1)
                 {
@@ -734,6 +742,10 @@ public partial class BattleForm : Form
                     {
                         if (monster.IsActive && !monster.IsDead && p.CheckCollision(monster.X, monster.Y, monster.Size))
                         {
+                            // 防止同一个穿透性物体在同一帧或短时间内重复对同一个怪物造成多次伤害
+                            if (p.HitEntityIds.Contains(monster.Id)) continue;
+                            p.HitEntityIds.Add(monster.Id);
+
                             if (p.Type == "METEOR" && p.ProjectileColor == Color.Magenta) 
                             {
                                 // 蓄力彩色陨石特殊处理：撞击时引发小规模AOE但弹头不消失(穿透)
@@ -741,8 +753,59 @@ public partial class BattleForm : Form
                                 continue; 
                             }
 
-                            // 【修复：高级武器无范围伤害Bug】之前所有子弹都只造成单体伤害，即使是陨石！
-                            if (p.ExplosionRadius > 0)
+                            // 【核心增强：急速穿透火箭】
+                            if (p.Type == "ROCKET")
+                            {
+                                // 火箭自带范围爆炸
+                                if (p.ExplosionRadius > 0)
+                                {
+                                    foreach (var mNearby in _monsters.Where(m => m.IsActive && !m.IsDead))
+                                    {
+                                        float dnx = mNearby.X + mNearby.Size / 2 - p.X;
+                                        float dny = mNearby.Y + mNearby.Size / 2 - p.Y;
+                                        if (dnx * dnx + dny * dny <= p.ExplosionRadius * p.ExplosionRadius)
+                                            mNearby.OnHit(p);
+                                    }
+                                }
+                                else
+                                {
+                                    monster.OnHit(p);
+                                }
+                                AddExplosion(p.X, p.Y, p.ProjectileColor, 5, "SPARK");
+                                
+                                if (p.PenetrationCount > 0)
+                                {
+                                    p.PenetrationCount--;
+                                    continue; // 不中断，继续向前飞
+                                }
+                            }
+                            // 【核心增强：分支闪电链】
+                            else if (p.Type == "LIGHTNING") 
+                            { 
+                                monster.OnHit(p);
+                                monster.ParalyzeTimer = 60; 
+                                AddExplosion(monster.X + monster.Size / 2, monster.Y + monster.Size / 2, Color.White, 3, "SPARK"); 
+
+                                if (p.ChainCount > 0)
+                                {
+                                    // 寻找周围未被击中的敌人
+                                    var nextTargets = _monsters.Where(m => m.IsActive && !m.IsDead && m != monster && !p.HitEntityIds.Contains(m.Id))
+                                        .OrderBy(m => Math.Pow(m.X - monster.X, 2) + Math.Pow(m.Y - monster.Y, 2))
+                                        .Take(2) // 分支：每次命中分裂成最多2个
+                                        .ToList();
+
+                                    foreach (var nt in nextTargets)
+                                    {
+                                        var chainBolt = new Projectile(p.Owner, monster.X + monster.Size/2, monster.Y + monster.Size/2, nt.X + nt.Size/2, nt.Y + nt.Size/2, "LIGHTNING");
+                                        chainBolt.ChainCount = p.ChainCount - 1;
+                                        chainBolt.Damage = (int)(p.Damage * 0.8f); // 链条衰减
+                                        foreach(var id in p.HitEntityIds) chainBolt.HitEntityIds.Add(id);
+                                        chainBolt.TrackingMonster = nt;
+                                        AddProjectile(chainBolt);
+                                    }
+                                }
+                            }
+                            else if (p.ExplosionRadius > 0)
                             {
                                 for (int mi = 0; mi < _monsters.Count; mi++)
                                 {
@@ -763,9 +826,7 @@ public partial class BattleForm : Form
                                 AddExplosion(p.X, p.Y, p.ProjectileColor, 5, "SPARK");
                             }
                             
-                            if (p.Type == "LIGHTNING") { monster.ParalyzeTimer = 60; AddExplosion(monster.X + monster.Size / 2, monster.Y + monster.Size / 2, Color.White, 3, "SPARK"); }
-                            
-                            if (p.Type != "BLACK_HOLE" && p.Type != "DEATH_RAY") { p.IsActive = false; _projectiles.RemoveAt(i); }
+                            if (p.Type != "BLACK_HOLE" && p.Type != "DEATH_RAY" && !(p.Type == "ROCKET" && p.PenetrationCount > 0)) { p.IsActive = false; _projectiles.RemoveAt(i); }
                             break;
                         }
                     }
@@ -789,10 +850,22 @@ public partial class BattleForm : Form
         // 检查游戏结束条件
         CheckGameEnd();
 
-        // 围墙状态更新
+        // 围墙状态更新与差异化旋转
         foreach (var w in _walls) {
             if (w.HitFlashTimer > 0) w.HitFlashTimer--;
             if (w.RepairEffectTimer > 0) w.RepairEffectTimer--;
+
+            // 【核心增强：城墙差异化缓速旋转】
+            if (w.IsActive)
+            {
+                // 内层(Layer0)顺时针，外层(Layer1)逆时针极低速转动，产生机械星轨感
+                float rotSpeed = (w.Layer == 0 ? 0.0008f : -0.00035f);
+                w.Angle += rotSpeed;
+                
+                // 角度回路校验
+                if (w.Angle > (float)Math.PI * 2) w.Angle -= (float)Math.PI * 2;
+                if (w.Angle < 0) w.Angle += (float)Math.PI * 2;
+            }
         }
 
         // 重绘
@@ -1399,16 +1472,15 @@ public partial class BattleForm : Form
         {
             _baseWaveTimer = 0;
 
-            // 【割草改动】指数暴涨的伤害与核弹般的清屏半径！
+            // 【基地状态：脉冲冷却逻辑】
             float waveRadius = 300f + (_baseLevel - 1) * 100f; // 满级几乎覆盖半张地图
             float pushForce = 50f + (_baseLevel - 1) * 15f;    // 把怪推到天涯海角
-            int waveDamage = 500 + (_baseLevel - 1) * 350;     // 足够秒杀后一半波次所有的中小型单位
 
             float baseX = baseRobot.X + baseRobot.Size / 2f;
             float baseY = baseRobot.Y + baseRobot.Size / 2f;
 
-            // 爆发视觉特效
-            AddExplosion(baseX, baseY, Color.White, 35, "RING"); 
+            // 爆发视觉特效 (RING 的 count 传入 waveRadius 以匹配视觉效果)
+            AddExplosion(baseX, baseY, Color.White, (int)waveRadius * 2, "RING"); 
             AddExplosion(baseX, baseY, Color.Cyan, 50, "SPARK");
             AddExplosion(baseX, baseY, Color.Blue, 15, "SMOKE");
             
@@ -1427,7 +1499,7 @@ public partial class BattleForm : Form
 
                 if (dist <= waveRadius)
                 {
-                    monster.TakeDamage(waveDamage);
+                    // 基地脉冲：不再造成直接伤害，仅作为防御性的强力推离手段
                     monster.Dx += (dx / dist) * pushForce;
                     monster.Dy += (dy / dist) * pushForce;
                 }
@@ -1716,8 +1788,10 @@ public partial class BattleForm : Form
             }
             else if (type == "RING")
             {
-                _particles.Add(new Particle(x, y, 0, 0, color, 30, 10, "RING"));
-                return; // Ring is single particle
+                // 冲击波特殊处理：初始大小不仅限于10，而是可以由count参数透传作为“最终扩散半径”的参考
+                int finalRadius = count > 10 ? count : 300; 
+                _particles.Add(new Particle(x, y, 0, 0, color, 45, 10, "RING") { MaxLife = 45, Size = 10 });
+                return; 
             }
             else if (type == "SPARK")
             {
@@ -1731,6 +1805,8 @@ public partial class BattleForm : Form
 
     private void DrawParticle(Graphics g, Particle p)
     {
+        // 视觉裁剪：不渲染屏幕外的粒子
+        if (p.X < -20 || p.X > this.ClientSize.Width + 20 || p.Y < -20 || p.Y > this.ClientSize.Height + 20) return;
         int alpha = (int)((float)p.Life / p.MaxLife * 255);
         if (alpha > 255) alpha = 255;
         if (alpha < 0) alpha = 0;
@@ -1742,7 +1818,7 @@ public partial class BattleForm : Form
 
         if (p.Type == "RING")
         {
-            using var pen = new Pen(color, 2);
+            var pen = GetPen(color, 2);
             g.DrawEllipse(pen, p.X - p.Size / 2, p.Y - p.Size / 2, p.Size, p.Size);
         }
         else
@@ -1756,7 +1832,7 @@ public partial class BattleForm : Form
         // 已移除多余资源显示，保持视野开阔
 
         // 波次信息居中
-        using var textBrush = new SolidBrush(Color.White);
+        var textBrush = GetBrush(Color.White);
         string waveText;
         Color waveColor;
         if (_monstersToSpawnInWave > 0)
@@ -1999,6 +2075,8 @@ public partial class BattleForm : Form
 
     private void DrawProjectile(Graphics g, Projectile p)
     {
+        // 视觉裁剪：不渲染屏幕外的子弹
+        if (p.X < -50 || p.X > this.ClientSize.Width + 50 || p.Y < -50 || p.Y > this.ClientSize.Height + 50) return;
         Color color = p.Type switch
         {
             "BULLET" => Color.Yellow,
@@ -2033,7 +2111,41 @@ public partial class BattleForm : Form
             _ => 6
         });
 
-        if (p.Type == "LASER")
+        if (p.Type == "LIGHTNING")
+        {
+            // 【核心强化：真实电弧纹路渲染】
+            // 每次重绘都随机生成偏移量，营造出电流噼里啪啦的跳跃感
+            float startX = p.OriginX;
+            float startY = p.OriginY;
+            float endX = p.X;
+            float endY = p.Y;
+            
+            int segments = 5;
+            float stepX = (endX - startX) / segments;
+            float stepY = (endY - startY) / segments;
+            
+            PointF lastPt = new PointF(startX, startY);
+            var glowPen = GetPen(color, size * 1.5f);
+            var corePen = GetPen(Color.White, size * 0.5f);
+            
+            for (int i = 1; i <= segments; i++)
+            {
+                float nextX = startX + stepX * i;
+                float nextY = startY + stepY * i;
+                if (i < segments) // 中间点进行随机扰动
+                {
+                    nextX += (float)((_rand.NextDouble() - 0.5) * 25);
+                    nextY += (float)((_rand.NextDouble() - 0.5) * 25);
+                }
+                PointF nextPt = new PointF(nextX, nextY);
+                g.DrawLine(glowPen, lastPt, nextPt);
+                g.DrawLine(corePen, lastPt, nextPt);
+                lastPt = nextPt;
+            }
+            // 闪电尖端火花
+            g.FillEllipse(Brushes.White, p.X - size, p.Y - size, size * 2, size * 2);
+        }
+        else if (p.Type == "LASER")
         {
             float v = (float)Math.Sqrt(p.Dx * p.Dx + p.Dy * p.Dy);
             if (v > 0)
@@ -2072,22 +2184,20 @@ public partial class BattleForm : Form
             if (p.Owner != null)
             {
                 float startX = p.Owner.X + p.Owner.Size / 2, startY = p.Owner.Y + p.Owner.Size / 2;
-                using var lp = new Pen(Color.Red, 20 + (float)Math.Sin(Environment.TickCount/20.0)*5);
-                g.DrawLine(lp, startX, startY, p.X, p.Y);
-                using var gp = new Pen(Color.FromArgb(100, Color.OrangeRed), 40);
-                g.DrawLine(gp, startX, startY, p.X, p.Y);
+                g.DrawLine(GetPen(Color.Red, 20 + (float)Math.Sin(Environment.TickCount/20.0)*5), startX, startY, p.X, p.Y);
+                g.DrawLine(GetPen(Color.FromArgb(100, Color.OrangeRed), 40), startX, startY, p.X, p.Y);
             }
         }
         else if (p.Type == "BLACK_HOLE")
         {
-            using var bhPen = new Pen(Color.Purple, 2);
+            var bhPen = GetPen(Color.Purple, 2);
             float angle = (Environment.TickCount / 50f) % (float)(Math.PI * 2);
             g.DrawArc(bhPen, p.X - 15, p.Y - 15, 30, 30, angle * 180 / (float)Math.PI, 270);
             g.FillEllipse(Brushes.Black, p.X - 8, p.Y - 8, 16, 16);
         }
         else if (p.Type == "METEOR")
         {
-            using var fireBrush = new SolidBrush(Color.FromArgb(150, Color.OrangeRed));
+            var fireBrush = GetBrush(Color.FromArgb(150, Color.OrangeRed));
             g.FillEllipse(fireBrush, p.X - size / 2 - 5, p.Y - size / 2 - 5, size + 10, size + 10);
             g.FillEllipse(brush, p.X - size / 2, p.Y - size / 2, size, size);
             if (_rand.Next(10) < 5) AddExplosion(p.X, p.Y, Color.Orange, 1, "SMOKE");
@@ -2102,7 +2212,7 @@ public partial class BattleForm : Form
         if (p.Type == "LIGHTNING")
         {
             var r = new Random();
-            using var arcPen = new Pen(Color.White, 1);
+            var arcPen = GetPen(Color.White, 1);
             float angle = (float)Math.Atan2(p.Dy, p.Dx);
             for (int i = 0; i < 3; i++)
             {
@@ -2417,8 +2527,8 @@ public partial class BattleForm : Form
         {
             bO.Enabled = _baseOverloadCooldown <= 0;
             if (_baseOverloadCooldown > 0) bO.Text = $"{_baseOverloadCooldown / 60}s";
-            else bO.Text = "⚡超载⚡";
         }
+        UpdateUpgradeToolTips();
     }
 
     private RobotClass GetClassFromBtnName(string name)
@@ -2470,11 +2580,11 @@ public partial class BattleForm : Form
                 int dmg = 100; // Base
                 float rate = 1.0f;
                 switch(rc) {
-                    case RobotClass.Gunner: dmg = 100 + (lv-1)*35; rate = 60f/Math.Max(5, 12-(lv-1)/2); break;
-                    case RobotClass.Rocket: dmg = 250 + (lv-1)*80; rate = 60f/Math.Max(20, 60-(lv-1)*4); break;
-                    case RobotClass.Plasma: dmg = 45 + (lv-1)*15; rate = 60f/Math.Max(2, 6-(lv-1)/3); break;
-                    case RobotClass.Laser: dmg = 150 + (lv-1)*50; rate = 60f/Math.Max(15, 45-(lv-1)*2); break;
-                    case RobotClass.Lightning: dmg = 120 + (lv-1)*40; rate = 60f/Math.Max(10, 30-(lv-1)*2); break;
+                    case RobotClass.Gunner: dmg = (110 + (lv-1)*35)*11; rate = 60f/Math.Max(1, (12-(lv-1)/2)/11); break;
+                    case RobotClass.Rocket: dmg = (250 + (lv-1)*80)*11; rate = 60f/Math.Max(1, (60-(lv-1)*4)/11); break;
+                    case RobotClass.Plasma: dmg = (45 + (lv-1)*15)*11; rate = 60f/Math.Max(1, (6-(lv-1)/3)/11); break;
+                    case RobotClass.Laser: dmg = (150 + (lv-1)*50)*3*11; rate = 60f/Math.Max(1, (45-(lv-1)*2)/11); break;
+                    case RobotClass.Lightning: dmg = (120 + (lv-1)*40)*11; rate = 60f/Math.Max(1, (30-(lv-1)*2)/11); break;
                 }
                 _upgradeToolTip.SetToolTip(btn, $"【{name} Lv.{lv}】\n- {desc}\n- 攻击力: {dmg}\n- 射速: {rate:F1} 发/秒\n- 成长: 升级显著提升伤害与攻速频率");
             }
@@ -2487,7 +2597,7 @@ public partial class BattleForm : Form
         AddAtkTooltip("UpgLightning", "闪电游侠", RobotClass.Lightning, "跳跃打击，清理密集敌群。");
 
         if (panel.Controls["UpgGuardian"] is Button uG)
-            _upgradeToolTip.SetToolTip(uG, $"【守护者 Lv.{_guardianLevel}】\n- 冲击伤害: {45 + (_guardianLevel-1)*25}\n- 速度加成: +{(_guardianLevel-1)*15}%");
+            _upgradeToolTip.SetToolTip(uG, $"【守护者 Lv.{_guardianLevel}】\n- 冲击伤害: {(45 + (_guardianLevel-1)*25)*11}\n- 速度加成: +{(_guardianLevel-1)*15}%");
         
         if (panel.Controls["UpgEngineer"] is Button uE)
             _upgradeToolTip.SetToolTip(uE, $"【工程兵 Lv.{_engineerLevel}】\n- 修补效率显著随等级提升\n- 死光辅助伤害: {200 + (_engineerLevel-1)*100}");
@@ -2579,7 +2689,14 @@ public partial class BattleForm : Form
                 g.FillEllipse(GetBrush(Color.FromArgb(40, Color.Yellow)), centerX - 60, centerY - 60, 120, 120);
             }
 
-            Draw3DOrbiters(g, robot, centerX, centerY, size, false);
+            if (robot.IsFiringLaser)
+            {
+                DrawLaserAttack(g, robot, centerX, centerY);
+            }
+            if (robot.IsFiringLightning)
+            {
+                DrawLightningLink(g, robot, centerX, centerY);
+            }
         }
 
         DrawRobotHealthBar(g, robot, x, y, size);
@@ -2915,12 +3032,50 @@ public partial class BattleForm : Form
 
     private void DrawLaserAttack(Graphics g, Robot robot, float cx, float cy)
     {
+        // 激光样式已被改为“一击一击”式投射物，这里的持续光束仅作为技能期间的枪口残留或特殊指向
         if (!robot.IsFiringLaser) return;
         float tcx = robot.LaserTargetX, tcy = robot.LaserTargetY;
-        g.DrawLine(GetPen(robot.PrimaryColor, 4), cx, cy, tcx, tcy); 
-        g.DrawLine(GetPen(Color.White, 2), cx, cy, tcx, tcy);
-        g.FillEllipse(GetBrush(Color.FromArgb(100, 255, 100, 100)), cx - 8, cy - 8, 16, 16);
-        g.FillEllipse(GetBrush(Color.FromArgb(150, 255, 200, 200)), tcx - 6, tcy - 6, 12, 12);
+        g.DrawLine(GetPen(Color.FromArgb(100, robot.PrimaryColor), 12), cx, cy, tcx, tcy); 
+        g.DrawLine(GetPen(robot.PrimaryColor, 6), cx, cy, tcx, tcy); 
+        g.DrawLine(GetPen(Color.White, 3), cx, cy, tcx, tcy);
+    }
+
+    private void DrawLightningLink(Graphics g, Robot robot, float cx, float cy)
+    {
+        if (!robot.IsFiringLightning) return;
+        
+        foreach (var target in robot.LightningTargets)
+        {
+            if (!target.IsActive || target.IsDead) continue;
+            
+            var (tcx, tcy) = target.GetCenter();
+            
+            // 绘制核心抖动电弧
+            int segments = 4;
+            float stepX = (tcx - cx) / segments;
+            float stepY = (tcy - cy) / segments;
+            
+            PointF last = new PointF(cx, cy);
+            var color = Color.Yellow;
+            var pGlow = GetPen(Color.FromArgb(200, color), 4);
+            var pCore = GetPen(Color.White, 1.5f);
+            
+            for (int i = 1; i <= segments; i++)
+            {
+                float nx = cx + stepX * i;
+                float ny = cy + stepY * i;
+                if (i < segments) {
+                    nx += (float)((_rand.NextDouble() - 0.5) * 20);
+                    ny += (float)((_rand.NextDouble() - 0.5) * 20);
+                }
+                PointF next = new PointF(nx, ny);
+                g.DrawLine(pGlow, last, next);
+                g.DrawLine(pCore, last, next);
+                last = next;
+            }
+            // 目标点火花
+            g.FillEllipse(Brushes.White, tcx - 5, tcy - 5, 10, 10);
+        }
     }
 
     private void DrawDuelEffect(Graphics g, Robot robot, float cx, float cy)
@@ -3079,7 +3234,7 @@ public partial class BattleForm : Form
                 float force = (overloadRadius - dist) / overloadRadius * 50f;
                 m.X += (dx / dist) * force;
                 m.Y += (dy / dist) * force;
-                m.TakeDamage(2000 + _baseLevel * 200);
+                // m.TakeDamage(2000 + _baseLevel * 200); // 【移除基地超载伤害】
                 AddExplosion(m.X, m.Y, Color.DeepSkyBlue, 3, "SPARK");
             }
         }
@@ -3292,8 +3447,8 @@ public partial class BattleForm : Form
 
             Color wallColor = wall.HitFlashTimer > 0 ? Color.White : baseColor;
 
-            using (var pen = new Pen(Color.FromArgb(100, wallColor), 2))
-            using (var brush = new SolidBrush(wallColor))
+            var pen = GetPen(Color.FromArgb(100, wallColor), 2);
+            var brush = GetBrush(wallColor);
             {
                 float drawSweep = (wall.Layer > 0 && !isLayerComplete && wall.HP > 0) ? sweepAngle * hpPercent : sweepAngle;
                 

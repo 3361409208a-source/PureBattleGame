@@ -11,6 +11,8 @@ public class Projectile
 {
     public float X { get; set; }
     public float Y { get; set; }
+    public float OriginX { get; set; } // 新增：记录发射原点
+    public float OriginY { get; set; } // 新增：记录发射原点
     public float Dx { get; set; }
     public float Dy { get; set; }
     public float TargetX { get; set; }
@@ -30,12 +32,16 @@ public class Projectile
     public float Size { get; set; } = 0; // 0 means default size based on type
     public bool IsMonsterProjectile { get; set; } = false; // 新增：是否由怪物发射
     public int ChainCount { get; set; } = 0; // 连锁次数
+    public int PenetrationCount { get; set; } = 0; // 剩余穿透次数
+    public HashSet<int> HitEntityIds { get; } = new HashSet<int>(); // 已命中的实体ID，防止重复命中,防止无限套娃
 
     public Projectile(Robot? owner, float x, float y, float tx, float ty, string type = "BULLET", Robot? target = null)
     {
         Owner = owner;
         X = x;
         Y = y;
+        OriginX = x; 
+        OriginY = y;
         TargetX = tx;
         TargetY = ty;
         Type = type;
@@ -58,6 +64,11 @@ public class Projectile
             ExplosionRadius = 100;
             Size = 20;
         }
+        else if (type == "ROCKET")
+        {
+            PenetrationCount = 5 + (owner?.Level ?? 0) / 2; // 【穿透】
+            Size = 10;
+        }
         else if (type == "BLACK_HOLE")
         {
             ExplosionRadius = 250;
@@ -67,16 +78,20 @@ public class Projectile
             Dy = (dy / dist) * speed;
             Size = 15;
         }
+        else if (type == "LIGHTNING")
+        {
+            ChainCount = 3 + (owner?.Level ?? 0) / 3; // 【闪电链】
+        }
     }
 
     private float GetBaseSpeed(string type)
     {
         return type switch
         {
-            "ROCKET" => 12.0f,
-            "CANNON" => 8.0f,
-            "PLASMA" => 20.0f,
-            "LIGHTNING" => 35.0f,
+            "ROCKET" => 40.0f, // 【急速火箭】
+            "CANNON" => 12.0f,
+            "PLASMA" => 25.0f,
+            "LIGHTNING" => 45.0f, // 【闪电链急速】
             "SPIT" => 15.0f,
             "INK" => 14.0f,
             "METEOR" => 18.0f,
@@ -170,17 +185,19 @@ public class Projectile
 
     private int GetInitialLifeTime(string type)
     {
-        // 【割草优化】子弹存活时间从 500+ 大幅缩减，防止飞到地图外还在跑碰撞
+        // 【进一步调优】寿命不仅要短(性能)，还要能跑完全程(逻辑)。以 1200 像素射程计算
         return type switch
         {
-            "LIGHTNING" => 40,     // 闪电由于速度极快，没必要存活太久
-            "CANNON" => 180,       // 炮弹射程设定为中远距离
-            "BLACK_HOLE" => 300,   // 黑洞保留较长的牵引时间
-            "METEOR" => 150,       // 陨石落点适中
-            "DEATH_RAY" => 15,     // 死亡射线只要一瞬间
-            "SPIT" => 100,         // 怪物唾液射程较短
-            "INK" => 80,           // 墨水更短
-            _ => 120               // 普通子弹寿命设为 2秒左右 (120帧 * 速度25 = 3000像素，刚好够用)
+            "LIGHTNING" => 45,     // 速度 45, 需要足够击中 1200 远的目标
+            "CANNON" => 100,       
+            "BLACK_HOLE" => 300,   
+            "METEOR" => 150,       
+            "DEATH_RAY" => 45,     // 保证贯穿射程
+            "SPIT" => 80,         
+            "INK" => 80,           
+            "ROCKET" => 120,       
+            "PLASMA" => 65,        
+            _ => 90               // 普通子弹寿命设为 90 帧，足以覆盖 1200 像素
         };
     }
 }
