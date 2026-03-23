@@ -41,8 +41,7 @@ public partial class Robot
     public Mineral? TargetMineral { get; set; }
     public WallSegment? TargetWall { get; set; }
     private int _miningTimer = 0;
-    private int _buildingTimer = 0;
-
+    
     // 治疗技能
     public List<Robot> HealingTargets { get; } = new List<Robot>();
     private int _healCooldown = 0;
@@ -384,8 +383,6 @@ public partial class Robot
                 PrimaryColor = Color.FromArgb(0, 102, 204); 
                 Size = 20;
                 MaxHP = (int)(800 * (1 + 0.2f * (lvE - 1)));
-                Damage = 200 + (lvE - 1) * 100; // 提升死光伤害
-                AttackInterval = Math.Max(15, 150 - (lvE - 1) * 15); // 提升死光频率
                 HP = MaxHP;
                 break;
         }
@@ -783,69 +780,31 @@ public partial class Robot
 
         int engineerLevel = BattleForm.Instance?._engineerLevel ?? 1;
 
-        // 2. 超频全图远程跨层修墙 (由于是"赛博工程"，不限层级，瞬间全修)
-        _activeRepairTargets.Clear();
+        // 2. 智能化分散修复 (由于是"赛博工程"，多工程兵会自动分工)
         if (BattleForm.Instance != null && BattleForm.Instance._walls != null)
         {
-            // 找出全图需要维修的墙
-            // 优先级：由于是爽游，我们让工程兵更智能：
-            // 如果外层没激活，且内层满血，则全力集火外层扩建
-            // 如果内层有缺口，由于是保命要紧，优先补内层
-            bool innerUrgent = BattleForm.Instance._walls.Any(w => w.Layer == 0 && w.HP < w.MaxHP * 0.5f);
+            // 获取所有受损的墙体
+            var allDamaged = BattleForm.Instance._walls.Where(w => w.HP < w.MaxHP).ToList();
             
-            // 找出所有不满血的墙
-            var damagedWalls = BattleForm.Instance._walls
-                               .Where(w => w.HP < w.MaxHP)
-                               .OrderBy(w => {
-                                   // 优先级权重计算：
-                                   // 1. 如果内城告急，给 Layer 0 极高权重
-                                   // 2. 否则，给 Layer 1 正常权重，优先修血比例最低的
-                                   float layerWeight = w.Layer == 0 ? (innerUrgent ? 0 : 10) : 5;
-                                   float hpWeight = (float)w.HP / w.MaxHP;
-                                   return layerWeight + hpWeight;
-                               })
-                               .Take(5 + engineerLevel * 2); // 随等级提升同时修复的目标数
-                               
-            foreach (var w in damagedWalls)
+            if (allDamaged.Count > 0)
             {
-                _activeRepairTargets.Add(w);
-                TargetWall = w; 
-                // 【平衡性削弱】修复量从 20+ 降到 1~5，防止单人奶爆全图怪物 DPS。
-                // 现在的工程兵修墙更像是"细水长流"，必须堆人手才能顶住后期压力
+                // 每个工程兵根据 ID 挑选不同的起始维修点进行分工，避免“集火”同一个
                 int baseRepair = 1 + (engineerLevel / 3); 
-                w.Repair(baseRepair);
-            }
-            if (_activeRepairTargets.Count == 0) TargetWall = null;
-            
-            if (_activeRepairTargets.Count > 0 && Rand.Next(100) < 15)
-            {
-                BattleForm.Instance.AddExplosion(X + Size / 2, Y + Size / 2, Color.DeepSkyBlue, 1, "SPARK");
-            }
-        }
-        
-        // 3. 全新技能：天基死亡射线 (DEATH_RAY)
-        _buildingTimer++;
-        int weaponCooldown = Math.Max(20, 150 - engineerLevel * 10); // 随等级变快
-        
-        if (_buildingTimer >= weaponCooldown)
-        {
-            _buildingTimer = 0;
-            // 找一个最近的倒霉怪射激光
-            var allMonsters = BattleForm.Instance?.GetAllMonsters();
-            Monster? targetMonster = allMonsters?
-                                     .Where(m => m.IsActive && !m.IsDead)
-                                     .OrderBy(m => Math.Pow(m.X - X, 2) + Math.Pow(m.Y - Y, 2))
-                                     .FirstOrDefault();
-            
-            if (targetMonster != null && BattleForm.Instance != null)
-            {
-                float cx = X + Size / 2;
-                float cy = Y + Size / 2;
-                var (mx, my) = targetMonster.GetCenter();
-                var laser = new Projectile(this, cx, cy, mx, my, "DEATH_RAY");
-                BattleForm.Instance.AddProjectile(laser);
+                int myJobCount = 1 + (engineerLevel / 4); // 随等级提高同时兼顾的任务数
                 
-                AudioManager.PlayShootSound();
+                for (int i = 0; i < myJobCount; i++)
+                {
+                    int targetIdx = (Id + i * 7) % allDamaged.Count; 
+                    var w = allDamaged[targetIdx];
+                    w.Repair(baseRepair);
+                    
+                    // 偶尔冒个烟火特效
+                    if (Rand.Next(100) < 5)
+                    {
+                        var wp = w.GetWorldPosition(baseBot.X + baseBot.Size/2, baseBot.Y + baseBot.Size/2);
+                        BattleForm.Instance.AddExplosion(wp.X, wp.Y, Color.LightSkyBlue, 1, "SPARK");
+                    }
+                }
             }
         }
     }

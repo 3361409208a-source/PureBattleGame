@@ -2164,8 +2164,6 @@ public partial class BattleForm : Form
 
     private void CreateControlPanel()
     {
-    private void CreateControlPanel()
-    {
         int windowW = this.ClientSize.Width;
         int panelWidth = Math.Clamp(windowW - 10, 600, 950); 
         int targetColWidth = 72; // 理想宽度
