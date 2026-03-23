@@ -179,7 +179,12 @@ public class Projectile
         float dx = X - (targetX + targetSize / 2);
         float dy = Y - (targetY + targetSize / 2);
         float distSq = dx * dx + dy * dy;
-        float radius = targetSize / 2 + (Size > 0 ? Size / 2 : 5);
+
+        // 【等离子碰撞优化】收紧碰撞判定，使其看起来确实接触到了核心
+        float projectileHitSize = (Size > 0 ? Size : 8);
+        if (Type == "PLASMA") projectileHitSize *= 0.6f; 
+        
+        float radius = (targetSize * 0.42f) + (projectileHitSize / 2f);
         return distSq < radius * radius;
     }
 

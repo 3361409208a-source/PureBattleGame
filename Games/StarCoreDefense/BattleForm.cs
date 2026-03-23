@@ -38,25 +38,31 @@ public partial class BattleForm : Form
     private List<FloatingText> _floatingTexts = new List<FloatingText>();
 
     private Brush GetBrush(Color c) {
-        if (!_brushCache.TryGetValue(c, out var b)) {
-            if (_brushCache.Count > 1500) {
+        // 关键性能优化：Alpha 进行 12 步进取整，减少 _brushCache 产生的总数
+        int sa = (c.A / 12) * 12;
+        Color keyColor = Color.FromArgb(sa, c.R, c.G, c.B);
+        if (!_brushCache.TryGetValue(keyColor, out var b)) {
+            if (_brushCache.Count > 1000) {
                 foreach (var brush in _brushCache.Values) brush.Dispose();
                 _brushCache.Clear();
             }
-            b = new SolidBrush(c);
-            _brushCache[c] = b;
+            b = new SolidBrush(keyColor);
+            _brushCache[keyColor] = b;
         }
         return b;
     }
 
     private Pen GetPen(Color c, float w) {
-        string key = $"{c.ToArgb()}_{w}";
+        // 核心性能优化：宽度步进 0.5，Alpha 步进 12
+        float sw = (float)Math.Round(w * 2) / 2f; 
+        int sa = (c.A / 12) * 12;
+        string key = $"{c.R}_{c.G}_{c.B}_{sa}_{sw}";
         if (!_penCache.TryGetValue(key, out var p)) {
-            if (_penCache.Count > 1500) {
+            if (_penCache.Count > 800) {
                 foreach (var pen in _penCache.Values) pen.Dispose();
                 _penCache.Clear();
             }
-            p = new Pen(c, w);
+            p = new Pen(Color.FromArgb(sa, c.R, c.G, c.B), sw);
             _penCache[key] = p;
         }
         return p;
@@ -135,6 +141,9 @@ public partial class BattleForm : Form
     private bool _isDraggingMinimap = false;
     private bool _isSpaceDown = false;
     private Point _lastDragPoint;
+    private bool _isLmbDown = false;
+    private float _mouseWorldX, _mouseWorldY;
+    private List<Monster> _mouseLinkTargets = new List<Monster>();
     private ToolTip _upgradeToolTip = new ToolTip { InitialDelay = 200, AutoPopDelay = 10000 };
     private Point _monsterSpawnPoint;
 
@@ -587,6 +596,8 @@ public partial class BattleForm : Form
             }
         }
 
+        HandleMouseElectricAttack();
+
         // 更新怪物
         bool l1Active = IsLayerComplete(1);
         foreach (var monster in _monsters)
@@ -998,6 +1009,8 @@ public partial class BattleForm : Form
             if (p.IsActive) DrawParticle(g, p);
         }
 
+        DrawMouseElectricAttack(g);
+
         foreach (var ft in _floatingTexts)
         {
             // 使用静态字体和缓存画笔
@@ -1127,8 +1140,12 @@ public partial class BattleForm : Form
             return;
         }
 
-        if (e.Button == MouseButtons.Left)
+        if (e.Button == MouseButtons.Left && !_isSpaceDown)
         {
+            _isLmbDown = true;
+            _mouseWorldX = worldX;
+            _mouseWorldY = worldY;
+
             if (_isSpawningMonster)
             {
                 // 放置怪物
@@ -1222,6 +1239,11 @@ public partial class BattleForm : Form
 
     private void BattleForm_MouseUp(object? sender, MouseEventArgs e)
     {
+        if (e.Button == MouseButtons.Left)
+        {
+            _isLmbDown = false;
+            _mouseLinkTargets.Clear();
+        }
         _isDragging = false;
         _isDraggingMinimap = false;
         this.Cursor = Cursors.Default;
@@ -2923,22 +2945,41 @@ public partial class BattleForm : Form
 
     private void DrawGuardianAppearance(Graphics g, Robot robot, float x, float y, float size, float cx, float cy)
     {
-        // 1. 旋转动感背影
-        float rotSpeed = (float)Math.Sqrt(robot.Dx * robot.Dx + robot.Dy * robot.Dy);
-        float spinAngle = Environment.TickCount / 100f * (1 + rotSpeed * 0.5f);
+        // 1. 旋转动感背影 (电磁涡流)
+        float currentV = (float)Math.Sqrt(robot.Dx * robot.Dx + robot.Dy * robot.Dy);
+        float spinAngle = Environment.TickCount / 100f * (1 + currentV * 0.4f);
         
-        // 2. 重型多重装甲 (八边形结构)
-        PointF[] oct = new PointF[8];
-        for (int i = 0; i < 8; i++) {
-            float a = i * (float)Math.PI / 4 + spinAngle;
-            float r = (i % 2 == 0) ? (size / 1.7f) : (size / 2.0f);
+        // 【增加能量力场视觉】
+        float pulse = 0.5f + (float)Math.Sin(Environment.TickCount / 150.0) * 0.5f;
+        float shieldRadius = size * (0.9f + pulse * 0.15f);
+        g.DrawEllipse(GetPen(Color.FromArgb((int)(100 + pulse * 50), Color.Cyan), 3 + pulse * 4), cx - shieldRadius, cy - shieldRadius, shieldRadius * 2, shieldRadius * 2);
+
+        // 2. 重型多重装甲 (极具攻击性的锯齿刃状结构)
+        PointF[] oct = new PointF[12]; // 改为 12 边形锯齿
+        for (int i = 0; i < 12; i++) {
+            float a = i * (float)Math.PI / 6 + spinAngle;
+            float r = (i % 2 == 0) ? (size / 1.5f) : (size / 2.5f); // 夸张的锯齿深浅
             oct[i] = new PointF(cx + (float)Math.Cos(a) * r, cy + (float)Math.Sin(a) * r);
         }
         g.FillPolygon(GetBrush(robot.PrimaryColor), oct);
-        g.DrawPolygon(GetPen(robot.SecondaryColor, 3), oct);
+        g.DrawPolygon(GetPen(Color.White, 2), oct);
         
-        // 3. 冲击尖刺
-        if (rotSpeed > 0.5f) {
+        // 3. 电浆尾迹 (只在移动时产生)
+        if (currentV > 2.0f)
+        {
+            float moveAngle = (float)Math.Atan2(robot.Dy, robot.Dx);
+            for (int i = 0; i < 3; i++) {
+                float trailLen = 15f + i * 15f;
+                float trailAlpha = 150 - i * 40;
+                float tx = cx - (float)Math.Cos(moveAngle) * trailLen;
+                float ty = cy - (float)Math.Sin(moveAngle) * trailLen;
+                float ts = size * (1.0f - i * 0.2f);
+                g.FillEllipse(GetBrush(Color.FromArgb((int)trailAlpha, robot.SecondaryColor)), tx - ts/2, ty - ts/2, ts, ts);
+            }
+        }
+
+        // 4. 原有的冲击尖刺，但渲染更厚重
+        if (currentV > 1.5f) {
             float moveAngle = (float)Math.Atan2(robot.Dy, robot.Dx);
             PointF[] spike = {
                 new PointF(cx + (float)Math.Cos(moveAngle) * size * 0.9f, cy + (float)Math.Sin(moveAngle) * size * 0.9f),
@@ -3516,6 +3557,71 @@ public partial class BattleForm : Form
                         wall.TakeDamage(wallDmg);
                     }
                 }
+            }
+        }
+    }
+
+    private void HandleMouseElectricAttack()
+    {
+        if (!_isLmbDown) return;
+
+        // 核心：寻找鼠标周围 250 像素内的生物并电穿
+        float range = 250f;
+        _mouseLinkTargets = _monsters
+            .Where(m => m.IsActive && !m.IsDead && Math.Sqrt(Math.Pow(m.X + m.Size / 2 - _mouseWorldX, 2) + Math.Pow(m.Y + m.Size / 2 - _mouseWorldY, 2)) < range)
+            .OrderBy(m => Math.Sqrt(Math.Pow(m.X + m.Size / 2 - _mouseWorldX, 2) + Math.Pow(m.Y + m.Size / 2 - _mouseWorldY, 2)))
+            .Take(8) // 同时最多链接 8 个
+            .ToList();
+
+        foreach (var m in _mouseLinkTargets)
+        {
+            // 鼠标神之力：每帧造成固定 50 伤害
+            m.TakeDamage(50);
+            if (_rand.Next(10) < 2) AddExplosion(m.X + m.Size / 2, m.Y + m.Size / 2, Color.Cyan, 1, "SPARK");
+        }
+
+        // 产生脉冲视觉粒子
+        if (_frameCountForFps % 10 == 0)
+        {
+            AddExplosion(_mouseWorldX, _mouseWorldY, Color.Aqua, 1, "RING");
+        }
+    }
+
+    private void DrawMouseElectricAttack(Graphics g)
+    {
+        if (!_isLmbDown) return;
+
+        // 1. 绘制鼠标中心扩散圈
+        float pulse = (Environment.TickCount % 600) / 600f;
+        float radius = pulse * 120;
+        var p = GetPen(Color.FromArgb((int)(150 * (1 - pulse)), Color.Aqua), 3);
+        g.DrawEllipse(p, _mouseWorldX - radius, _mouseWorldY - radius, radius * 2, radius * 2);
+
+        // 2. 绘制链接到敌人的电离弧
+        foreach (var target in _mouseLinkTargets)
+        {
+            if (!target.IsActive || target.IsDead) continue;
+            var (tx, ty) = target.GetCenter();
+            
+            // 绘制抖动分形电弧 (简化版)
+            int segs = 6;
+            float sx = _mouseWorldX, sy = _mouseWorldY;
+            float dx = (tx - sx) / segs, dy = (ty - sy) / segs;
+            PointF last = new PointF(sx, sy);
+            var gPen = GetPen(Color.FromArgb(180, Color.Cyan), 2);
+            var cPen = GetPen(Color.White, 1);
+
+            for (int i = 1; i <= segs; i++)
+            {
+                float nx = sx + dx * i, ny = sy + dy * i;
+                if (i < segs) {
+                    nx += (float)(_rand.NextDouble() - 0.5) * 30;
+                    ny += (float)(_rand.NextDouble() - 0.5) * 30;
+                }
+                PointF curr = new PointF(nx, ny);
+                g.DrawLine(gPen, last, curr);
+                g.DrawLine(cPen, last, curr);
+                last = curr;
             }
         }
     }

@@ -127,6 +127,7 @@ public partial class Robot
     public float[] TentacleOffsets { get; set; } = new float[8];
 
     // 延迟攻击
+    private int _frameCount = 0;
     private int _delayedAttackTimer = 0;
 
     // 随机
@@ -432,6 +433,7 @@ public partial class Robot
     /// </summary>
     public void Update(int screenWidth, int screenHeight, List<Robot> allRobots, List<Monster> allMonsters)
     {
+        _frameCount++;
         if (SpeedBoostTimer > 0) SpeedBoostTimer--;
         
         if (_targetUpdateCooldown > 0) _targetUpdateCooldown--; // Decrement cooldown
@@ -1012,16 +1014,42 @@ public partial class Robot
                 // 现在增加"物理撞击内置冷却判定"，借用怪物的受击硬闪时间，使其撞击伤害更加合理
                 if (m.HitFlashTimer <= 5)
                 {
-                    int totalDmg = Damage + (int)(Damage * 0.25f * currentV);
+                    // 【守卫者强化：不仅撞击伤害更高，还带有毁天灭地的击退属性】
+                    int totalDmg = (int)(Damage * 1.5f + Damage * 0.5f * currentV);
                     m.TakeDamage(totalDmg);
                     
-                    // 视觉反馈：根据伤害大小调整爆炸规模
-                    BattleForm.Instance?.AddExplosion(mx, my, Color.Orange, totalDmg > 200 ? 4 : 2, "SPARK");
+                    // 撞击力场：将怪物狠狠撞飞！
+                    float push = 10f + currentV * 2.5f;
+                    m.Dx += (dxM / distM) * push;
+                    m.Dy += (dyM / distM) * push;
+
+                    // 视觉反馈：撞击产生更耀眼的闪光
+                    BattleForm.Instance?.AddExplosion(mx, my, Color.Cyan, totalDmg > 300 ? 5 : 3, "SPARK");
                     
                     // 撞击反作用力 (略微损耗动能)
-                    Dx *= 0.95f;
-                    Dy *= 0.95f;
+                    Dx *= 0.9f;
+                    Dy *= 0.9f;
                 }
+            }
+        }
+
+        // 4. 被动电离力场 (守护者专属：对周围怪物进行随机电磁干扰)
+        if (_frameCount % 20 == 0)
+        {
+            var lightningRange = 220f;
+            var nearbyZaps = allMonsters
+                .Where(m => m.IsActive && !m.IsDead && DistSq(m, X + Size / 2, Y + Size / 2) < lightningRange * lightningRange)
+                .Take(2).ToList();
+
+            if (nearbyZaps.Count > 0)
+            {
+                foreach (var nz in nearbyZaps) {
+                    nz.TakeDamage(Damage / 4);
+                }
+                IsFiringLightning = true;
+                LightningTargets.Clear();
+                LightningTargets.AddRange(nearbyZaps);
+                _delayedAttackTimer = 15; // 维持视觉连线
             }
         }
 
@@ -1617,6 +1645,13 @@ public partial class Robot
     {
         return mx >= X && mx <= X + Size &&
                my >= Y && my <= Y + Size;
+    }
+
+    private float DistSq(Monster m, float x, float y)
+    {
+        float dx = (m.X + m.Size / 2) - x;
+        float dy = (m.Y + m.Size / 2) - y;
+        return dx * dx + dy * dy;
     }
 }
 
