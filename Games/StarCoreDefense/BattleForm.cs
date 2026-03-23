@@ -1030,7 +1030,7 @@ public partial class BattleForm : Form
             {
                 float sx = robot.X + robot.Size / 2;
                 float sy = robot.Y + robot.Size / 2;
-                using var pen = new Pen(Color.FromArgb(150, 50, 255, 100), 2);
+                var pen = GetPen(Color.FromArgb(150, 50, 255, 100), 2);
                 foreach (var target in robot.HealingTargets)
                 {
                     if (target.IsActive && !target.IsDead)

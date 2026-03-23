@@ -17,7 +17,10 @@
       "Bash(taskkill /F /IM PureBattleGame.exe)",
       "Bash(powershell -Command \"Stop-Process -Id 51248 -Force\")",
       "Bash(taskkill /PID 51248 /F)",
-      "Bash(tasklist)"
+      "Bash(tasklist)",
+      "Bash(ls bin/Debug/net8.0-windows/*.exe)",
+      "Bash(ls bin/Debug/net8.0-windows/*.dll)",
+      "Bash(cmd.exe /c start bin/Debug/net8.0-windows/PureBattleGame.exe)"
     ]
   }
 }
