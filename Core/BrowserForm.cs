@@ -34,7 +34,12 @@ public partial class BrowserForm : Form
         InitializeComponent();
         this.DoubleBuffered = true;
         this.Opacity = SettingsManager.Current.DefaultOpacity;
-        CreateNewTab(SettingsManager.Current.HomeUrl);
+    }
+
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        if (_tabs.Count == 0) CreateNewTab(SettingsManager.Current.HomeUrl);
     }
 
     private void InitializeComponent()
@@ -122,9 +127,15 @@ public partial class BrowserForm : Form
         return btn;
     }
 
+    private bool _isCreatingTab = false; // 防抖锁
+
     public async void CreateNewTab(string url)
     {
-        var wv = new WebView2 { 
+        if (_isCreatingTab) return;
+        _isCreatingTab = true;
+
+        try {
+            var wv = new WebView2 { 
             Dock = DockStyle.Fill, 
             DefaultBackgroundColor = Color.FromArgb(30, 30, 34) 
         };
@@ -148,7 +159,11 @@ public partial class BrowserForm : Form
 
         SwitchToTab(tabData);
 
-        await wv.EnsureCoreWebView2Async(null);
+        // 修正 0x8007139F: 指定独立的用户数据文件夹避免冲突 (必须在访问 CoreWebView2 之前调用)
+        string userDataPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "PureBattleGame_Browser_Data");
+        var env = await CoreWebView2Environment.CreateAsync(null, userDataPath);
+        await wv.EnsureCoreWebView2Async(env);
+
         wv.CoreWebView2.Settings.IsPasswordAutosaveEnabled = false;
         wv.CoreWebView2.Settings.IsGeneralAutofillEnabled = false;
         
@@ -163,7 +178,47 @@ public partial class BrowserForm : Form
         };
         wv.CoreWebView2.SourceChanged += (s, e) => { if (tabData == _activeTab) _addressBar.Text = wv.Source.ToString(); };
         wv.CoreWebView2.DocumentTitleChanged += (s, e) => { tabData.Title = wv.CoreWebView2.DocumentTitle; tabTitle.Text = tabData.Title; };
+        
+        // 注入脚本以捕获网页内部的 Alt 快捷键 (改用 e.code 获取更可靠的物理键值)
+        await wv.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(@"
+            window.addEventListener('keydown', (e) => {
+                if (e.altKey) {
+                    window.chrome.webview.postMessage({ type: 'shortcut', code: e.code, shift: e.shiftKey });
+                }
+            });
+        ");
+
+        wv.CoreWebView2.WebMessageReceived += (s, e) => {
+            try {
+                var json = System.Text.Json.JsonDocument.Parse(e.WebMessageAsJson).RootElement;
+                if (json.GetProperty("type").GetString() == "shortcut") {
+                    string code = json.GetProperty("code").GetString() ?? "";
+                    bool shift = json.GetProperty("shift").GetBoolean();
+                    Keys key = Keys.None;
+                    if (code == "ArrowUp") key = Keys.Up;
+                    else if (code == "ArrowDown") key = Keys.Down;
+                    else if (code == "Space") key = Keys.Space;
+                    else if (code.StartsWith("Key")) Enum.TryParse(code.Substring(3), true, out key);
+                    else Enum.TryParse(code, true, out key);
+                    
+                    if (key != Keys.None) {
+                        if (shift) key |= Keys.Shift;
+                        this.BeginInvoke(new Action(() => HandleGlobalShortcuts(key | Keys.Alt)));
+                    }
+                }
+            } catch {}
+        };
+
         wv.CoreWebView2.Navigate(url);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"创建标签页失败: {ex.Message}");
+        }
+        finally
+        {
+            _isCreatingTab = false;
+        }
     }
 
     private void SwitchToTab(TabData tab)
@@ -174,8 +229,13 @@ public partial class BrowserForm : Form
             t.HeaderBtn.BackColor = (t == tab) ? Color.FromArgb(40, 40, 45) : Color.Transparent;
             t.HeaderBtn.Controls[0].ForeColor = (t == tab) ? Color.White : Color.Gray;
         }
-        _addressBar.Text = tab.WebView.Source?.ToString() ?? "";
-        tab.WebView.Focus();
+        if (this.IsHandleCreated) {
+            this.BeginInvoke(new Action(() => {
+                if (!tab.WebView.IsDisposed) tab.WebView.Focus();
+            }));
+        } else {
+            tab.WebView.Focus();
+        }
     }
 
     private void CloseTab(TabData tab)
@@ -190,6 +250,9 @@ public partial class BrowserForm : Form
 
     public void Navigate(string url)
     {
+        if (!this.Visible) this.Show();
+        this.BringToFront();
+
         bool shouldCreateNew = false;
         if (_activeTab != null && _activeTab.WebView.Source != null) {
             string currentUrl = _activeTab.WebView.Source.ToString();
@@ -222,17 +285,39 @@ public partial class BrowserForm : Form
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
+        if (HandleGlobalShortcuts(keyData)) return true;
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        // 核心：拦截系统菜单快捷键 (Alt+Space)
+        if (m.Msg == 0x0112 && ((int)m.WParam & 0xFFF0) == 0xF100) { // WM_SYSCOMMAND & SC_KEYMENU
+            if (HandleGlobalShortcuts(Keys.Space | Keys.Alt)) {
+                m.Result = IntPtr.Zero;
+                return;
+            }
+        }
+        base.WndProc(ref m);
+    }
+
+    private bool HandleGlobalShortcuts(Keys keyData)
+    {
         if ((keyData & Keys.Alt) == Keys.Alt) {
             Keys baseKey = keyData & ~Keys.Alt;
-            if (baseKey == Keys.B) { this.Hide(); return true; }
+            if (baseKey == Keys.B || baseKey == Keys.Q) { this.Hide(); MoyuLauncher.Instance?.Show(); return true; }
             else if (baseKey == Keys.Space) { ToggleBossKey(); return true; }
             else if (baseKey == Keys.Up) { this.Opacity = Math.Min(1.0, this.Opacity + 0.1); return true; }
             else if (baseKey == Keys.Down) { this.Opacity = Math.Max(0.1, this.Opacity - 0.1); return true; }
             else if (baseKey == Keys.T) { CreateNewTab(SettingsManager.Current.HomeUrl); return true; }
             else if (baseKey == Keys.W) { if (_activeTab != null) CloseTab(_activeTab); return true; }
-            if ((keyData & Keys.Shift) == Keys.Shift && baseKey == Keys.Q) Environment.Exit(0);
+            
+            if ((keyData & Keys.Shift) == Keys.Shift && baseKey == Keys.Q) {
+                Environment.Exit(0);
+                return true;
+            }
         }
-        return base.ProcessCmdKey(ref msg, keyData);
+        return false;
     }
 
     private void ToggleBossKey() {

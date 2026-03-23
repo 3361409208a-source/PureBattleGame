@@ -4,8 +4,9 @@ using System.Drawing;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.WinForms;
 using Microsoft.Web.WebView2.Core;
-using System.Linq; // Added for LINQ operations
-using System.Collections.Concurrent; // Added for ConcurrentDictionary in SpatialGrid
+using System.Linq; 
+using System.Collections.Concurrent; 
+using System.Runtime.InteropServices;
 
 using PureBattleGame.Core;
 
@@ -22,8 +23,44 @@ public partial class BattleForm : Form
     private List<Monster> _monsters = new List<Monster>();
     private List<Projectile> _projectiles = new List<Projectile>();
     private readonly object _projectileLock = new object(); // 并发锁
-    private Dictionary<Color, Brush> _brushCache = new Dictionary<Color, Brush>(); // 画笔缓存
+    // 静态资源池 (性能核心：防止 GDI 句柄爆炸)
+    private static readonly Font _uiFont = new Font("Microsoft YaHei", 10, FontStyle.Bold);
+    private static readonly Font _waveFont = new Font("Microsoft YaHei", 12, FontStyle.Bold);
+    private static readonly Font _floatingFont = new Font("Impact", 14, FontStyle.Bold);
+    private static readonly Font _perfFont = new Font("Consolas", 9, FontStyle.Bold);
+    private static readonly Pen _gridPen = new Pen(Color.FromArgb(40, 40, 60), 1);
+    private static readonly Pen _gridBorderPen = new Pen(Color.FromArgb(80, 80, 100), 2);
+    private static readonly SolidBrush _perfBgBrush = new SolidBrush(Color.FromArgb(120, 0, 0, 0));
+    private static readonly SolidBrush _uiBgBrush = new SolidBrush(Color.FromArgb(180, 20, 20, 25));
+
+    private Dictionary<Color, Brush> _brushCache = new Dictionary<Color, Brush>(); 
+    private Dictionary<string, Pen> _penCache = new Dictionary<string, Pen>(); // (Color, Width) 组合键
     private List<FloatingText> _floatingTexts = new List<FloatingText>();
+
+    private Brush GetBrush(Color c) {
+        if (!_brushCache.TryGetValue(c, out var b)) {
+            if (_brushCache.Count > 1500) {
+                foreach (var brush in _brushCache.Values) brush.Dispose();
+                _brushCache.Clear();
+            }
+            b = new SolidBrush(c);
+            _brushCache[c] = b;
+        }
+        return b;
+    }
+
+    private Pen GetPen(Color c, float w) {
+        string key = $"{c.ToArgb()}_{w}";
+        if (!_penCache.TryGetValue(key, out var p)) {
+            if (_penCache.Count > 1500) {
+                foreach (var pen in _penCache.Values) pen.Dispose();
+                _penCache.Clear();
+            }
+            p = new Pen(c, w);
+            _penCache[key] = p;
+        }
+        return p;
+    }
 
     // 游戏参数
     private int _robotIdCounter = 1;
@@ -55,13 +92,21 @@ public partial class BattleForm : Form
     public int _workerLevel = 1;
     public int _healerLevel = 1;
     public int _shooterLevel = 1;
+    public int _rocketLevel = 1;
+    public int _plasmaLevel = 1;
+    public int _laserLevel = 1;
+    public int _lightningLevel = 1;
     public int _guardianLevel = 1;
     public int _engineerLevel = 1;
 
     // 机器人价格递增
     private int _workerCost = 50;
-    private int _defenderCost = 150;
+    private int _healerCost = 150;
     private int _shooterCost = 100;
+    private int _rocketCost = 150;
+    private int _plasmaCost = 120;
+    private int _laserCost = 180;
+    private int _lightningCost = 250;
     private int _guardianCost = 200;
     private int _engineerCost = 150;
 
@@ -96,6 +141,7 @@ public partial class BattleForm : Form
     // 性能诊断
     private int _fps = 0;
     private int _bgmSwitchTimer = 0; 
+    private bool _isPaused = false;
     private int _activeBattleTrack = 1; // 当前选中的战斗音轨 (1或3)
     private int _frameCountForFps = 0;
     private DateTime _lastMetricUpdate = DateTime.Now;
@@ -132,16 +178,94 @@ public partial class BattleForm : Form
         InitializeWalls();
     }
 
+    [DllImport("user32.dll")] public static extern bool ReleaseCapture();
+    [DllImport("user32.dll")] public static extern int SendMessage(IntPtr hWnd, int Msg, IntPtr wParam, IntPtr lParam);
+
+    protected override void WndProc(ref Message m)
+    {
+        // 允许无边框窗口通过边缘拉伸缩放
+        if (m.Msg == 0x0084) // WM_NCHITTEST
+        {
+            Point p = PointToClient(new Point(m.LParam.ToInt32()));
+            const int resizerSize = 10;
+            
+            // 检测是否在边缘 10 像素范围内
+            bool left = p.X <= resizerSize;
+            bool right = p.X >= ClientSize.Width - resizerSize;
+            bool top = p.Y <= resizerSize;
+            bool bottom = p.Y >= ClientSize.Height - resizerSize;
+
+            if (top && left) { m.Result = (IntPtr)13; return; } // HTTOPLEFT
+            if (top && right) { m.Result = (IntPtr)14; return; } // HTTOPRIGHT
+            if (bottom && left) { m.Result = (IntPtr)16; return; } // HTBOTTOMLEFT
+            if (bottom && right) { m.Result = (IntPtr)17; return; } // HTBOTTOMRIGHT
+            if (top) { m.Result = (IntPtr)12; return; } // HTTOP
+            if (bottom) { m.Result = (IntPtr)15; return; } // HTBOTTOM
+            if (left) { m.Result = (IntPtr)10; return; } // HTLEFT
+            if (right) { m.Result = (IntPtr)11; return; } // HTRIGHT
+        }
+        base.WndProc(ref m);
+    }
+
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        // 1. 游戏空格键逻辑 (用于辅助控制)
+        if (keyData == Keys.Space && (msg.Msg == 0x0100 || msg.Msg == 0x0104)) {
+            _isSpaceDown = true;
+        }
+
+        // 2. Alt 组合全局/办公快捷键
+        if ((keyData & Keys.Alt) == Keys.Alt) {
+            Keys baseKey = keyData & ~Keys.Alt;
+            if (baseKey == Keys.Q || baseKey == Keys.B) { 
+                this.Hide(); 
+                MoyuLauncher.Instance?.Show(); 
+                return true; 
+            }
+            if (baseKey == Keys.Up) { this.Opacity = Math.Min(1.0, this.Opacity + 0.1); return true; }
+            if (baseKey == Keys.Down) { this.Opacity = Math.Max(0.1, this.Opacity - 0.1); return true; }
+            if (baseKey == Keys.Space) { 
+                // 复用启动器的全局老板键信号
+                MoyuLauncher.Instance?.Invoke(new Action(() => { MoyuLauncher.SendMessage(MoyuLauncher.Instance.Handle, 0x0312, (IntPtr)9000, IntPtr.Zero); })); 
+                return true; 
+            }
+        }
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
+
     private void InitializeComponent()
     {
-        this.Text = "纯粹战斗游戏";
+        this.Text = "游戏";
         this.Size = new Size(800, 600);
         this.StartPosition = FormStartPosition.CenterScreen;
         this.DoubleBuffered = true;
         this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
-        this.FormBorderStyle = FormBorderStyle.Sizable; // 改为可调整大小
-        this.Opacity = 0.1; 
+        this.FormBorderStyle = FormBorderStyle.None;
+        this.Opacity = SettingsManager.Current.DefaultOpacity; 
         this.MinimumSize = new Size(600, 450);
+        this.BackColor = Color.FromArgb(10, 10, 15);
+
+        // 统一顶栏 (透明背景)
+        var titlePanel = new Panel { 
+            Name = "TitlePanel",
+            Dock = DockStyle.Top, 
+            Height = 35, 
+            BackColor = Color.FromArgb(180, 20, 20, 25) 
+        };
+        var titleLbl = new Label { 
+            Text = "游戏", 
+            ForeColor = Color.FromArgb(100, 100, 110), 
+            Font = new Font("Microsoft YaHei UI", 9), 
+            Location = new Point(10, 8), 
+            AutoSize = true,
+            BackColor = Color.Transparent
+        };
+        titleLbl.MouseDown += (s, e) => { if (e.Button == MouseButtons.Left) { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); } };
+        titlePanel.MouseDown += (s, e) => { if (e.Button == MouseButtons.Left) { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); } };
+        titlePanel.Controls.Add(titleLbl);
+        titlePanel.Paint += TitlePanel_Paint; // 核心：在面板上绘制波次信息
+        this.Controls.Add(titlePanel);
+        titlePanel.BringToFront();
 
         // 键盘快捷键
         this.KeyPreview = true;
@@ -185,12 +309,7 @@ public partial class BattleForm : Form
         var baseRobot = SpawnRobot("主基地", this.ClientSize.Width / 2 - 20, this.ClientSize.Height / 2 - 20, RobotClass.Base);
         baseRobot.ApplyClassProperties();
 
-        // 生成初始机器人 (1个治疗，2个输出)
-        var def = SpawnRobot("医疗兵", this.ClientSize.Width / 2, this.ClientSize.Height / 2 + 50, RobotClass.Healer);
-        def.ApplyClassProperties();
-
-        SpawnRobot("游侠A", this.ClientSize.Width / 2 - 60, this.ClientSize.Height / 2 + 80, RobotClass.Shooter).ApplyClassProperties();
-        SpawnRobot("游侠B", this.ClientSize.Width / 2 + 20, this.ClientSize.Height / 2 + 80, RobotClass.Shooter).ApplyClassProperties();
+        _waveTimer = 360; // 给予 6 秒自主购买时间
 
         // 启动游戏循环
         var timer = new System.Windows.Forms.Timer();
@@ -204,9 +323,9 @@ public partial class BattleForm : Form
         uiTimer.Tick += (s, e) => UpdateUI();
         uiTimer.Start();
 
-        // 创建控制面板
+        // 创建控制面板与系统按钮
         CreateControlPanel();
-        CreateHomeButton();
+        CreateSystemButtons(); // 统一整合
         CreateSettingsUI();
     }
 
@@ -309,29 +428,109 @@ public partial class BattleForm : Form
 
     private void ReturnToHome()
     {
+        _isPaused = true;
         this.Hide();
         MoyuLauncher.Instance?.Show();
     }
 
-    private void CreateHomeButton()
+    private void CreateSystemButtons()
     {
-        Button btnHome = new Button
-        {
-            Text = "🏠 主页",
-            Location = new Point(this.ClientSize.Width - 75, 5),
-            Size = new Size(70, 25),
-            FlatStyle = FlatStyle.Flat,
-            ForeColor = Color.White,
-            BackColor = Color.FromArgb(50, 50, 60),
-            Font = new Font("Microsoft YaHei", 8, FontStyle.Bold),
-            Cursor = Cursors.Hand,
-            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        var topPanel = this.Controls["TitlePanel"];
+        if (topPanel == null) return;
+
+        int btnW = 75, btnH = 25, spacing = 5;
+        int currentX = topPanel.ClientSize.Width - btnW - 5;
+
+        // 🏠 主页
+        Button btnHome = CreateSysBtn("🏠 主页", currentX, 5, (s, e) => ReturnToHome());
+        topPanel.Controls.Add(btnHome);
+        currentX -= (btnW + spacing);
+
+        // ⚙️ 设置
+        Button btnSettings = CreateSysBtn("⚙️ 设置", currentX, 5, (s, e) => { 
+            if (_settingsPanel != null) { _settingsPanel.Visible = !_settingsPanel.Visible; _settingsPanel.BringToFront(); }
+        });
+        topPanel.Controls.Add(btnSettings);
+        currentX -= (btnW + spacing);
+
+        // 🔄 重启 (Restart)
+        Button btnRestart = CreateSysBtn("🔄 重启", currentX, 5, (s, e) => {
+            if (MessageBox.Show("确定要重新开始游戏吗？", "提示", MessageBoxButtons.YesNo) == DialogResult.Yes) ResetGame();
+        });
+        topPanel.Controls.Add(btnRestart);
+        currentX -= (btnW + spacing);
+
+        // ⏸️ 暂停 (Pause)
+        Button btnPause = CreateSysBtn("⏸️ 暂停", currentX, 5, (s, e) => TogglePause());
+        btnPause.Name = "BtnPause";
+        topPanel.Controls.Add(btnPause);
+    }
+
+    private Button CreateSysBtn(string text, int x, int y, EventHandler onClick)
+    {
+        Button btn = new Button {
+            Text = text, Location = new Point(x, y), Size = new Size(72, 25),
+            FlatStyle = FlatStyle.Flat, ForeColor = Color.White, BackColor = Color.FromArgb(50, 50, 60),
+            Font = new Font("Microsoft YaHei", 8, FontStyle.Bold), Cursor = Cursors.Hand, Anchor = AnchorStyles.Top | AnchorStyles.Right
         };
-        btnHome.FlatAppearance.BorderSize = 1;
-        btnHome.FlatAppearance.BorderColor = Color.FromArgb(80, 80, 100);
-        btnHome.Click += (s, e) => ReturnToHome();
-        this.Controls.Add(btnHome);
-        btnHome.BringToFront();
+        btn.FlatAppearance.BorderSize = 1;
+        btn.FlatAppearance.BorderColor = Color.FromArgb(100, 100, 120);
+        btn.Click += onClick;
+        btn.BringToFront();
+        return btn;
+    }
+
+    private void TitlePanel_Paint(object? sender, PaintEventArgs e)
+    {
+        var g = e.Graphics;
+        var panel = sender as Panel;
+        if (panel == null) return;
+
+        string waveText;
+        Color waveColor;
+        if (_monstersToSpawnInWave > 0)
+        {
+            int remaining = _monsters.Count(m => m.IsActive && !m.IsDead) + _monstersToSpawnInWave;
+            waveText = $"第 {CurrentWave} 波  剩余 {remaining} 敌";
+            waveColor = Color.OrangeRed;
+        }
+        else if (_waveTimer > 0)
+        {
+            int secLeft = (_waveTimer + 59) / 60;
+            waveText = $"第 {CurrentWave} 波  下一波: {secLeft}s";
+            waveColor = secLeft <= 3 ? Color.OrangeRed : Color.LightGreen;
+        }
+        else
+        {
+            waveText = $"第 {CurrentWave} 波  激战中";
+            waveColor = Color.White;
+        }
+
+        var waveBrush = GetBrush(waveColor);
+        var size = g.MeasureString(waveText, _waveFont);
+        float waveX = (panel.Width - size.Width) / 2;
+        g.DrawString(waveText, _waveFont, waveBrush, waveX, 6);
+
+        // 倒计时进度条
+        if (_waveTimer > 0 && _monstersToSpawnInWave <= 0)
+        {
+            int barW = 180;
+            float barX = (panel.Width - barW) / 2f;
+            float barY = size.Height + 10;
+            float pct = (float)_waveTimer / 360f; // 对应 6 秒自主时间
+            
+            using var barBg = new SolidBrush(Color.FromArgb(60, 255, 255, 255));
+            using var barFill = new SolidBrush(pct > 0.2f ? Color.LimeGreen : Color.OrangeRed);
+            g.FillRectangle(barBg, barX, barY, barW, 4);
+            g.FillRectangle(barFill, barX, barY, barW * pct, 4);
+        }
+    }
+
+    private void TogglePause()
+    {
+        _isPaused = !_isPaused;
+        var topPanel = this.Controls["TitlePanel"];
+        if (topPanel != null && topPanel.Controls["BtnPause"] is Button b) b.Text = _isPaused ? "▶️ 继续" : "⏸️ 暂停";
     }
 
     public Robot? GetBaseRobot()
@@ -341,6 +540,7 @@ public partial class BattleForm : Form
 
     private void GameLoop()
     {
+        if (_isPaused) { this.Invalidate(); return; }
         // 性能指标计算
         _frameCountForFps++;
         var now = DateTime.Now;
@@ -412,7 +612,7 @@ public partial class BattleForm : Form
                  _activeBattleTrack = (_activeBattleTrack == 1) ? 3 : 1;
             }
 
-            _bgmSwitchTimer = 180; 
+            _bgmSwitchTimer = 60; // 调整为 1s，以便在 6s 的间隔内能听到平时音乐
             AudioManager.PlayBGM(_activeBattleTrack); 
         }
         else
@@ -420,7 +620,7 @@ public partial class BattleForm : Form
             if (_bgmSwitchTimer > 0) _bgmSwitchTimer--;
             if (_bgmSwitchTimer <= 0)
             {
-                AudioManager.PlayBGM(2); // 切换平时音乐，战斗音乐将在原地暂停
+                AudioManager.PlayBGM(2); // 切换平时音乐
             }
         }
 
@@ -597,6 +797,9 @@ public partial class BattleForm : Form
 
         // 重绘
         this.Invalidate();
+        // 强制刷新顶部面板绘图
+        var top = this.Controls["TitlePanel"];
+        top?.Invalidate(); 
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -609,8 +812,7 @@ public partial class BattleForm : Form
         }
 
         // 绘制极简边框
-        using var borderPen = new Pen(Color.FromArgb(60, 60, 80), 2);
-        e.Graphics.DrawRectangle(borderPen, 0, 0, this.Width - 1, this.Height - 1);
+        e.Graphics.DrawRectangle(_gridBorderPen, 0, 0, this.Width - 1, this.Height - 1);
 
         base.OnPaint(e);
     }
@@ -636,7 +838,10 @@ public partial class BattleForm : Form
             _bufferGraphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
         }
 
-        // 调整浏览器位置
+        // 响应式刷新 UI
+        CreateControlPanel();
+        CreateSystemButtons(); // Recreate system buttons to adjust their positions
+        UpdateUI();
     }
 
     private void Render(Graphics g)
@@ -722,9 +927,11 @@ public partial class BattleForm : Form
 
         foreach (var ft in _floatingTexts)
         {
-            using var font = new Font("Impact", 12 * _worldViewFactor, FontStyle.Bold); 
-            using var brush = new SolidBrush(Color.FromArgb((int)(ft.Life / (float)ft.MaxLife * 255), ft.TextColor));
-            g.DrawString(ft.Text, font, brush, ft.X, ft.Y);
+            // 使用静态字体和缓存画笔
+            int alpha = (int)(ft.Life / (float)ft.MaxLife * 255);
+            alpha = Math.Clamp((alpha / 20) * 20, 0, 255);
+            Color c = Color.FromArgb(alpha, ft.TextColor);
+            g.DrawString(ft.Text, _floatingFont, GetBrush(c), ft.X, ft.Y);
         }
 
         // 还原变换，绘制不随地图缩放的 UI
@@ -732,8 +939,7 @@ public partial class BattleForm : Form
         
         DrawMinimap(g);
         DrawZoomButtons(g);
-        DrawResourceUI(g);
-
+        // DrawResourceUI(g); // 已迁移至 TitlePanel_Paint
         if (_isGameEnding)
         {
             DrawGameEndingOverlay(g);
@@ -757,19 +963,14 @@ public partial class BattleForm : Form
         string memText = $"MEM: {_memUsageMB:F1} MB";
         string fullText = $"{fpsText} | {cpuText} | {memText}";
 
-        using var font = new Font("Consolas", 9, FontStyle.Bold);
-        var size = g.MeasureString(fullText, font);
-        
-        using var bgBrush = new SolidBrush(Color.FromArgb(120, 0, 0, 0));
-        g.FillRectangle(bgBrush, 10, 10, size.Width + 10, size.Height + 6);
+        var size = g.MeasureString(fullText, _perfFont);
+        g.FillRectangle(_perfBgBrush, 10, 10, size.Width + 10, size.Height + 6);
         g.DrawRectangle(Pens.Gray, 10, 10, size.Width + 10, size.Height + 6);
-        g.DrawString(fullText, font, Brushes.LimeGreen, 15, 13);
+        g.DrawString(fullText, _perfFont, Brushes.LimeGreen, 15, 13);
     }
 
     private void DrawWorldGrid(Graphics g, float centerX, float centerY)
     {
-        using var pen = new Pen(Color.FromArgb(40, 40, 60), 1);
-        using var borderPen = new Pen(Color.FromArgb(80, 80, 100), 2); // 地图边缘提示
         int gridSize = 50;
         float range = _totalMapRange; 
 
@@ -780,80 +981,14 @@ public partial class BattleForm : Form
         int endY = (int)(centerY + range);
 
         for (int x = startX; x <= endX; x += gridSize)
-            g.DrawLine(pen, x, startY, x, endY);
+            g.DrawLine(_gridPen, x, startY, x, endY);
         for (int y = startY; y <= endY; y += gridSize)
-            g.DrawLine(pen, startX, y, endX, y);
+            g.DrawLine(_gridPen, startX, y, endX, y);
             
         // 绘制地图边界框
-        g.DrawRectangle(borderPen, startX, startY, endX - startX, endY - startY);
+        g.DrawRectangle(_gridBorderPen, startX, startY, endX - startX, endY - startY);
     }
 
-    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
-    {
-        if (keyData == Keys.Space && (msg.Msg == 0x0100 || msg.Msg == 0x0104)) // KeyDown
-        {
-            _isSpaceDown = true;
-        }
-
-        // 只有在按下 Alt 键时才触发办公快捷键，避免与浏览器内的正常输入冲突
-        if ((keyData & Keys.Alt) == Keys.Alt)
-        {
-            Keys baseKey = keyData & ~Keys.Alt;
-
-            // Alt + Up: 增加透明度
-            if (baseKey == Keys.Up)
-            {
-                if (this.Opacity < 1.0) this.Opacity += 0.1;
-                if (this.Opacity > 1.0) this.Opacity = 1.0;
-                return true;
-            }
-            // Alt + Down: 减少透明度
-            else if (baseKey == Keys.Down)
-            {
-                if (this.Opacity > 0.1) this.Opacity -= 0.1;
-                if (this.Opacity < 0.1) this.Opacity = 0.1;
-                return true;
-            }
-            // Alt + Space: 老板键
-            else if (baseKey == Keys.Space)
-            {
-                if (this.Opacity > 0.0)
-                {
-                    this.Tag = this.Opacity;
-                    this.Opacity = 0.0;
-                    this.ShowInTaskbar = false;
-                }
-                else
-                {
-                    this.Opacity = (this.Tag is double op) ? op : 1.0;
-                    this.ShowInTaskbar = true;
-                }
-                return true;
-            }
-            // Alt + B: 切换浏览器
-            else if (baseKey == Keys.B)
-            {
-                BrowserForm.Instance.ToggleVisibility();
-                return true;
-            }
-            // Alt + Q: 退出当前游戏，返回启动器
-            else if (baseKey == Keys.Q)
-            {
-                if ((keyData & Keys.Shift) == Keys.Shift)
-                {
-                    // Alt + Shift + Q: 终极防老板 (彻底杀死程序)
-                    Environment.Exit(0);
-                }
-                else
-                {
-                    ReturnToHome();
-                }
-                return true;
-            }
-        }
-
-        return base.ProcessCmdKey(ref msg, keyData);
-    }
 
     private void BattleForm_KeyDown(object? sender, KeyEventArgs e)
     {
@@ -878,10 +1013,10 @@ public partial class BattleForm : Form
         {
             ResetGame();
         }
-        // 空格键：用于配合左键拖动画面
+        // 空格键：切换暂停
         else if (e.KeyCode == Keys.Space)
         {
-            _isSpaceDown = true;
+            TogglePause();
         }
         // Escape: 取消怪物放置
         else if (e.KeyCode == Keys.Escape)
@@ -1052,7 +1187,7 @@ public partial class BattleForm : Form
         }
     }
 
-    private Robot SpawnRobot(string name, float x, float y, RobotClass classType = RobotClass.Shooter)
+    private Robot SpawnRobot(string name, float x, float y, RobotClass classType = RobotClass.Gunner)
     {
         // 关键逻辑调整：如果没有指定坐标，则默认从基地中心出生
         if (x < 0 || y < 0)
@@ -1135,7 +1270,7 @@ public partial class BattleForm : Form
 
     private void HandleAllCollisions()
     {
-        // 1. 机器人之间
+        // 1. 机器人之间 (机器人数量通常较少，直接遍历)
         for (int i = 0; i < _robots.Count; i++)
         {
             var r1 = _robots[i];
@@ -1145,117 +1280,78 @@ public partial class BattleForm : Form
                 var r2 = _robots[j];
                 if (!r2.IsActive || r2.IsDead) continue;
 
-                float c1x = r1.X + r1.Size / 2f;
-                float c1y = r1.Y + r1.Size / 2f;
-                float c2x = r2.X + r2.Size / 2f;
-                float c2y = r2.Y + r2.Size / 2f;
+                float dx = (r2.X + r2.Size / 2f) - (r1.X + r1.Size / 2f);
+                float dy = (r2.Y + r2.Size / 2f) - (r1.Y + r1.Size / 2f);
+                float distSq = dx * dx + dy * dy;
+                float minDist = (r1.Size + r2.Size) / 2f * 0.9f; 
 
-                float dx = c2x - c1x;
-                float dy = c2y - c1y;
-                float dist = (float)Math.Sqrt(dx * dx + dy * dy);
-                float minDist = (r1.Size + r2.Size) / 2f * 0.9f; // 稍微给点容差，0.9倍半径
-
-                if (dist < minDist)
+                if (distSq < minDist * minDist)
                 {
+                    float dist = (float)Math.Sqrt(distSq);
                     if (dist == 0) { dx = 1; dy = 0; dist = 1; }
-                    float overlap = minDist - dist;
-                    float pushX = (dx / dist) * overlap * 0.5f;
-                    float pushY = (dy / dist) * overlap * 0.5f;
+                    float overlap = (minDist - dist) * 0.5f;
+                    float pushX = (dx / dist) * overlap;
+                    float pushY = (dy / dist) * overlap;
 
-                    bool f1 = r1.ClassType == RobotClass.Base;
-                    bool f2 = r2.ClassType == RobotClass.Base;
-
-                    // 采集工不与采集工发生碰撞，避免在矿区发生“推搡”或“打架”现象
-                    if (r1.ClassType == RobotClass.Worker && r2.ClassType == RobotClass.Worker) continue;
-
-                    if (f1 && !f2) { r2.X += pushX * 2; r2.Y += pushY * 2; }
-                    else if (!f1 && f2) { r1.X -= pushX * 2; r1.Y -= pushY * 2; }
-                    else if (!f1 && !f2) { r1.X -= pushX; r1.Y -= pushY; r2.X += pushX; r2.Y += pushY; }
+                    if (r1.ClassType == RobotClass.Base) { r2.X += pushX * 2; r2.Y += pushY * 2; }
+                    else if (r2.ClassType == RobotClass.Base) { r1.X -= pushX * 2; r1.Y -= pushY * 2; }
+                    else { r1.X -= pushX; r1.Y -= pushY; r2.X += pushX; r2.Y += pushY; }
                 }
             }
         }
 
-        // 2. 怪物之间
-        for (int i = 0; i < _monsters.Count; i++)
+        // 2. 怪物之间 (利用空间网格)
+        foreach (var m1 in _monsters)
         {
-            var m1 = _monsters[i];
             if (!m1.IsActive || m1.IsDead) continue;
-            for (int j = i + 1; j < _monsters.Count; j++)
+            foreach (var m2 in _spatialGrid.GetNearby(m1.X, m1.Y))
             {
-                var m2 = _monsters[j];
-                if (!m2.IsActive || m2.IsDead) continue;
+                if (m2 == m1 || !m2.IsActive || m2.IsDead) continue;
 
-                float c1x = m1.X + m1.Size / 2f;
-                float c1y = m1.Y + m1.Size / 2f;
-                float c2x = m2.X + m2.Size / 2f;
-                float c2y = m2.Y + m2.Size / 2f;
+                float dx = (m2.X + m2.Size / 2f) - (m1.X + m1.Size / 2f);
+                float dy = (m2.Y + m2.Size / 2f) - (m1.Y + m1.Size / 2f);
+                float distSq = dx * dx + dy * dy;
+                float minDist = (m1.Size + m2.Size) / 2f * 0.8f;
 
-                float dx = c2x - c1x;
-                float dy = c2y - c1y;
-                float dist = (float)Math.Sqrt(dx * dx + dy * dy);
-                float minDist = (m1.Size + m2.Size) / 2f * 0.8f; // 怪物允许稍微重叠一点点，避免卡死
-
-                if (dist < minDist)
+                if (distSq < minDist * minDist)
                 {
+                    float dist = (float)Math.Sqrt(distSq);
                     if (dist == 0) { dx = 1; dy = 0; dist = 1; }
-                    float overlap = minDist - dist;
-                    float pushX = (dx / dist) * overlap * 0.5f;
-                    float pushY = (dy / dist) * overlap * 0.5f;
+                    float overlap = (minDist - dist) * 0.5f;
+                    float pushX = (dx / dist) * overlap;
+                    float pushY = (dy / dist) * overlap;
                     m1.X -= pushX; m1.Y -= pushY;
                     m2.X += pushX; m2.Y += pushY;
                 }
             }
         }
 
-        // 3. 机器人与怪物之间
-        for (int i = 0; i < _robots.Count; i++)
+        // 3. 机器人与怪物之间 (利用空间网格)
+        foreach (var r in _robots)
         {
-            var r = _robots[i];
             if (!r.IsActive || r.IsDead) continue;
-            for (int j = 0; j < _monsters.Count; j++)
+            foreach (var m in _spatialGrid.GetNearby(r.X, r.Y))
             {
-                var m = _monsters[j];
                 if (!m.IsActive || m.IsDead) continue;
 
-                // --- 物理层面穿透：外圈开启前，怪物与采集/工程单位不发生碰撞 ---
-                bool l1Active = IsLayerComplete(1);
-                if (!l1Active && (r.ClassType == RobotClass.Worker || r.ClassType == RobotClass.Engineer)) continue;
+                float dx = (m.X + m.Size / 2f) - (r.X + r.Size / 2f);
+                float dy = (m.Y + m.Size / 2f) - (r.Y + r.Size / 2f);
+                float distSq = dx * dx + dy * dy;
+                float minDist = (r.Size + m.Size) / 2f * 0.9f;
 
-                float c1x = r.X + r.Size / 2f;
-                float c1y = r.Y + r.Size / 2f;
-                float c2x = m.X + m.Size / 2f;
-                float c2y = m.Y + m.Size / 2f;
-
-                float dx = c2x - c1x;
-                float dy = c2y - c1y;
-                float dist = (float)Math.Sqrt(dx * dx + dy * dy);
-                float minDist = (r.Size + m.Size) / 2f * 0.85f;
-
-                if (dist < minDist)
+                if (distSq < minDist * minDist)
                 {
+                    float dist = (float)Math.Sqrt(distSq);
                     if (dist == 0) { dx = 1; dy = 0; dist = 1; }
                     float overlap = minDist - dist;
-                    float pushX = (dx / dist) * overlap * 0.5f;
-                    float pushY = (dy / dist) * overlap * 0.5f;
+                    float pushX = (dx / dist) * overlap;
+                    float pushY = (dy / dist) * overlap;
 
-                    if (r.ClassType == RobotClass.Base)
-                    {
-                        // 基地不动，怪物全吃反弹
-                        m.X += pushX * 2;
-                        m.Y += pushY * 2;
-                    }
-                    else
-                    {
-                        // 互相推开
-                        r.X -= pushX;
-                        r.Y -= pushY;
-                        m.X += pushX;
-                        m.Y += pushY;
-                    }
+                    if (r.ClassType == RobotClass.Base) { m.X += pushX; m.Y += pushY; }
+                    else { r.X -= pushX * 0.5f; r.Y -= pushY * 0.5f; m.X += pushX * 0.5f; m.Y += pushY * 0.5f; }
                 }
             }
         }
-
     }
 
     private void CheckGameEnd()
@@ -1346,8 +1442,8 @@ public partial class BattleForm : Form
         {
             if (_waveTimer <= 0)
             {
-                // 【帧率抢救】怪物数量适度缩减，WinForms渲染太吃力
-                _monstersToSpawnInWave = 20 + CurrentWave * 10; 
+                // 【割草改动】怪物血量提升 10 倍，数量下调 1.5 倍。
+                _monstersToSpawnInWave = (int)((20 + CurrentWave * 10) * 3.33); 
                 _spawnInterval = 0;
                 _waveStartTimer = 0;
             }
@@ -1407,7 +1503,7 @@ public partial class BattleForm : Form
             {
                 // 这波刷完了，进入下一波准备阶段
                 CurrentWave++;
-                _waveTimer = 120; // 【割草改动】间隔从600(10秒)狂砍到120(2秒)，这才是真正的“尸潮无缝衔接”！
+                _waveTimer = 360; // 调整为 6 秒等待时间 (6 * 60fps)
                 
                 // 地图扩展由 1.5倍 更改为 线性增加 150，并设置最大上限 2500
                 _totalMapRange = Math.Min(2500f, _totalMapRange + 150f);
@@ -1487,8 +1583,8 @@ public partial class BattleForm : Form
         }
 
         var monster = new Monster(spawnX, spawnY, wave);
-        // 【割草改动】调整血量：不能像纸糊的一碰就全死光，增加硬度让他们更密集
-        monster.MaxHP = 200 + wave * 60; 
+        // 【割草改动】敌人血量 * 10：不再是一碰就碎的杂兵，让战场更有打击感。
+        monster.MaxHP = (200 + wave * 60) * 10; 
         monster.HP = monster.MaxHP;
 
         if (wave % 10 == 0 && _monstersToSpawnInWave == 1) // Boss
@@ -1523,6 +1619,8 @@ public partial class BattleForm : Form
         _robots.Clear();
         _monsters.Clear();
         _projectiles.Clear();
+        _particles.Clear();
+        _floatingTexts.Clear();
         _isGameEnding = false;
         _winner = null;
         _robotIdCounter = 1;
@@ -1530,24 +1628,38 @@ public partial class BattleForm : Form
         Gold = 2000;
         Minerals = 500;
         CurrentWave = 1;
-        _totalMapRange = 600; // 重置初始地图跨度 (更紧密战场)
-        _worldViewFactor = 1.5f; // 初始化为远景
+        _totalMapRange = 600; 
+        _worldViewFactor = 1.5f; 
         _panX = 0;
         _panY = 0;
-        CurrentWave = 1;
-        _waveTimer = 600;
+        _waveTimer = 360;
         _monstersToSpawnInWave = 0;
+
+        // 【核心修复】深度重置等级与价格
+        _baseLevel = 1; _workerLevel = 1; _healerLevel = 1;
+        _shooterLevel = 1; _rocketLevel = 1; _plasmaLevel = 1; _laserLevel = 1; _lightningLevel = 1;
+        _guardianLevel = 1; _engineerLevel = 1;
+
+        _workerCost = 50; _healerCost = 80; _shooterCost = 60; _rocketCost = 90; _plasmaCost = 70;
+        _laserCost = 110; _lightningCost = 150; _guardianCost = 100; _engineerCost = 80;
+
+        _isLayer1Activated = false;
+        _currentBuildingLayer = 1;
+        InitializeWalls();
 
         // 重新生成基地
         var baseRobot = SpawnRobot("主基地", this.ClientSize.Width / 2 - 20, this.ClientSize.Height / 2 - 20, RobotClass.Base);
         baseRobot.ApplyClassProperties();
 
-        // 重新生成初始机器人 (1个治疗，2个输出)
-        var def = SpawnRobot("医疗兵", this.ClientSize.Width / 2, this.ClientSize.Height / 2 + 50, RobotClass.Healer);
-        def.ApplyClassProperties();
-
-        var atk1 = SpawnRobot("游侠A", this.ClientSize.Width / 2 - 60, this.ClientSize.Height / 2 + 80);
-        var atk2 = SpawnRobot("游侠B", this.ClientSize.Width / 2 + 20, this.ClientSize.Height / 2 + 80);
+        _waveTimer = 360; // 维持 6 秒自主购买时间
+        
+        _isPaused = false;
+        var topPanel = this.Controls["TitlePanel"];
+        if (topPanel != null && topPanel.Controls["BtnPause"] is Button b) b.Text = "⏸️ 暂停";
+        
+        AudioManager.PlaySound("level_up");
+        UpdateUI();
+        UpdateUpgradeToolTips();
     }
 
     public void AddFloatingText(float x, float y, string text, Color color)
@@ -1566,22 +1678,18 @@ public partial class BattleForm : Form
 
     public void TriggerChainExplosion(float x, float y, float radius, int damage)
     {
-        // 视觉反馈
         AddExplosion(x, y, Color.Orange, 5, "SPARK");
         
-        lock (_projectileLock) { // 稍微防一下多线程并发问题
-            // 找出范围内的怪物，触发真伤爆炸，引发连环殉爆
-            for (int i = 0; i < _monsters.Count; i++)
+        float radSq = radius * radius;
+        foreach (var m in _spatialGrid.GetNearby(x, y))
+        {
+            if (m.IsActive && !m.IsDead)
             {
-                var m = _monsters[i];
-                if (m.IsActive && !m.IsDead)
+                float dx = (m.X + m.Size / 2) - x;
+                float dy = (m.Y + m.Size / 2) - y;
+                if (dx * dx + dy * dy <= radSq)
                 {
-                    float dx = (m.X + m.Size / 2) - x;
-                    float dy = (m.Y + m.Size / 2) - y;
-                    if (dx * dx + dy * dy <= radius * radius)
-                    {
-                        m.TakeDamage(damage); 
-                    }
+                    m.TakeDamage(damage); 
                 }
             }
         }
@@ -1627,11 +1735,14 @@ public partial class BattleForm : Form
         if (alpha > 255) alpha = 255;
         if (alpha < 0) alpha = 0;
 
-        using var brush = new SolidBrush(Color.FromArgb(alpha, p.Color));
+        // 颗粒度优化：Alpha 按 15 步进取整，减少 _brushCache 的 Key 数量
+        alpha = (alpha / 15) * 15;
+        Color color = Color.FromArgb(alpha, p.Color);
+        var brush = GetBrush(color);
 
         if (p.Type == "RING")
         {
-            using var pen = new Pen(Color.FromArgb(alpha, p.Color), 3);
+            using var pen = new Pen(color, 2);
             g.DrawEllipse(pen, p.X - p.Size / 2, p.Y - p.Size / 2, p.Size, p.Size);
         }
         else
@@ -1642,23 +1753,7 @@ public partial class BattleForm : Form
 
     private void DrawResourceUI(Graphics g)
     {
-        // 顶部资源栏背景
-        using var bgBrush = new SolidBrush(Color.FromArgb(180, 20, 20, 25));
-        g.FillRectangle(bgBrush, 0, 0, this.ClientSize.Width, 35);
-
-        using var borderPen = new Pen(Color.FromArgb(100, 60, 60, 80), 1);
-        g.DrawLine(borderPen, 0, 35, this.ClientSize.Width, 35);
-
-        using var font = new Font("Microsoft YaHei", 10, FontStyle.Bold);
-        using var waveFont = new Font("Microsoft YaHei", 12, FontStyle.Bold);
-
-        // 金币
-        using var goldBrush = new SolidBrush(Color.Gold);
-        g.DrawString($"💰 {Gold}", font, goldBrush, 20, 8);
-
-        // 星矿
-        using var mineralBrush = new SolidBrush(Color.Cyan);
-        g.DrawString($"💎 {Minerals}", font, mineralBrush, 120, 8);
+        // 已移除多余资源显示，保持视野开阔
 
         // 波次信息居中
         using var textBrush = new SolidBrush(Color.White);
@@ -1682,10 +1777,10 @@ public partial class BattleForm : Form
             waveColor = Color.White;
         }
 
-        using var waveBrush = new SolidBrush(waveColor);
-        var size = g.MeasureString(waveText, waveFont);
+        var waveBrush = GetBrush(waveColor);
+        var size = g.MeasureString(waveText, _waveFont);
         float waveX = (this.ClientSize.Width - size.Width) / 2;
-        g.DrawString(waveText, waveFont, waveBrush, waveX, 6);
+        g.DrawString(waveText, _waveFont, waveBrush, waveX, 6);
 
         // 倒计时进度条
         if (_waveTimer > 0 && _monstersToSpawnInWave <= 0)
@@ -1906,9 +2001,10 @@ public partial class BattleForm : Form
     {
         Color color = p.Type switch
         {
+            "BULLET" => Color.Yellow,
+            "LASER" => Color.Cyan,
             "ROCKET" => Color.OrangeRed,
-            "CANNON" => Color.DarkGray,
-            "PLASMA" => Color.Cyan,
+            "PLASMA" => Color.Orchid,
             "LIGHTNING" => Color.Yellow,
             "SPIT" => Color.Green,
             "INK" => Color.Black,
@@ -1918,87 +2014,88 @@ public partial class BattleForm : Form
             _ => p.ProjectileColor
         };
 
-        // 画笔缓存优化，避免高并发分配内存
         if (!_brushCache.TryGetValue(color, out var brush))
         {
             brush = new SolidBrush(color);
             _brushCache[color] = brush;
         }
 
-        // 绘制弹丸
-        float size = p.Type switch
+        float size = p.Size > 0 ? p.Size : (p.Type switch
         {
-            "CANNON" => 10,
-            "LIGHTNING" => 3,
+            "BULLET" => 4,
+            "LASER" => 3,
             "ROCKET" => 8,
+            "PLASMA" => 10,
+            "LIGHTNING" => 3,
             "METEOR" => 20,
             "BLACK_HOLE" => 15,
             "DEATH_RAY" => 40,
             _ => 6
-        };
+        });
 
-        if (p.Type == "DEATH_RAY")
+        if (p.Type == "LASER")
         {
-            // 绘制超级粗大的激光束
+            float v = (float)Math.Sqrt(p.Dx * p.Dx + p.Dy * p.Dy);
+            if (v > 0)
+            {
+                float lex = p.X - (p.Dx / v) * 15, ley = p.Y - (p.Dy / v) * 15;
+                using var laserPen = new Pen(color, size);
+                g.DrawLine(laserPen, lex, ley, p.X, p.Y);
+                using var corePen = new Pen(Color.White, size * 0.4f);
+                g.DrawLine(corePen, lex, ley, p.X, p.Y);
+            }
+        }
+        else if (p.Type == "ROCKET")
+        {
+            float v = (float)Math.Sqrt(p.Dx * p.Dx + p.Dy * p.Dy);
+            if (v > 0)
+            {
+                float ang = (float)Math.Atan2(p.Dy, p.Dx);
+                PointF[] pts = {
+                    new PointF(p.X + (float)Math.Cos(ang) * size, p.Y + (float)Math.Sin(ang) * size),
+                    new PointF(p.X + (float)Math.Cos(ang + 2.5f) * size * 0.7f, p.Y + (float)Math.Sin(ang + 2.5f) * size * 0.7f),
+                    new PointF(p.X + (float)Math.Cos(ang - 2.5f) * size * 0.7f, p.Y + (float)Math.Sin(ang - 2.5f) * size * 0.7f)
+                };
+                g.FillPolygon(brush, pts);
+                g.FillEllipse(Brushes.White, p.X - (p.Dx/v)*size - 2, p.Y - (p.Dy/v)*size - 2, 4, 4);
+            }
+        }
+        else if (p.Type == "PLASMA")
+        {
+            float pulseSize = size * (0.8f + 0.2f * (float)Math.Sin(Environment.TickCount / 50.0));
+            g.FillEllipse(GetBrush(Color.FromArgb(100, color)), p.X - pulseSize, p.Y - pulseSize, pulseSize * 2, pulseSize * 2);
+            g.FillEllipse(brush, p.X - size / 2, p.Y - size / 2, size, size);
+            g.FillEllipse(Brushes.White, p.X - size / 4, p.Y - size / 4, size / 2, size / 2);
+        }
+        else if (p.Type == "DEATH_RAY")
+        {
             if (p.Owner != null)
             {
-                float startX = p.Owner.X + p.Owner.Size / 2;
-                float startY = p.Owner.Y + p.Owner.Size / 2;
-
-                // 核心光束
-                using var laserPen = new Pen(Color.Red, 20 + (float)Math.Sin(Environment.TickCount / 20.0) * 5);
-                g.DrawLine(laserPen, startX, startY, p.X, p.Y);
-
-                // 外围光晕
-                using var glowPen = new Pen(Color.FromArgb(100, Color.OrangeRed), 40);
-                g.DrawLine(glowPen, startX, startY, p.X, p.Y);
-
-                // 粒子效果
-                if (_rand.Next(10) < 5)
-                {
-                    AddExplosion(p.X, p.Y, Color.Red, 2, "SPARK");
-                }
+                float startX = p.Owner.X + p.Owner.Size / 2, startY = p.Owner.Y + p.Owner.Size / 2;
+                using var lp = new Pen(Color.Red, 20 + (float)Math.Sin(Environment.TickCount/20.0)*5);
+                g.DrawLine(lp, startX, startY, p.X, p.Y);
+                using var gp = new Pen(Color.FromArgb(100, Color.OrangeRed), 40);
+                g.DrawLine(gp, startX, startY, p.X, p.Y);
             }
         }
         else if (p.Type == "BLACK_HOLE")
         {
-            // 黑洞特效：吸入效果
             using var bhPen = new Pen(Color.Purple, 2);
             float angle = (Environment.TickCount / 50f) % (float)(Math.PI * 2);
             g.DrawArc(bhPen, p.X - 15, p.Y - 15, 30, 30, angle * 180 / (float)Math.PI, 270);
             g.FillEllipse(Brushes.Black, p.X - 8, p.Y - 8, 16, 16);
-
-            // 粒子吸入
-            if (_rand.Next(100) < 30)
-            {
-                // 添加吸入粒子视觉效果（不增加实体粒子，直接画）
-                for (int i = 0; i < 3; i++)
-                {
-                    float pAngle = (float)(_rand.NextDouble() * Math.PI * 2);
-                    float pDist = 30 + (float)_rand.NextDouble() * 20;
-                    float px = p.X + (float)Math.Cos(pAngle) * pDist;
-                    float py = p.Y + (float)Math.Sin(pAngle) * pDist;
-                    using var pPen = new Pen(Color.Violet, 1);
-                    g.DrawLine(pPen, px, py, p.X, p.Y);
-                }
-            }
         }
         else if (p.Type == "METEOR")
         {
-            // 陨石特效：火焰尾迹
             using var fireBrush = new SolidBrush(Color.FromArgb(150, Color.OrangeRed));
             g.FillEllipse(fireBrush, p.X - size / 2 - 5, p.Y - size / 2 - 5, size + 10, size + 10);
             g.FillEllipse(brush, p.X - size / 2, p.Y - size / 2, size, size);
-
-            // 随机生成尾迹粒子
-            if (_rand.Next(10) < 5)
-            {
-                AddExplosion(p.X, p.Y, Color.Orange, 1, "SMOKE");
-            }
+            if (_rand.Next(10) < 5) AddExplosion(p.X, p.Y, Color.Orange, 1, "SMOKE");
         }
         else
         {
             g.FillEllipse(brush, p.X - size / 2, p.Y - size / 2, size, size);
+            if (p.Type == "BULLET") g.DrawEllipse(Pens.White, p.X - size / 2, p.Y - size / 2, size, size);
         }
 
         // 特殊效果
@@ -2067,25 +2164,52 @@ public partial class BattleForm : Form
 
     private void CreateControlPanel()
     {
-        int panelWidth = 530; // 稍作加宽以容纳 6 个栏位
-        int btnWidth = 72;   // 按钮变小一点
-        int btnHeight = 28;  // 紧凑高度
-        int spacing = 8;     // 间距调窄
+    private void CreateControlPanel()
+    {
+        int windowW = this.ClientSize.Width;
+        int panelWidth = Math.Clamp(windowW - 10, 600, 950); 
+        int targetColWidth = 72; // 理想宽度
+        int totalCols = 10;
+        int spacing = 5;
 
-        var panel = new FlickerFreePanel
+        // 核心适应逻辑：如果窗口过窄，动态压缩间距和按钮宽
+        if (panelWidth < totalCols * (targetColWidth + spacing))
         {
-            Name = "ControlPanel",
-            Size = new Size(panelWidth, 75), // 降低高度
-            Location = new Point((this.ClientSize.Width - panelWidth) / 2, this.ClientSize.Height - 80),
-            BackColor = Color.FromArgb(20, 20, 25),
-            BorderStyle = BorderStyle.None,
-            Anchor = AnchorStyles.Bottom
-        };
+            spacing = Math.Max(2, (panelWidth - 10 - totalCols * targetColWidth) / (totalCols - 1));
+            if (spacing <= 2) {
+                targetColWidth = (panelWidth - 10 - (totalCols - 1) * 2) / totalCols;
+                spacing = 2;
+            }
+        }
+
+        int btnWidth = targetColWidth;
+        int btnHeight = 28;
+
+        var panel = this.Controls["ControlPanel"] as FlickerFreePanel;
+        if (panel == null)
+        {
+            panel = new FlickerFreePanel
+            {
+                Name = "ControlPanel",
+                Size = new Size(panelWidth, 75),
+                Location = new Point((this.ClientSize.Width - panelWidth) / 2, this.ClientSize.Height - 80),
+                BackColor = Color.FromArgb(20, 20, 25),
+                BorderStyle = BorderStyle.None,
+                Anchor = AnchorStyles.Bottom
+            };
+            this.Controls.Add(panel);
+        }
+        else
+        {
+            panel.Size = new Size(panelWidth, 75);
+            panel.Location = new Point((this.ClientSize.Width - panelWidth) / 2, this.ClientSize.Height - 80);
+            panel.Controls.Clear();
+        }
 
         panel.Controls.Add(new Label
         {
             Name = "ResMonitor",
-            Text = "💰 {Gold}  |  💎 {Minerals}",
+            Text = $"💰 {Gold}  |  💎 {Minerals}",
             Location = new Point(5, 52),
             Size = new Size(panelWidth - 10, 20),
             ForeColor = Color.Gold,
@@ -2093,7 +2217,6 @@ public partial class BattleForm : Form
             TextAlign = ContentAlignment.MiddleCenter
         });
 
-        // 按钮样式生成器
         Button CreateBtn(string id, string text, int x, int y, EventHandler onClick, bool isUpgrade = false)
         {
             var btn = new Button
@@ -2105,295 +2228,222 @@ public partial class BattleForm : Form
                 FlatStyle = FlatStyle.Flat,
                 ForeColor = isUpgrade ? Color.Cyan : Color.White,
                 BackColor = isUpgrade ? Color.FromArgb(30, 30, 55) : Color.FromArgb(40, 40, 50),
-                Font = new Font("Microsoft YaHei", isUpgrade ? 6.0f : 6.8f, FontStyle.Bold),
+                Font = (isUpgrade ? _perfFont : _waveFont),
                 Cursor = Cursors.Hand,
                 TextAlign = ContentAlignment.MiddleCenter,
                 Margin = new Padding(0),
-                Padding = new Padding(2),
+                Padding = new Padding(0),
                 AutoEllipsis = false,
             };
             btn.FlatAppearance.BorderSize = 1;
             btn.FlatAppearance.BorderColor = Color.FromArgb(80, 80, 100);
-            btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(70, 70, 90);
             btn.Click += onClick;
             return btn;
         }
 
-        int startX = 5;
-        // 购买按钮 y 坐标（顶部留给升级按钮）
+        int startX = (panelWidth - (totalCols * (btnWidth + spacing) - spacing)) / 2;
         int buyY = 28;
         int upgY = 4;
 
-        // 0. 基地升级 (无购买按钮，只有一个占位或恢复血量)
-        int baseUpgradeCost = 150 * _baseLevel;
-        panel.Controls.Add(CreateBtn("UpgBase", $"Lv.{_baseLevel} 💎{baseUpgradeCost}", startX, upgY, (s, e) =>
+        void AddUnitColumn(string typeName, string btnText, string buyId, string upgId, RobotClass rClass, int upgCostBase, Color upgColor)
         {
+            int colX = startX;
+            int localLevel = GetLevelRef(rClass);
+            int localCost = GetCostRef(rClass);
+            int upgCost = upgCostBase * localLevel;
+
+            // 这里使用闭包捕获 ref 变量的当前值会引发问题，我们改用反射或直接引用
+            var uBtn = CreateBtn(upgId, $"Lv.{localLevel} 💎{upgCost}", colX, upgY, (s, e) => {
+                // 点击时实时读取类成员变量
+                string btnName = (s as Button)?.Name ?? "";
+                if (Minerals >= upgCostBase * GetLevelRef(rClass)) {
+                    Minerals -= upgCostBase * GetLevelRef(rClass);
+                    SetLevelRef(rClass, GetLevelRef(rClass) + 1);
+                    AudioManager.PlaySound("level_up");
+                    foreach (var r in _robots) if (r.ClassType == rClass) r.ApplyClassProperties();
+                    UpdateUI();
+                    CreateControlPanel();
+                }
+            }, true);
+            uBtn.ForeColor = upgColor;
+            panel.Controls.Add(uBtn);
+
+            panel.Controls.Add(CreateBtn(buyId, $"{btnText} 💰{localCost}", colX, buyY, (s, e) => {
+                int cost = GetCostRef(rClass);
+                int realCost = (_currentBaseModule == BaseModule.Industrial) ? (int)(cost * 0.8f) : cost;
+                if (Gold >= realCost) {
+                    Gold -= realCost;
+                    AudioManager.PlaySound("purchase");
+                    var r = SpawnRobot(typeName, -1, -1, rClass);
+                    r.ApplyClassProperties();
+                    SetCostRef(rClass, (int)(cost * 1.25f));
+                    UpdateUI();
+                    CreateControlPanel();
+                }
+            }));
+            startX += btnWidth + spacing;
+        }
+
+        // 基地列 (固定)
+        int baseUpgCost = 150 * _baseLevel;
+        panel.Controls.Add(CreateBtn("UpgBase", $"Lv.{_baseLevel} 💎{baseUpgCost}", startX, upgY, (s, e) => {
             int cost = 150 * _baseLevel;
-            if (Minerals >= cost)
-            {
-                // 检查当前层是否已建设完成（防止快速连升）
-                if (!IsLayerComplete(_currentBuildingLayer))
-                {
-                    AddFloatingText(this.ClientSize.Width / 2, this.ClientSize.Height / 2 - 50,
-                        $"环区 {_currentBuildingLayer} 尚未完工！", Color.OrangeRed);
-                    return;
-                }
-
-                Minerals -= cost;
-                _baseLevel++;
+            if (Minerals >= cost && IsLayerComplete(_currentBuildingLayer)) {
+                Minerals -= cost; _baseLevel++;
                 AudioManager.PlaySound("level_up");
-
-                // Lv.10 分支：选择模块
-                if (_baseLevel == 10)
-                {
-                    ShowBaseModuleSelection();
-                }
-
-                // 基地升级时扩建城墙（绑定到基地等级）
-                int newLayer = _baseLevel; // 新层数 = 基地等级
-                BuildOuterLayerBlueprint(newLayer);
-                _currentBuildingLayer = newLayer;
-
-                UpdateWallScaling(); // 更新围墙
-
-                var b = GetBaseRobot();
-                if (b != null) b.ApplyClassProperties();
+                if (_baseLevel == 10) ShowBaseModuleSelection();
+                BuildOuterLayerBlueprint(_baseLevel);
+                _currentBuildingLayer = _baseLevel;
+                UpdateWallScaling();
+                GetBaseRobot()?.ApplyClassProperties();
                 UpdateUI();
+                CreateControlPanel();
             }
         }, true));
-        
-        panel.Controls.Add(CreateBtn("HealBase", $"维修 💰100", startX, buyY, (s, e) =>
-        {
-            if (Gold >= 100)
-            {
+        panel.Controls.Add(CreateBtn("HealBase", "维修 💰100", startX, buyY, (s, e) => {
+            if (Gold >= 100) {
                 var b = GetBaseRobot();
-                if (b != null && b.HP < b.MaxHP)
-                {
-                    Gold -= 100;
-                    b.HP = Math.Min(b.MaxHP, b.HP + 500);
-                    AddFloatingText(b.X + b.Size / 2, b.Y - 10, "+500", Color.LimeGreen);
+                if (b != null && b.HP < b.MaxHP) {
+                    Gold -= 100; b.HP = Math.Min(b.MaxHP, b.HP + 500);
                     UpdateUI();
                 }
             }
         }));
+        startX += btnWidth + spacing;
 
-        // 主动技能：超载 (Lv.5 解锁)
-        var btnOverload = CreateBtn("Overload", "⚡ 超载 ⚡", startX, buyY + 45, (s, e) => TriggerBaseOverload());
-        btnOverload.Height = 15;
-        btnOverload.Font = new Font("Microsoft YaHei", 5.5f, FontStyle.Bold);
-        btnOverload.Visible = _baseLevel >= 5;
-        panel.Controls.Add(btnOverload);
-        if (_baseOverloadCooldown > 0) btnOverload.Enabled = false;
+        AddUnitColumn("采集者", "采集", "BuyWorker", "UpgWorker", RobotClass.Worker, 50, Color.AliceBlue);
+        AddUnitColumn("治疗者", "治疗", "BuyHealer", "UpgHealer", RobotClass.Healer, 80, Color.LightGreen);
+        AddUnitColumn("机枪手", "机枪", "BuyGunner", "UpgGunner", RobotClass.Gunner, 60, Color.Tomato);
+        AddUnitColumn("火箭兵", "火箭", "BuyRocket", "UpgRocket", RobotClass.Rocket, 90, Color.Orange);
+        AddUnitColumn("等离子", "等离子", "BuyPlasma", "UpgPlasma", RobotClass.Plasma, 70, Color.Orchid);
+        AddUnitColumn("激光狙击", "激光", "BuyLaser", "UpgLaser", RobotClass.Laser, 110, Color.Cyan);
+        AddUnitColumn("闪电游侠", "闪电", "BuyLightning", "UpgLightning", RobotClass.Lightning, 150, Color.Yellow);
+        AddUnitColumn("守卫者", "守卫", "BuyGuardian", "UpgGuardian", RobotClass.Guardian, 100, Color.Gray);
+        AddUnitColumn("工程兵", "工程", "BuyEngineer", "UpgEngineer", RobotClass.Engineer, 80, Color.SteelBlue);
 
-        // 1. 采集工
-        int workerStartX = startX + btnWidth + spacing;
-        int workerUpgradeCost = 50 * _workerLevel;
-        panel.Controls.Add(CreateBtn("UpgWorker", $"Lv.{_workerLevel} 💎{workerUpgradeCost}", workerStartX, upgY, (s, e) =>
-        {
-            int cost = 50 * _workerLevel;
-            if (Minerals >= cost)
-            {
-                Minerals -= cost;
-                _workerLevel++;
-                AudioManager.PlaySound("level_up");
-                foreach (var r in _robots) if (r.ClassType == RobotClass.Worker) r.ApplyClassProperties();
-                UpdateUI();
-            }
-        }, true));
-        panel.Controls.Add(CreateBtn("BuyWorker", $"采集工 💰{_workerCost}", workerStartX, buyY, (s, e) =>
-        {
-            int realCost = (_currentBaseModule == BaseModule.Industrial) ? (int)(_workerCost * 0.8f) : _workerCost;
-            if (Gold >= realCost)
-            {
-                Gold -= realCost;
-                AudioManager.PlaySound("purchase");
-                var r = SpawnRobot("采集者", -1, -1, RobotClass.Worker);
-                r.ApplyClassProperties();
-                _workerCost = (int)(_workerCost * 1.2f);
-                UpdateUI();
-            }
-        }));
-
-        // 2. 治疗者
-        int healerStartX = workerStartX + btnWidth + spacing;
-        int healerUpgradeCost = 80 * _healerLevel;
-        panel.Controls.Add(CreateBtn("UpgHealer", $"Lv.{_healerLevel} 💎{healerUpgradeCost}", healerStartX, upgY, (s, e) =>
-        {
-            int cost = 80 * _healerLevel;
-            if (Minerals >= cost)
-            {
-                Minerals -= cost;
-                _healerLevel++;
-                AudioManager.PlaySound("level_up");
-                foreach (var r in _robots) if (r.ClassType == RobotClass.Healer) r.ApplyClassProperties();
-                UpdateUI();
-            }
-        }, true));
-        panel.Controls.Add(CreateBtn("BuyHealer", $"治疗者 💰{_defenderCost}", healerStartX, buyY, (s, e) =>
-        {
-            int realCost = (_currentBaseModule == BaseModule.Industrial) ? (int)(_defenderCost * 0.8f) : _defenderCost;
-            if (Gold >= realCost)
-            {
-                Gold -= realCost;
-                AudioManager.PlaySound("purchase");
-                var r = SpawnRobot("守护者", -1, -1, RobotClass.Healer);
-                r.ApplyClassProperties();
-                _defenderCost = (int)(_defenderCost * 1.3f);
-                UpdateUI();
-            }
-        }));
-
-        // 3. 攻击者
-        int shooterStartX = healerStartX + btnWidth + spacing;
-        int shooterUpgradeCost = 60 * _shooterLevel;
-        panel.Controls.Add(CreateBtn("UpgShooter", $"Lv.{_shooterLevel} 💎{shooterUpgradeCost}", shooterStartX, upgY, (s, e) =>
-        {
-            int cost = 60 * _shooterLevel;
-            if (Minerals >= cost)
-            {
-                Minerals -= cost;
-                _shooterLevel++;
-                AudioManager.PlaySound("level_up");
-                foreach (var r in _robots) if (r.ClassType == RobotClass.Shooter) r.ApplyClassProperties();
-                UpdateUI();
-            }
-        }, true));
-        panel.Controls.Add(CreateBtn("BuyShooter", $"攻击者 💰{_shooterCost}", shooterStartX, buyY, (s, e) =>
-        {
-            int realCost = (_currentBaseModule == BaseModule.Industrial) ? (int)(_shooterCost * 0.8f) : _shooterCost;
-            if (Gold >= realCost)
-            {
-                Gold -= realCost;
-                AudioManager.PlaySound("purchase");
-                var r = SpawnRobot("游侠", -1, -1, RobotClass.Shooter);
-                r.ApplyClassProperties();
-                _shooterCost = (int)(_shooterCost * 1.25f);
-                UpdateUI();
-            }
-        }));
-
-        // 4. 守卫者
-        int guardianStartX = shooterStartX + btnWidth + spacing;
-        int guardianUpgradeCost = 100 * _guardianLevel;
-        panel.Controls.Add(CreateBtn("UpgGuardian", $"Lv.{_guardianLevel} 💎{guardianUpgradeCost}", guardianStartX, upgY, (s, e) =>
-        {
-            int cost = 100 * _guardianLevel;
-            if (Minerals >= cost)
-            {
-                Minerals -= cost;
-                _guardianLevel++;
-                AudioManager.PlaySound("level_up");
-                foreach (var r in _robots) if (r.ClassType == RobotClass.Guardian) r.ApplyClassProperties();
-                UpdateUI();
-            }
-        }, true));
-        panel.Controls.Add(CreateBtn("BuyGuardian", $"守卫者 💰{_guardianCost}", guardianStartX, buyY, (s, e) =>
-        {
-            int realCost = (_currentBaseModule == BaseModule.Industrial) ? (int)(_guardianCost * 0.8f) : _guardianCost;
-            if (Gold >= realCost)
-            {
-                Gold -= realCost;
-                AudioManager.PlaySound("purchase");
-                var r = SpawnRobot("守卫者", -1, -1, RobotClass.Guardian);
-                r.ApplyClassProperties();
-                _guardianCost = (int)(_guardianCost * 1.35f);
-                UpdateUI();
-            }
-        }));
-
-        // 5. 工程兵
-        int engineerStartX = guardianStartX + btnWidth + spacing;
-        int engineerUpgradeCost = 120 * _engineerLevel;
-        panel.Controls.Add(CreateBtn("UpgEngineer", $"Lv.{_engineerLevel} 💎{engineerUpgradeCost}", engineerStartX, upgY, (s, e) =>
-        {
-            int cost = 120 * _engineerLevel;
-            if (Minerals >= cost)
-            {
-                Minerals -= cost;
-                _engineerLevel++;
-                AudioManager.PlaySound("level_up");
-                foreach (var r in _robots) if (r.ClassType == RobotClass.Engineer) r.ApplyClassProperties();
-
-                // 注：城墙扩建已移至基地升级
-
-                UpdateUI();
-            }
-        }, true));
-        panel.Controls.Add(CreateBtn("BuyEngineer", $"工程兵 💰{_engineerCost}", engineerStartX, buyY, (s, e) =>
-        {
-            int realCost = (_currentBaseModule == BaseModule.Industrial) ? (int)(_engineerCost * 0.8f) : _engineerCost;
-            if (Gold >= realCost)
-            {
-                Gold -= realCost;
-                AudioManager.PlaySound("purchase");
-                var r = SpawnRobot("工程兵", -1, -1, RobotClass.Engineer);
-                r.ApplyClassProperties();
-                _engineerCost = (int)(_engineerCost * 1.4f);
-                UpdateUI();
-            }
-        }));
-
-        this.Controls.Add(panel);
-        UpdateUI();
-        UpdateUpgradeToolTips(); 
-
-        // 支持拖拽窗口 (除 UI 区域外)
-        this.MouseDown += (s, e) =>
-        {
-            if (e.Button == MouseButtons.Left)
-            {
-                // 排除 UI 区域点击，优先给游戏逻辑处理
-                if (!IsOverMinimap(e.Location) && !IsOverZoomButtons(e.Location))
-                {
-                    ReleaseCapture();
-                    SendMessage(Handle, WM_NCLBUTTONDOWN, HT_CAPTION, 0);
-                }
-            }
-        };
+        if (_baseLevel >= 5) {
+            var btnOC = CreateBtn("Overload", "⚡超载⚡", 10, buyY + 45, (s, e) => TriggerBaseOverload());
+            btnOC.Height = 15; btnOC.Width = 60; btnOC.Font = new Font("Microsoft YaHei", 5.5f, FontStyle.Bold);
+            if (_baseOverloadCooldown > 0) btnOC.Enabled = false;
+            panel.Controls.Add(btnOC);
+        }
     }
 
-    // 拖拽窗口所需
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    public static extern int SendMessage(IntPtr hWnd, int Msg, int wParam, int lParam);
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    public static extern bool ReleaseCapture();
-    public const int WM_NCLBUTTONDOWN = 0xA1;
-    public const int HT_CAPTION = 0x2;
+    private int GetLevelRef(RobotClass rc) => rc switch {
+        RobotClass.Worker => _workerLevel, RobotClass.Healer => _healerLevel,
+        RobotClass.Gunner => _shooterLevel, RobotClass.Rocket => _rocketLevel,
+        RobotClass.Plasma => _plasmaLevel, RobotClass.Laser => _laserLevel,
+        RobotClass.Lightning => _lightningLevel, RobotClass.Guardian => _guardianLevel,
+        RobotClass.Engineer => _engineerLevel, _ => 1
+    };
+    private void SetLevelRef(RobotClass rc, int val) {
+        if (rc == RobotClass.Worker) _workerLevel = val;
+        else if (rc == RobotClass.Healer) _healerLevel = val;
+        else if (rc == RobotClass.Gunner) _shooterLevel = val;
+        else if (rc == RobotClass.Rocket) _rocketLevel = val;
+        else if (rc == RobotClass.Plasma) _plasmaLevel = val;
+        else if (rc == RobotClass.Laser) _laserLevel = val;
+        else if (rc == RobotClass.Lightning) _lightningLevel = val;
+        else if (rc == RobotClass.Guardian) _guardianLevel = val;
+        else if (rc == RobotClass.Engineer) _engineerLevel = val;
+    }
+    private int GetCostRef(RobotClass rc) => rc switch {
+        RobotClass.Worker => _workerCost, RobotClass.Healer => _healerCost,
+        RobotClass.Gunner => _shooterCost, RobotClass.Rocket => _rocketCost,
+        RobotClass.Plasma => _plasmaCost, RobotClass.Laser => _laserCost,
+        RobotClass.Lightning => _lightningCost, RobotClass.Guardian => _guardianCost,
+        RobotClass.Engineer => _engineerCost, _ => 100
+    };
+    private void SetCostRef(RobotClass rc, int val) {
+        if (rc == RobotClass.Worker) _workerCost = val;
+        else if (rc == RobotClass.Healer) _healerCost = val;
+        else if (rc == RobotClass.Gunner) _shooterCost = val;
+        else if (rc == RobotClass.Rocket) _rocketCost = val;
+        else if (rc == RobotClass.Plasma) _plasmaCost = val;
+        else if (rc == RobotClass.Laser) _laserCost = val;
+        else if (rc == RobotClass.Lightning) _lightningCost = val;
+        else if (rc == RobotClass.Guardian) _guardianCost = val;
+        else if (rc == RobotClass.Engineer) _engineerCost = val;
+    }
+
+
 
     private void UpdateUI()
     {
         var panel = this.Controls["ControlPanel"] as Panel;
         if (panel == null) return;
+        if (panel.Controls["ResMonitor"] is Label res) res.Text = $"💰 {Gold}  |  💎 {Minerals}";
+        
+        // 动态更新所有按钮的高亮状态
+        foreach (Control ctrl in panel.Controls)
+        {
+            if (ctrl is Button btn && btn.Name != "ReturnHome") 
+            {
+                bool affordable = false;
+                string name = btn.Name;
 
-        // 更新按钮文字和价格
-        bool isInd = _currentBaseModule == BaseModule.Industrial;
-        if (panel.Controls["UpgBase"] is Button uB) uB.Text = $"Lv.{_baseLevel} 💎{150 * _baseLevel}";
-        if (panel.Controls["UpgWorker"] is Button uW) uW.Text = $"Lv.{_workerLevel} 💎{50 * _workerLevel}";
-        if (panel.Controls["BuyWorker"] is Button btnW) btnW.Text = $"采集工 💰{(isInd ? (int)(_workerCost * 0.8f) : _workerCost)}";
-        if (panel.Controls["UpgHealer"] is Button uH) uH.Text = $"Lv.{_healerLevel} 💎{80 * _healerLevel}";
-        if (panel.Controls["BuyHealer"] is Button btnD) btnD.Text = $"治疗者 💰{(isInd ? (int)(_defenderCost * 0.8f) : _defenderCost)}";
-        if (panel.Controls["UpgShooter"] is Button uS) uS.Text = $"Lv.{_shooterLevel} 💎{60 * _shooterLevel}";
-        if (panel.Controls["BuyShooter"] is Button btnS) btnS.Text = $"攻击者 💰{(isInd ? (int)(_shooterCost * 0.8f) : _shooterCost)}";
-        if (panel.Controls["UpgGuardian"] is Button uG) uG.Text = $"Lv.{_guardianLevel} 💎{100 * _guardianLevel}";
-        if (panel.Controls["BuyGuardian"] is Button btnG) btnG.Text = $"守卫者 💰{(isInd ? (int)(_guardianCost * 0.8f) : _guardianCost)}";
-        if (panel.Controls["UpgEngineer"] is Button uE) uE.Text = $"Lv.{_engineerLevel} 💎{120 * _engineerLevel}";
-        if (panel.Controls["BuyEngineer"] is Button btnE) btnE.Text = $"工程兵 💰{(isInd ? (int)(_engineerCost * 0.8f) : _engineerCost)}";
+                if (name == "UpgBase") {
+                    affordable = Minerals >= 150 * _baseLevel;
+                }
+                else if (name == "HealBase") {
+                    var b = GetBaseRobot();
+                    affordable = Gold >= 100 && b != null && b.HP < b.MaxHP;
+                }
+                else if (name.StartsWith("Buy")) {
+                    RobotClass rc = GetClassFromBtnName(name);
+                    int cost = GetCostRef(rc);
+                    int realCost = (_currentBaseModule == BaseModule.Industrial) ? (int)(cost * 0.8f) : cost;
+                    affordable = Gold >= realCost;
+                }
+                else if (name.StartsWith("Upg")) {
+                    RobotClass rc = GetClassFromBtnName(name);
+                    int upgCostBase = GetBaseUpgCost(rc);
+                    affordable = Minerals >= upgCostBase * GetLevelRef(rc);
+                }
+                else if (name == "Overload") {
+                    affordable = _baseOverloadCooldown <= 0;
+                }
+
+                // 视觉反馈：青蓝色发光边框表示可购买
+                if (affordable) {
+                    btn.FlatAppearance.BorderColor = Color.Cyan;
+                    btn.ForeColor = Color.White;
+                } else {
+                    btn.FlatAppearance.BorderColor = Color.FromArgb(60, 60, 70);
+                    btn.ForeColor = Color.FromArgb(100, 100, 110);
+                }
+            }
+        }
 
         if (panel.Controls["Overload"] is Button bO)
         {
-            bO.Visible = _baseLevel >= 5;
             bO.Enabled = _baseOverloadCooldown <= 0;
             if (_baseOverloadCooldown > 0) bO.Text = $"{_baseOverloadCooldown / 60}s";
-            else bO.Text = "⚡ 超载 ⚡";
+            else bO.Text = "⚡超载⚡";
         }
-
-        if (panel.Controls["ResMonitor"] is Label resL)
-        {
-            resL.Text = $"💰 {Gold}  |  💎 {Minerals}";
-        }
-
-        UpdateUpgradeToolTips();
     }
+
+    private RobotClass GetClassFromBtnName(string name)
+    {
+        if (name.Contains("Worker")) return RobotClass.Worker;
+        if (name.Contains("Healer")) return RobotClass.Healer;
+        if (name.Contains("Gunner")) return RobotClass.Gunner;
+        if (name.Contains("Rocket")) return RobotClass.Rocket;
+        if (name.Contains("Plasma")) return RobotClass.Plasma;
+        if (name.Contains("Laser")) return RobotClass.Laser;
+        if (name.Contains("Lightning")) return RobotClass.Lightning;
+        if (name.Contains("Guardian")) return RobotClass.Guardian;
+        if (name.Contains("Engineer")) return RobotClass.Engineer;
+        return RobotClass.Base;
+    }
+
+    private int GetBaseUpgCost(RobotClass rc) => rc switch {
+        RobotClass.Worker => 50, RobotClass.Healer => 80,
+        RobotClass.Gunner => 60, RobotClass.Rocket => 90,
+        RobotClass.Plasma => 70, RobotClass.Laser => 110,
+        RobotClass.Lightning => 150, RobotClass.Guardian => 100,
+        RobotClass.Engineer => 80, _ => 150
+    };
 
     private void UpdateUpgradeToolTips()
     {
@@ -2402,68 +2452,47 @@ public partial class BattleForm : Form
 
         if (panel.Controls["UpgBase"] is Button uB)
         {
-            int nextHP = 3000 + _baseLevel * 1000;
-            int currentDmg = 35 + (_baseLevel - 1) * 15;
-            string layerStatus = IsLayerComplete(_currentBuildingLayer)
-                ? $"✅ 环区 {_currentBuildingLayer} 已完工，可升级"
-                : $"⏳ 环区 {_currentBuildingLayer} 建设中，完工后可升级";
-            _upgradeToolTip.SetToolTip(uB, $"【基地升级】(当前 Lv.{_baseLevel})\n" +
-                $"- 最大生命: {3000 + (_baseLevel - 1) * 1000}\n" +
-                $"- 防御波伤害: {currentDmg}\n" +
-                $"- 下级预览: 生命 → {nextHP}, 伤害 → {currentDmg + 15}\n" +
-                $"- 额外效果: 升级时瞬间补满全部生命值，并启动新的城墙环区！\n" +
-                $"- {layerStatus}");
+            int baseLv = _baseLevel;
+            int nextHP = 3000 + baseLv * 1000;
+            int currentDmg = 35 + (baseLv - 1) * 15;
+            _upgradeToolTip.SetToolTip(uB, $"【基地等级 {baseLv}】\n- 生命: {3000 + (baseLv - 1) * 1000}\n- 震荡波伤害: {currentDmg}\n- 下级预览: 生命+{1000}, 伤害+15\n- 扩建: 并在升级后开启新环区建设！");
         }
 
         if (panel.Controls["UpgWorker"] is Button uW)
-            _upgradeToolTip.SetToolTip(uW, $"【采集工升级】(当前 Lv.{_workerLevel})\n" +
-                $"- 生命上限加成: +{(_workerLevel - 1) * 20}%\n" +
-                $"- 下级预览: 全体采集工生命上限再提升 20%");
+            _upgradeToolTip.SetToolTip(uW, $"【采集工 Lv.{_workerLevel}】\n- 生命上限加成: +{(_workerLevel - 1) * 20}%\n- 采集效率: 稳定");
 
         if (panel.Controls["UpgHealer"] is Button uH)
-            _upgradeToolTip.SetToolTip(uH, $"【治疗者升级】(当前 Lv.{_healerLevel})\n" +
-                $"- 单次治疗量: {20 + (_healerLevel - 1) * 5}\n" +
-                $"- 治疗频率: 2.0 次/秒\n" +
-                $"- 下级预览: 治疗量提高至 {25 + (_healerLevel - 1) * 5}");
+            _upgradeToolTip.SetToolTip(uH, $"【治疗者 Lv.{_healerLevel}】\n- 治疗量: {20 + (_healerLevel - 1) * 5}\n- 频率: 2.0次/秒\n- 成长: 提升治疗量与生存能力");
 
-        if (panel.Controls["UpgShooter"] is Button uS)
+        void AddAtkTooltip(string btnId, string name, RobotClass rc, string desc)
         {
-            float fireRate = 60.0f / Math.Max(12, 40 - _shooterLevel * 3);
-            int projectiles = 1 + (_shooterLevel - 1) / 3;
-            _upgradeToolTip.SetToolTip(uS, $"【游侠升级】(当前 Lv.{_shooterLevel})\n" +
-                $"- 射击频率: {fireRate:F1} 发/秒\n" +
-                $"- 弹幕数量: {projectiles} 枚/轮\n" +
-                $"- 伤害加成: +{(_shooterLevel - 1) * 25}%\n" +
-                $"- 特殊解锁: {GetShooterUnlockInfo(_shooterLevel)}");
+            if (panel.Controls[btnId] is Button btn)
+            {
+                int lv = GetLevelRef(rc);
+                int dmg = 100; // Base
+                float rate = 1.0f;
+                switch(rc) {
+                    case RobotClass.Gunner: dmg = 100 + (lv-1)*35; rate = 60f/Math.Max(5, 12-(lv-1)/2); break;
+                    case RobotClass.Rocket: dmg = 250 + (lv-1)*80; rate = 60f/Math.Max(20, 60-(lv-1)*4); break;
+                    case RobotClass.Plasma: dmg = 45 + (lv-1)*15; rate = 60f/Math.Max(2, 6-(lv-1)/3); break;
+                    case RobotClass.Laser: dmg = 150 + (lv-1)*50; rate = 60f/Math.Max(15, 45-(lv-1)*2); break;
+                    case RobotClass.Lightning: dmg = 120 + (lv-1)*40; rate = 60f/Math.Max(10, 30-(lv-1)*2); break;
+                }
+                _upgradeToolTip.SetToolTip(btn, $"【{name} Lv.{lv}】\n- {desc}\n- 攻击力: {dmg}\n- 射速: {rate:F1} 发/秒\n- 成长: 升级显著提升伤害与攻速频率");
+            }
         }
+
+        AddAtkTooltip("UpgGunner", "机枪兵", RobotClass.Gunner, "平衡型输出，初期最可靠。");
+        AddAtkTooltip("UpgRocket", "火箭兵", RobotClass.Rocket, "范围大杀器，具备追踪能力。");
+        AddAtkTooltip("UpgPlasma", "等离子", RobotClass.Plasma, "极高射速，压制怪群核心。");
+        AddAtkTooltip("UpgLaser", "激光兵", RobotClass.Laser, "精准狙击，连线持续伤害。");
+        AddAtkTooltip("UpgLightning", "闪电游侠", RobotClass.Lightning, "跳跃打击，清理密集敌群。");
 
         if (panel.Controls["UpgGuardian"] is Button uG)
-        {
-            int currentDmg = 100 + (_guardianLevel - 1) * 60;
-            float currentOrbit = (_walls.Any(w => w.Layer == 1 && w.HP > 0)) ? 420f : 140f;
-            _upgradeToolTip.SetToolTip(uG, $"【守护者升级】(当前 Lv.{_guardianLevel})\n" +
-                $"- 冲击伤害: {currentDmg}\n" +
-                $"- 当前巡逻半径: {currentOrbit:F0} 像素\n" +
-                $"- 下级预览: 伤害 +60, 速度 +15%");
-        }
-            
-        // 购买按钮提示
-        if (panel.Controls["BuyWorker"] is Button bW) _upgradeToolTip.SetToolTip(bW, "【工程单位】不具备攻击力，自动采集蓝色矿石（Minerals）。");
-        if (panel.Controls["BuyHealer"] is Button bH) _upgradeToolTip.SetToolTip(bH, "【后勤单位】极速回血，优先保护基地与濒危队友。");
-        if (panel.Controls["BuyShooter"] is Button bS) _upgradeToolTip.SetToolTip(bS, "【输出主力】全自动武器系统，随等级提升解锁更多弹药。");
-        if (panel.Controls["BuyGuardian"] is Button bG) _upgradeToolTip.SetToolTip(bG, "【重型冲撞者】在基地周围固定轨道快速巡逻，通过高速撞击阻击并击退任何试图靠近的怪物。");
-        if (panel.Controls["BuyEngineer"] is Button bE) _upgradeToolTip.SetToolTip(bE, "【建设专家】自动维修城墙，优先建设未完成的外层防线。");
-
-        // 工程兵升级提示
+            _upgradeToolTip.SetToolTip(uG, $"【守护者 Lv.{_guardianLevel}】\n- 冲击伤害: {45 + (_guardianLevel-1)*25}\n- 速度加成: +{(_guardianLevel-1)*15}%");
+        
         if (panel.Controls["UpgEngineer"] is Button uE)
-        {
-            int repairAmount = 20 + (_engineerLevel - 1) * 5;
-            _upgradeToolTip.SetToolTip(uE, $"【工程兵升级】(当前 Lv.{_engineerLevel})\n" +
-                $"- 单次修复量: {repairAmount}\n" +
-                $"- 修复频率: 超频模式\n" +
-                $"- 下级预览: 修复量提高至 {repairAmount + 5}\n" +
-                $"- 注：城墙扩建现在绑定到【基地升级】");
-        }
+            _upgradeToolTip.SetToolTip(uE, $"【工程兵 Lv.{_engineerLevel}】\n- 修补效率显著随等级提升\n- 死光辅助伤害: {200 + (_engineerLevel-1)*100}");
     }
 
     private string GetShooterUnlockInfo(int level)
@@ -2496,8 +2525,7 @@ public partial class BattleForm : Form
 
         if (robot.IsDead)
         {
-            using var deadBrush = new SolidBrush(Color.Gray);
-            g.FillEllipse(deadBrush, x, y, size, size);
+            g.FillEllipse(Brushes.Gray, x, y, size, size);
             return;
         }
 
@@ -2510,18 +2538,23 @@ public partial class BattleForm : Form
         }
         else
         {
-            using var shadowBrush = new SolidBrush(Color.FromArgb(50, 0, 0, 0));
-            g.FillEllipse(shadowBrush, x, y + size * 0.2f, size, size);
+            g.FillEllipse(GetBrush(Color.FromArgb(50, 0, 0, 0)), x, y + size * 0.2f, size, size);
 
             Draw3DOrbiters(g, robot, centerX, centerY, size, true);
 
             switch (robot.ClassType)
             {
                 case RobotClass.Worker: DrawWorkerAppearance(g, robot, x, y, size, centerX, centerY); break;
-                case RobotClass.Shooter: DrawShooterAppearance(g, robot, x, y, size, centerX, centerY); break;
                 case RobotClass.Healer: DrawHealerAppearance(g, robot, x, y, size, centerX, centerY); break;
                 case RobotClass.Guardian: DrawGuardianAppearance(g, robot, x, y, size, centerX, centerY); break;
                 case RobotClass.Engineer: DrawEngineerAppearance(g, robot, x, y, size, centerX, centerY); break;
+                case RobotClass.Gunner:
+                case RobotClass.Rocket:
+                case RobotClass.Plasma:
+                case RobotClass.Laser:
+                case RobotClass.Lightning:
+                    DrawShooterAppearance(g, robot, x, y, size, centerX, centerY); 
+                    break;
                 default: DrawDefaultAppearance(g, robot, x, y, size, centerX, centerY); break;
             }
 
@@ -2530,26 +2563,22 @@ public partial class BattleForm : Form
             {
                 var br = GetBaseRobot();
                 var wp = robot.TargetWall.GetWorldPosition(br?.X ?? 0, br?.Y ?? 0);
-                using (var pen = new Pen(Color.FromArgb(150, Color.DeepSkyBlue), 2 + (float)Math.Sin(Environment.TickCount / 50.0) * 1))
-                {
-                    g.DrawLine(pen, centerX, centerY, wp.X, wp.Y);
-                    // 目标落点火花
-                    g.FillEllipse(Brushes.White, wp.X - 2, wp.Y - 2, 4, 4);
-                }
+                float wave = (float)Math.Sin(Environment.TickCount / 50.0) * 1;
+                g.DrawLine(GetPen(Color.FromArgb(150, Color.DeepSkyBlue), 2 + wave), centerX, centerY, wp.X, wp.Y);
+                g.FillEllipse(Brushes.White, wp.X - 2, wp.Y - 2, 4, 4);
             }
 
             // 特殊效果：守卫者等离子旋风
             if (robot.SpecialState == "WHIRLWIND")
             {
-                using var p = new Pen(Color.FromArgb(180, Color.Orange), 3);
+                var p = GetPen(Color.FromArgb(180, Color.Orange), 3);
                 float rot = (Environment.TickCount / 25f);
                 for (int i = 0; i < 3; i++)
                 {
                     float angle = (rot + i * (float)Math.PI * 2 / 3f) * 180 / (float)Math.PI;
                     g.DrawArc(p, centerX - 60, centerY - 60, 120, 120, angle, 90);
                 }
-                using var glowB = new SolidBrush(Color.FromArgb(40, Color.Yellow));
-                g.FillEllipse(glowB, centerX - 60, centerY - 60, 120, 120);
+                g.FillEllipse(GetBrush(Color.FromArgb(40, Color.Yellow)), centerX - 60, centerY - 60, 120, 120);
             }
 
             Draw3DOrbiters(g, robot, centerX, centerY, size, false);
@@ -2565,23 +2594,22 @@ public partial class BattleForm : Form
         if (robot.ClassType == RobotClass.Base)
         {
             float bw = 140, bh = 12, bx = x + (size - bw) / 2, by = y - 30;
-            using (var bgb = new SolidBrush(Color.FromArgb(180, 20, 20, 25))) g.FillRectangle(bgb, bx, by, bw, bh);
+            g.FillRectangle(GetBrush(Color.FromArgb(180, 20, 20, 25)), bx, by, bw, bh);
             float pct = (float)robot.HP / robot.MaxHP, hpp = Math.Clamp(pct, 0, 1);
             Color hpc = (pct > 0.3f) ? Color.FromArgb(0, 255, 127) : Color.FromArgb(255, 60, 60);
-            using (var hpb = new SolidBrush(hpc)) g.FillRectangle(hpb, bx + 2, by + 2, (bw - 4) * hpp, bh - 4);
-            using (var p = new Pen(Color.White, 2)) g.DrawRectangle(p, bx, by, bw, bh);
-            using (var f = new Font("Consolas", 9, FontStyle.Bold)) {
-                string txt = $"{robot.HP}/{robot.MaxHP}";
-                var sz = g.MeasureString(txt, f);
-                g.DrawString(txt, f, Brushes.Black, bx + (bw - sz.Width) / 2 + 1, by - 14 + 1);
-                g.DrawString(txt, f, Brushes.White, bx + (bw - sz.Width) / 2, by - 14);
-            }
+            g.FillRectangle(GetBrush(hpc), bx + 2, by + 2, (bw - 4) * hpp, bh - 4);
+            g.DrawRectangle(GetPen(Color.White, 2), bx, by, bw, bh);
+            
+            string txt = $"{robot.HP}/{robot.MaxHP}";
+            var sz = g.MeasureString(txt, _perfFont);
+            g.DrawString(txt, _perfFont, Brushes.Black, bx + (bw - sz.Width) / 2 + 1, by - 14 + 1);
+            g.DrawString(txt, _perfFont, Brushes.White, bx + (bw - sz.Width) / 2, by - 14);
         }
         else if (robot.HP < robot.MaxHP && robot.ClassType != RobotClass.Worker)
         {
             float bw = size * 0.9f, bh = 4, bx = x + (size - bw) / 2, by = y - 8;
-            using var bgb = new SolidBrush(Color.FromArgb(150, 50, 50, 50)); g.FillRectangle(bgb, bx, by, bw, bh);
-            using var hpb = new SolidBrush(robot.PrimaryColor); g.FillRectangle(hpb, bx, by, bw * Math.Clamp((float)robot.HP / robot.MaxHP, 0, 1), bh);
+            g.FillRectangle(GetBrush(Color.FromArgb(150, 50, 50, 50)), bx, by, bw, bh);
+            g.FillRectangle(GetBrush(robot.PrimaryColor), bx, by, bw * Math.Clamp((float)robot.HP / robot.MaxHP, 0, 1), bh);
         }
     }
 
@@ -2592,9 +2620,14 @@ public partial class BattleForm : Form
         string type = "SPARK";
         switch(robot.ClassType) {
             case RobotClass.Worker: radius = size * 0.5f; speed = 3.0f; type = "DRILL"; break;
-            case RobotClass.Shooter: radius = size * 0.8f; speed = 2.0f; type = "SHELL"; break;
             case RobotClass.Healer: radius = size * 1.0f; speed = 1.2f; type = "NANO"; break;
             case RobotClass.Guardian: radius = size * 1.1f; speed = 1.0f; type = "SHIELD_PLATE"; break;
+            case RobotClass.Gunner:
+            case RobotClass.Rocket:
+            case RobotClass.Plasma:
+            case RobotClass.Laser:
+            case RobotClass.Lightning:
+                radius = size * 0.8f; speed = 2.0f; type = "SHELL"; break;
         }
         for (int i = 0; i < count; i++) {
             float ang = (Environment.TickCount/1000f) * speed + (float)(i * Math.PI * 2 / count);
@@ -2603,19 +2636,15 @@ public partial class BattleForm : Form
             float ps = 4 + z * 2, alpha = 150 + z * 100;
             if (type == "SHIELD_PLATE")
             {
-                // 守护兵专属重型盾片
-                using var sb = new SolidBrush(Color.FromArgb((int)alpha, robot.SecondaryColor));
-                g.FillRectangle(sb, cx + bx - 6, cy + by - 3, 12, 6);
-                using var sp = new Pen(Color.FromArgb((int)alpha, Color.White), 1);
-                g.DrawRectangle(sp, cx + bx - 6, cy + by - 3, 12, 6);
+                g.FillRectangle(GetBrush(Color.FromArgb((int)alpha, robot.SecondaryColor)), cx + bx - 6, cy + by - 3, 12, 6);
+                g.DrawRectangle(GetPen(Color.FromArgb((int)alpha, Color.White), 1), cx + bx - 6, cy + by - 3, 12, 6);
             }
             else
             {
-                using var br = new SolidBrush(Color.FromArgb((int)Math.Clamp(alpha, 0, 255), robot.PrimaryColor));
                 if (type == "NANO") {
                     g.FillRectangle(Brushes.LimeGreen, cx + bx - 1, cy + by - 1, 3, 3);
                     if (Environment.TickCount % 500 < 100) g.DrawLine(Pens.White, cx+bx-3, cy+by, cx+bx+3, cy+by);
-                } else g.FillEllipse(br, cx + bx - ps/2, cy + by - ps/2, ps, ps);
+                } else g.FillEllipse(GetBrush(Color.FromArgb((int)Math.Clamp(alpha, 0, 255), robot.PrimaryColor)), cx + bx - ps/2, cy + by - ps/2, ps, ps);
             }
         }
     }
@@ -2623,8 +2652,8 @@ public partial class BattleForm : Form
     private void DrawBaseAppearance(Graphics g, Robot robot, float x, float y, float size, float cx, float cy)
     {
         DrawBaseCubicOrbit(g, cx, cy, size, true);
-        using var bodyBrush = new SolidBrush(robot.PrimaryColor);
-        using var darkBrush = new SolidBrush(robot.SecondaryColor);
+        var bodyBrush = GetBrush(robot.PrimaryColor);
+        var darkBrush = GetBrush(robot.SecondaryColor);
         g.FillRectangle(darkBrush, x - 15, y + size - 5, size + 30, 15);
         g.FillRectangle(bodyBrush, x - 5, y + size - 12, size + 10, 8);
         PointF[] pts = { new PointF(x, y+size), new PointF(x+size*0.2f, y+size*0.3f), new PointF(x+size*0.8f, y+size*0.3f), new PointF(x+size, y+size) };
@@ -2642,9 +2671,10 @@ public partial class BattleForm : Form
             float ang = time + (float)(i * Math.PI * 2 / 12), tilt = (float)Math.Sin(time * 0.5f) * 0.3f;
             float x = (float)(Math.Cos(ang) * radius), y = (float)(Math.Sin(ang) * radius * tilt), z = (float)Math.Sin(ang);
             if (backLayer && z > 0) continue; if (!backLayer && z <= 0) continue;
-            float ps = 6 + z * 3; Color c = backLayer ? Color.DarkBlue : Color.Cyan;
-            using var br = new SolidBrush(Color.FromArgb(150 + (int)(z*100), c));
-            g.FillRectangle(br, cx + x - ps/2, cy + y - ps/2, ps, ps);
+            float ps = 6 + z * 3; 
+            Color baseColor = backLayer ? Color.DarkBlue : Color.Cyan;
+            Color c = Color.FromArgb(150 + (int)(z*100), baseColor);
+            g.FillRectangle(GetBrush(c), cx + x - ps/2, cy + y - ps/2, ps, ps);
             g.DrawRectangle(Pens.White, cx + x - ps/2, cy + y - ps/2, ps, ps);
         }
     }
@@ -2677,46 +2707,95 @@ public partial class BattleForm : Form
     {
         using var bodyBrush = new SolidBrush(robot.PrimaryColor);
         using var darkBrush = new SolidBrush(robot.SecondaryColor);
-        
-        // 1. 主翼：三角形锐利外观
-        PointF[] pts = { new PointF(cx, y - 2), new PointF(x + size + 2, cy), new PointF(cx, y + size + 2), new PointF(x - 2, cy) };
-        g.FillPolygon(bodyBrush, pts);
-        g.FillEllipse(darkBrush, cx - size / 4, cy - size / 4, size / 2, size / 2);
-        
-        // 2. 炮管：指向目标
         float ang = (float)Math.Atan2(robot.Dy, robot.Dx);
         if (robot.MonsterTarget != null) ang = (float)Math.Atan2(robot.MonsterTarget.Y - cy, robot.MonsterTarget.X - cx);
-        
-        for (int i = -1; i <= 1; i += 2) {
-            float ba = ang + i * 0.35f, bx = cx + (float)Math.Cos(ba) * (size * 0.85f), by = cy + (float)Math.Sin(ba) * (size * 0.85f);
-            using var bp = new Pen(Color.FromArgb(80, 80, 80), 5); 
-            g.DrawLine(bp, cx, cy, bx, by);
-            // 炮口光效 (如果正在攻击)
-            if (robot.MonsterTarget != null) g.FillEllipse(Brushes.OrangeRed, bx - 2, by - 2, 4, 4);
+
+        switch (robot.ClassType)
+        {
+            case RobotClass.Gunner:
+                // 机枪手：重型钻石底盘 + 三管机枪
+                PointF[] gunnerPts = { new PointF(cx + (float)Math.Cos(ang) * size * 0.7f, cy + (float)Math.Sin(ang) * size * 0.7f),
+                                       new PointF(cx + (float)Math.Cos(ang + 2.2f) * size * 0.6f, cy + (float)Math.Sin(ang + 2.2f) * size * 0.6f),
+                                       new PointF(cx + (float)Math.Cos(ang - 2.2f) * size * 0.6f, cy + (float)Math.Sin(ang - 2.2f) * size * 0.6f) };
+                g.FillPolygon(bodyBrush, gunnerPts);
+                g.FillEllipse(darkBrush, cx - size / 4, cy - size / 4, size / 2, size / 2);
+                // 枪管
+                for (int i = -1; i <= 1; i++) {
+                    float ba = ang + i * 0.2f, bx = cx + (float)Math.Cos(ba) * (size * 0.9f), by = cy + (float)Math.Sin(ba) * (size * 0.9f);
+                    g.DrawLine(GetPen(Color.Gray, 3), cx, cy, bx, by);
+                }
+                break;
+
+            case RobotClass.Rocket:
+                // 火箭兵：修长机身 + 侧挂导弹荚舱
+                float fuselageLen = size * 0.8f;
+                float fx = cx + (float)Math.Cos(ang) * fuselageLen, fy = cy + (float)Math.Sin(ang) * fuselageLen;
+                g.DrawLine(GetPen(robot.PrimaryColor, 8), cx, cy, fx, fy);
+                // 翼/荚舱
+                for (int i = -1; i <= 1; i += 2) {
+                    float wa = ang + i * 1.2f, wx = cx + (float)Math.Cos(wa) * (size * 0.5f), wy = cy + (float)Math.Sin(wa) * (size * 0.5f);
+                    g.FillRectangle(darkBrush, wx - 4, wy - 4, 8, 8);
+                    g.DrawRectangle(Pens.White, wx - 4, wy - 4, 8, 8);
+                }
+                break;
+
+            case RobotClass.Plasma:
+                // 等离子：半圆外壳 + 中心圆环核心
+                g.FillEllipse(bodyBrush, x, y, size, size);
+                g.FillEllipse(Brushes.Black, cx - size / 3, cy - size / 3, size * 2 / 3, size * 2 / 3);
+                float pulse = 0.5f + (float)Math.Sin(Environment.TickCount / 100.0) * 0.5f;
+                Color coreColor = Color.FromArgb((int)(100 + 155 * pulse), robot.PrimaryColor);
+                g.FillEllipse(GetBrush(coreColor), cx - size / 5, cy - size / 5, size * 2 / 5, size * 2 / 5);
+                // 重炮管
+                float px = cx + (float)Math.Cos(ang) * size, py = cy + (float)Math.Sin(ang) * size;
+                g.DrawLine(GetPen(robot.PrimaryColor, 6), cx, cy, px, py);
+                break;
+
+            case RobotClass.Laser:
+                // 激光：极尖锐的三角形 + 细长枪架
+                PointF[] laserPts = { new PointF(cx + (float)Math.Cos(ang) * size * 0.9f, cy + (float)Math.Sin(ang) * size * 0.9f),
+                                     new PointF(cx + (float)Math.Cos(ang + 2.6f) * size * 0.5f, cy + (float)Math.Sin(ang + 2.6f) * size * 0.5f),
+                                     new PointF(cx + (float)Math.Cos(ang - 2.6f) * size * 0.5f, cy + (float)Math.Sin(ang - 2.6f) * size * 0.5f) };
+                g.FillPolygon(bodyBrush, laserPts);
+                float lx = cx + (float)Math.Cos(ang) * (size * 1.2f), ly = cy + (float)Math.Sin(ang) * (size * 1.2f);
+                g.DrawLine(GetPen(Color.Cyan, 2), cx, cy, lx, ly);
+                break;
+
+            case RobotClass.Lightning:
+                // 闪电：四角星形 + 电极尖端
+                for (int i = 0; i < 4; i++) {
+                    float sa = ang + i * (float)Math.PI / 2;
+                    float sx = cx + (float)Math.Cos(sa) * size * 0.7f, sy = cy + (float)Math.Sin(sa) * size * 0.7f;
+                    g.DrawLine(GetPen(robot.PrimaryColor, 4), cx, cy, sx, sy);
+                    g.FillEllipse(Brushes.White, sx - 2, sy - 2, 4, 4);
+                }
+                g.FillEllipse(darkBrush, cx - size / 4, cy - size / 4, size / 2, size / 2);
+                break;
+
+            default:
+                // 默认/旧版游侠
+                PointF[] pts = { new PointF(cx, y - 2), new PointF(x + size + 2, cy), new PointF(cx, y + size + 2), new PointF(x - 2, cy) };
+                g.FillPolygon(bodyBrush, pts);
+                g.FillEllipse(darkBrush, cx - size / 4, cy - size / 4, size / 2, size / 2);
+                break;
         }
-        
+
         DrawVisor(g, cx, cy, size, ang);
     }
 
     private void DrawHealerAppearance(Graphics g, Robot robot, float x, float y, float size, float cx, float cy)
     {
-        using var bodyBrush = new SolidBrush(robot.PrimaryColor);
-        using var darkBrush = new SolidBrush(robot.SecondaryColor);
-        
         // 1. 核心球体
-        g.FillEllipse(bodyBrush, x, y, size, size);
+        g.FillEllipse(GetBrush(robot.PrimaryColor), x, y, size, size);
         float pulse = 0.5f + (float)Math.Sin(Environment.TickCount / 150.0) * 0.5f;
         
-        // 2. 治疗光晕 (更加动态)
-        using (var pb = new SolidBrush(Color.FromArgb((int)(80 * pulse), Color.LimeGreen)))
-        {
-            float ringSize = size * (1.2f + 0.2f * pulse);
-            g.FillEllipse(pb, cx - ringSize / 2, cy - ringSize / 2, ringSize, ringSize);
-        }
+        // 2. 治疗光晕
+        Color ringColor = Color.FromArgb((int)(80 * pulse), Color.LimeGreen);
+        float ringSize = size * (1.2f + 0.2f * pulse);
+        g.FillEllipse(GetBrush(ringColor), cx - ringSize / 2, cy - ringSize / 2, ringSize, ringSize);
 
         // 3. 内部十字标志
-        using var cb = new SolidBrush(Color.White);
-        g.FillRectangle(cb, cx - 1, cy - 7, 3, 14); g.FillRectangle(cb, cx - 7, cy - 1, 14, 3);
+        g.FillRectangle(Brushes.White, cx - 1, cy - 7, 3, 14); g.FillRectangle(Brushes.White, cx - 7, cy - 1, 14, 3);
         
         // 4. 环绕无人机
         for (int i = 0; i < 2; i++) {
@@ -2729,10 +2808,7 @@ public partial class BattleForm : Form
 
     private void DrawGuardianAppearance(Graphics g, Robot robot, float x, float y, float size, float cx, float cy)
     {
-        using var bodyBrush = new SolidBrush(robot.PrimaryColor);
-        using var darkBrush = new SolidBrush(robot.SecondaryColor);
-        
-        // 1. 旋转动感背影 (反应速度感)
+        // 1. 旋转动感背影
         float rotSpeed = (float)Math.Sqrt(robot.Dx * robot.Dx + robot.Dy * robot.Dy);
         float spinAngle = Environment.TickCount / 100f * (1 + rotSpeed * 0.5f);
         
@@ -2740,13 +2816,13 @@ public partial class BattleForm : Form
         PointF[] oct = new PointF[8];
         for (int i = 0; i < 8; i++) {
             float a = i * (float)Math.PI / 4 + spinAngle;
-            float r = (i % 2 == 0) ? (size / 1.7f) : (size / 2.0f); // 交错结构
+            float r = (i % 2 == 0) ? (size / 1.7f) : (size / 2.0f);
             oct[i] = new PointF(cx + (float)Math.Cos(a) * r, cy + (float)Math.Sin(a) * r);
         }
-        g.FillPolygon(bodyBrush, oct);
-        using var bp = new Pen(darkBrush, 3); g.DrawPolygon(bp, oct);
+        g.FillPolygon(GetBrush(robot.PrimaryColor), oct);
+        g.DrawPolygon(GetPen(robot.SecondaryColor, 3), oct);
         
-        // 3. 冲击尖刺 (在移动方向的前端)
+        // 3. 冲击尖刺
         if (rotSpeed > 0.5f) {
             float moveAngle = (float)Math.Atan2(robot.Dy, robot.Dx);
             PointF[] spike = {
@@ -2754,52 +2830,44 @@ public partial class BattleForm : Form
                 new PointF(cx + (float)Math.Cos(moveAngle + 0.5f) * size * 0.5f, cy + (float)Math.Sin(moveAngle + 0.5f) * size * 0.5f),
                 new PointF(cx + (float)Math.Cos(moveAngle - 0.5f) * size * 0.5f, cy + (float)Math.Sin(moveAngle - 0.5f) * size * 0.5f)
             };
-            using var spikeBrush = new SolidBrush(Color.FromArgb(200, Color.OrangeRed));
-            g.FillPolygon(spikeBrush, spike);
+            g.FillPolygon(GetBrush(Color.FromArgb(200, Color.OrangeRed)), spike);
         }
 
         // 4. 高能核心 (呼吸灯)
         float hPulse = 0.5f + (float)Math.Sin(Environment.TickCount / 80.0) * 0.5f;
-        using var coreB = new SolidBrush(Color.FromArgb((int)(150 + 105 * hPulse), Color.Orange));
-        g.FillEllipse(coreB, cx - 7, cy - 7, 14, 14);
-        using var coreP = new Pen(Color.White, 2); g.DrawEllipse(coreP, cx - 7, cy - 7, 14, 14);
+        Color coreColor = Color.FromArgb((int)(150 + 105 * hPulse), Color.Orange);
+        g.FillEllipse(GetBrush(coreColor), cx - 7, cy - 7, 14, 14);
+        g.DrawEllipse(GetPen(Color.White, 2), cx - 7, cy - 7, 14, 14);
 
         DrawEyes(g, robot, cx, cy, 3);
     }
 
     private void DrawEngineerAppearance(Graphics g, Robot robot, float x, float y, float size, float cx, float cy)
     {
-        using var bodyBrush = new SolidBrush(robot.PrimaryColor);
-        using var darkBrush = new SolidBrush(robot.SecondaryColor);
-        
         // 1. 工字型主体
-        g.FillRectangle(darkBrush, x + size * 0.1f, y + size * 0.1f, size * 0.8f, size * 0.8f);
-        g.FillRectangle(bodyBrush, x + size * 0.2f, y + size * 0.2f, size * 0.6f, size * 0.6f);
+        g.FillRectangle(GetBrush(robot.SecondaryColor), x + size * 0.1f, y + size * 0.1f, size * 0.8f, size * 0.8f);
+        g.FillRectangle(GetBrush(robot.PrimaryColor), x + size * 0.2f, y + size * 0.2f, size * 0.6f, size * 0.6f);
         
         // 2. 修理机械臂
         float rot = Environment.TickCount / 80.0f;
         float armLen = size * 0.7f;
         float ax = cx + (float)Math.Cos(rot) * armLen, ay = cy + (float)Math.Sin(rot) * armLen;
-        using (var p = new Pen(Color.FromArgb(100, 100, 100), 4)) g.DrawLine(p, cx, cy, ax, ay);
+        g.DrawLine(GetPen(Color.FromArgb(100, 100, 100), 4), cx, cy, ax, ay);
         g.FillRectangle(Brushes.DeepSkyBlue, ax - 3, ay - 3, 6, 6);
         
-        // 3. 电子眼 (深蓝色)
-        using var eb = new SolidBrush(Color.Cyan);
-        g.FillRectangle(eb, cx - 6, cy - 3, 4, 4);
-        g.FillRectangle(eb, cx + 2, cy - 3, 4, 4);
+        // 3. 电子眼
+        g.FillRectangle(GetBrush(Color.Cyan), cx - 6, cy - 3, 4, 4);
+        g.FillRectangle(GetBrush(Color.Cyan), cx + 2, cy - 3, 4, 4);
     }
 
     private void DrawUltraAppearance(Graphics g, Robot robot, float x, float y, float size, float cx, float cy)
     {
-        // 终极形态：多重环绕、核心脉冲、半透明重影
         float time = Environment.TickCount / 500f;
         
         // 1. 底层核心光晕
-        using (var haloBrush = new SolidBrush(Color.FromArgb(100, robot.PrimaryColor)))
-        {
-            float haloSize = size * (1.2f + 0.1f * (float)Math.Sin(time * 2));
-            g.FillEllipse(haloBrush, cx - haloSize/2, cy - haloSize/2, haloSize, haloSize);
-        }
+        var haloColor = Color.FromArgb(100, robot.PrimaryColor);
+        float haloSize = size * (1.2f + 0.1f * (float)Math.Sin(time * 2));
+        g.FillEllipse(GetBrush(haloColor), cx - haloSize/2, cy - haloSize/2, haloSize, haloSize);
 
         // 2. 主体：尖锐的多边形
         PointF[] points = new PointF[8];
@@ -2809,17 +2877,14 @@ public partial class BattleForm : Form
             float r = (i % 2 == 0) ? size * 0.6f : size * 0.4f;
             points[i] = new PointF(cx + (float)Math.Cos(angle) * r, cy + (float)Math.Sin(angle) * r);
         }
-        using var bodyBrush = new SolidBrush(robot.PrimaryColor);
-        g.FillPolygon(bodyBrush, points);
-        using var p = new Pen(Color.White, 3);
-        g.DrawPolygon(p, points);
+        g.FillPolygon(GetBrush(robot.PrimaryColor), points);
+        g.DrawPolygon(GetPen(Color.White, 3), points);
 
         // 3. 三重环绕粒子
         for (int i = 0; i < 3; i++)
         {
             Draw3DOrbiters(g, robot, cx, cy, size * (1.0f + i * 0.3f), i % 2 == 0);
         }
-
         DrawEyes(g, robot, cx, cy, 8);
     }
 
@@ -2839,7 +2904,7 @@ public partial class BattleForm : Form
     private void DrawEyes(Graphics g, Robot robot, float cx, float cy, float ps)
     {
         float ey = cy - 2, lx = cx - ps * 1.5f, rx = cx + ps * 0.5f;
-        using var eb = new SolidBrush(robot.EyeColor);
+        var eb = GetBrush(robot.EyeColor);
         g.FillEllipse(Brushes.White, lx, ey, ps, ps * 0.8f); g.FillEllipse(Brushes.White, rx, ey, ps, ps * 0.8f);
         g.FillEllipse(eb, lx + ps * 0.2f, ey + ps * 0.2f, ps * 0.6f, ps * 0.6f);
         g.FillEllipse(eb, rx + ps * 0.2f, ey + ps * 0.2f, ps * 0.6f, ps * 0.6f);
@@ -2854,10 +2919,10 @@ public partial class BattleForm : Form
     {
         if (!robot.IsFiringLaser) return;
         float tcx = robot.LaserTargetX, tcy = robot.LaserTargetY;
-        using var lp = new Pen(robot.PrimaryColor, 4); using var cp = new Pen(Color.White, 2);
-        g.DrawLine(lp, cx, cy, tcx, tcy); g.DrawLine(cp, cx, cy, tcx, tcy);
-        using var sg = new SolidBrush(Color.FromArgb(100, 255, 100, 100)); g.FillEllipse(sg, cx - 8, cy - 8, 16, 16);
-        using var hg = new SolidBrush(Color.FromArgb(150, 255, 200, 200)); g.FillEllipse(hg, tcx - 6, tcy - 6, 12, 12);
+        g.DrawLine(GetPen(robot.PrimaryColor, 4), cx, cy, tcx, tcy); 
+        g.DrawLine(GetPen(Color.White, 2), cx, cy, tcx, tcy);
+        g.FillEllipse(GetBrush(Color.FromArgb(100, 255, 100, 100)), cx - 8, cy - 8, 16, 16);
+        g.FillEllipse(GetBrush(Color.FromArgb(150, 255, 200, 200)), tcx - 6, tcy - 6, 12, 12);
     }
 
     private void DrawDuelEffect(Graphics g, Robot robot, float cx, float cy)
@@ -2884,7 +2949,11 @@ public partial class BattleForm : Form
                     g.FillEllipse(Brushes.Yellow, dx - 5, dy - 5, 10, 10);
                 }
                 break;
-            case RobotClass.Shooter:
+            case RobotClass.Gunner:
+            case RobotClass.Rocket:
+            case RobotClass.Plasma:
+            case RobotClass.Laser:
+            case RobotClass.Lightning:
                 PointF[] pts = { new PointF(cx, y - 10), new PointF(x + size + 10, cy), new PointF(cx, y + size + 10), new PointF(x - 10, cy) };
                 g.FillPolygon(pb, pts); g.DrawPolygon(Pens.White, pts);
                 float ang = (float)Math.Atan2(robot.Dy, robot.Dx);
@@ -3183,35 +3252,44 @@ public partial class BattleForm : Form
 
     private void RenderWalls(Graphics g, float bx, float by)
     {
+        // 渲染性能优化：按层预计算，避免 O(N^2) 的 LINQ 查询
+        var layers = _walls.GroupBy(w => w.Layer).ToDictionary(
+            g => g.Key, 
+            g => new { 
+                Count = g.Count(), 
+                IsComplete = g.All(w => w.HP > 0) 
+            }
+        );
+
         foreach (var wall in _walls)
         {
-            int layerCount = _walls.Count(w => w.Layer == wall.Layer);
-            float sweepAngle = 360f / (layerCount > 0 ? layerCount : 24);
-            bool isLayerComplete = _walls.Where(w => w.Layer == wall.Layer).All(w => w.HP > 0);
+            if (!layers.TryGetValue(wall.Layer, out var layerInfo)) continue;
+            
+            float sweepAngle = 360f / (layerInfo.Count > 0 ? layerInfo.Count : 24);
+            bool isLayerComplete = layerInfo.IsComplete;
 
             float wx = bx + (float)Math.Cos(wall.Angle) * wall.Radius;
             float wy = by + (float)Math.Sin(wall.Angle) * wall.Radius;
             float startAngle = (float)(wall.Angle * 180 / Math.PI) - sweepAngle / 2;
 
             // 基础颜色判定
-            float hpPercent = (float)wall.HP / wall.MaxHP;
+            float hpPercent = Math.Clamp((float)wall.HP / wall.MaxHP, 0, 1);
             Color baseColor;
             
             if (wall.HP <= 0)
             {
-                // 等待修筑的淡色细线模板
                 baseColor = wall.Layer > 0 ? Color.FromArgb(40, 255, 200, 0) : Color.FromArgb(40, 0, 255, 255);
             }
             else if (wall.Layer > 0 && !isLayerComplete)
             {
-                // 仍在全层建设期时
                 baseColor = Color.FromArgb(100, 255, 180, 0);
             }
             else
             {
-                // 已建成、激活防御状态的渐变颜色 (按血量)
-                baseColor = Color.FromArgb(200, (int)(255 * (1 - hpPercent)), (int)(255 * hpPercent), 
-                                              wall.Layer > 0 ? (hpPercent > 0.8f ? 255 : 100) : 100);
+                int r = Math.Clamp((int)(255 * (1 - hpPercent)), 0, 255);
+                int gr = Math.Clamp((int)(255 * hpPercent), 0, 255);
+                int b = wall.Layer > 0 ? (hpPercent > 0.8f ? 255 : 100) : 100;
+                baseColor = Color.FromArgb(200, r, gr, b);
             }
 
             Color wallColor = wall.HitFlashTimer > 0 ? Color.White : baseColor;
@@ -3228,14 +3306,12 @@ public partial class BattleForm : Form
 
                 if (wall.HP > 0)
                 {
+                    // 优化：使用显式计算代替昂贵的 ResetTransform + Translate + Scale + Translate
+                    var state = g.Save();
                     g.TranslateTransform(wx, wy);
                     g.RotateTransform((float)(wall.Angle * 180 / Math.PI));
                     g.FillRectangle(brush, -wall.Thickness / 2, -wall.Thickness / 2, wall.Thickness, wall.Thickness * 2);
-                    
-                    g.ResetTransform();
-                    g.TranslateTransform(this.ClientSize.Width / 2f + _panX, this.ClientSize.Height / 2f + _panY);
-                    g.ScaleTransform(1.0f / _worldViewFactor, 1.0f / _worldViewFactor);
-                    g.TranslateTransform(-bx, -by);
+                    g.Restore(state);
                 }
             }
         }
@@ -3247,22 +3323,25 @@ public partial class BattleForm : Form
         if (b == null) return;
         float bx = b.X + b.Size / 2, by = b.Y + b.Size / 2;
 
-        foreach (var m in _monsters)
+        // 预计算层级状态，避免嵌套循环内重复查询
+        var layerCompleteStatus = _walls.GroupBy(w => w.Layer).ToDictionary(g => g.Key, g => g.All(w => w.HP > 0));
+        var layerCounts = _walls.GroupBy(w => w.Layer).ToDictionary(g => g.Key, g => g.Count());
+
+        foreach (var monster in _monsters)
         {
-            if (!m.IsActive || m.IsDead) continue;
+            if (!monster.IsActive || monster.IsDead) continue;
             
-            // --- 真正的圆心物理定位 ---
-            float mx = m.X + m.Size / 2f, my = m.Y + m.Size / 2f;
+            float mx = monster.X + monster.Size / 2f, my = monster.Y + monster.Size / 2f;
             float dx = mx - bx, dy = my - by;
             float dist = (float)Math.Sqrt(dx * dx + dy * dy);
 
             foreach (var wall in _walls)
             {
-                bool isLayerComplete = _walls.Where(w => w.Layer == wall.Layer).All(w => w.HP > 0);
-                
-                // 层级过滤：外圈未开机视为虚空
-                if (wall.Layer > 0 && !isLayerComplete) continue;
                 if (wall.HP <= 0) continue;
+                if (wall.Layer > 0 && (!layerCompleteStatus.TryGetValue(wall.Layer, out var comp) || !comp)) continue;
+
+                // 粗略范围过滤 (极速优化)：如果不在该层半径的感知范围内，直接跳过昂贵的 Atan2
+                if (Math.Abs(dist - wall.Radius) > (wall.Thickness + monster.Size / 2f) + 10f) continue;
                 
                 float angle = (float)Math.Atan2(dy, dx);
                 if (angle < 0) angle += (float)(Math.PI * 2);
@@ -3270,26 +3349,19 @@ public partial class BattleForm : Form
                 float angleDiff = (float)Math.Abs(angle - wall.Angle);
                 if (angleDiff > Math.PI) angleDiff = (float)(Math.PI * 2 - angleDiff);
 
-                int layerCount = _walls.Count(w => w.Layer == wall.Layer);
-                float halfSweep = (float)Math.PI / (layerCount > 0 ? layerCount : 24);
+                int lCount = layerCounts.TryGetValue(wall.Layer, out var lc) ? lc : 24;
+                float halfSweep = (float)Math.PI / lCount;
                 if (angleDiff < halfSweep + 0.05f) 
-
-                {
-                    // 检测带 + 击退逻辑锁定：务必保持 += 符号以实现向外反弹！
-                // --- 核心修复：防止分母为零导致怪物坐标变为 NaN ---
-                // 当怪物极度接近基地圆心（dist < 0.1f）时，不执行基于向向量的推力计算
-                if (dist > 0.1f && Math.Abs(dist - wall.Radius) < (wall.Thickness + m.Size / 2f) + 5f)
                 {
                     // 只有在怪物位于墙体外侧（dist > wall.Radius）时才向外推
                     if (dist > wall.Radius - 5f) 
                     {
-                        m.X += (dx / dist) * 15f; 
-                        m.Y += (dy / dist) * 15f;
+                        monster.X += (dx / dist) * 15f; 
+                        monster.Y += (dy / dist) * 15f;
                         
-                        int wallDmg = (10 + CurrentWave) * (m.IsElite ? 5 : 1); 
+                        int wallDmg = (10 + CurrentWave) * (monster.IsElite ? 5 : 1); 
                         wall.TakeDamage(wallDmg);
                     }
-                }
                 }
             }
         }

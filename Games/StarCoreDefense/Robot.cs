@@ -12,9 +12,13 @@ public enum RobotClass
     Base,       // 基地
     Worker,     // 采集/搜索型 (高机动)
     Healer,     // 治疗/辅助型
-    Shooter,    // 攻击/远程型
     Guardian,   // 守卫者 (近战)
-    Engineer    // 工程兵 (防御工事维护)
+    Engineer,   // 工程兵 (防御工事维护)
+    Gunner,     // 基础机枪手 (平衡型)
+    Rocket,     // 火箭兵 (范围大伤害)
+    Plasma,     // 等离子兵 (高频连发)
+    Laser,      // 激光狙击 (高精打击)
+    Lightning   // 闪电特攻 (追踪/特殊)
 }
 
 public enum BaseModule
@@ -44,7 +48,7 @@ public partial class Robot
     private int _healCooldown = 0;
 
     // 兵种类型
-    public RobotClass ClassType { get; set; } = RobotClass.Shooter;
+    public RobotClass ClassType { get; set; } = RobotClass.Gunner;
     public RobotRank Rank { get; set; } = RobotRank.Normal;
 
     // 基本信息
@@ -131,7 +135,7 @@ public partial class Robot
     public float RotationAngle { get; set; } = 0;
     public float OrbitAngle { get; set; } = 0; // 守卫者公转角度
 
-    public Robot(int id, string name, float x, float y, RobotClass classType = RobotClass.Shooter, RobotRank rank = RobotRank.Normal)
+    public Robot(int id, string name, float x, float y, RobotClass classType = RobotClass.Gunner, RobotRank rank = RobotRank.Normal)
     {
         Id = id;
         Name = name;
@@ -170,14 +174,55 @@ public partial class Robot
                 MaxHP = 1500;
                 HP = MaxHP;
                 break;
-            case RobotClass.Shooter:
-                PrimaryColor = Color.FromArgb(255, 107, 107); // 红色
+            case RobotClass.Gunner:
+                PrimaryColor = Color.FromArgb(255, 107, 107);
                 SecondaryColor = Color.FromArgb(255, 77, 77);
                 EyeColor = Color.Cyan;
                 Size = 23;
                 SpeedMultiplier = 1.0f;
                 MaxHP = 1000;
                 HP = MaxHP;
+                CurrentAttackType = "BULLET";
+                break;
+            case RobotClass.Rocket:
+                PrimaryColor = Color.FromArgb(255, 165, 0); // 橙色
+                SecondaryColor = Color.FromArgb(200, 100, 0);
+                EyeColor = Color.Yellow;
+                Size = 26;
+                SpeedMultiplier = 0.85f;
+                MaxHP = 1200;
+                HP = MaxHP;
+                CurrentAttackType = "ROCKET";
+                break;
+            case RobotClass.Plasma:
+                PrimaryColor = Color.FromArgb(170, 100, 255); // 紫色
+                SecondaryColor = Color.FromArgb(100, 50, 200);
+                EyeColor = Color.Magenta;
+                Size = 21;
+                SpeedMultiplier = 1.1f;
+                MaxHP = 800;
+                HP = MaxHP;
+                CurrentAttackType = "PLASMA";
+                break;
+            case RobotClass.Laser:
+                PrimaryColor = Color.FromArgb(0, 255, 255); // 青蓝色
+                SecondaryColor = Color.FromArgb(0, 180, 200);
+                EyeColor = Color.White;
+                Size = 22;
+                SpeedMultiplier = 0.95f;
+                MaxHP = 900;
+                HP = MaxHP;
+                CurrentAttackType = "LASER";
+                break;
+            case RobotClass.Lightning:
+                PrimaryColor = Color.FromArgb(255, 255, 100); // 亮黄色
+                SecondaryColor = Color.FromArgb(200, 200, 0);
+                EyeColor = Color.DeepSkyBlue;
+                Size = 22;
+                SpeedMultiplier = 1.2f;
+                MaxHP = 1100;
+                HP = MaxHP;
+                CurrentAttackType = "LIGHTNING";
                 break;
             case RobotClass.Guardian:
                 PrimaryColor = Color.FromArgb(128, 128, 128); // 铁灰色
@@ -275,33 +320,72 @@ public partial class Robot
                 MaxHP = (int)(1200 * (1 + 0.2f * (BattleForm.Instance?._healerLevel - 1 ?? 0)));
                 HP = MaxHP;
                 break;
-            case RobotClass.Shooter:
-                PrimaryColor = Color.FromArgb(255, 107, 107); // 红色
-                SecondaryColor = Color.FromArgb(255, 77, 77);
-                EyeColor = Color.Cyan;
+            case RobotClass.Gunner:
+                int lvG = BattleForm.Instance?._shooterLevel ?? 1; // 暂时映射到旧变量或添加新变量
+                PrimaryColor = Color.FromArgb(255, 107, 107);
                 Size = 23;
-                SpeedMultiplier = 1.0f + 0.05f * (BattleForm.Instance?._shooterLevel - 1 ?? 0);
-                MaxHP = (int)(1000 * (1 + 0.2f * (BattleForm.Instance?._shooterLevel - 1 ?? 0)));
+                MaxHP = (int)(1000 * (1 + 0.2f * (lvG - 1)));
+                Damage = 100 + (lvG - 1) * 35;
+                AttackInterval = Math.Max(5, 12 - (lvG - 1) / 2);
+                CurrentAttackType = "BULLET";
+                HP = MaxHP;
+                break;
+            case RobotClass.Rocket:
+                int lvR = BattleForm.Instance?._rocketLevel ?? 1;
+                PrimaryColor = Color.FromArgb(255, 165, 0);
+                Size = 26;
+                MaxHP = (int)(1200 * (1 + 0.2f * (lvR - 1)));
+                Damage = 250 + (lvR - 1) * 80;
+                AttackInterval = Math.Max(20, 60 - (lvR - 1) * 4);
+                CurrentAttackType = "ROCKET";
+                HP = MaxHP;
+                break;
+            case RobotClass.Plasma:
+                int lvP = BattleForm.Instance?._plasmaLevel ?? 1;
+                PrimaryColor = Color.FromArgb(170, 100, 255);
+                Size = 21;
+                MaxHP = (int)(800 * (1 + 0.15f * (lvP - 1)));
+                Damage = 45 + (lvP - 1) * 15;
+                AttackInterval = Math.Max(2, 6 - (lvP - 1) / 3);
+                CurrentAttackType = "PLASMA";
+                HP = MaxHP;
+                break;
+            case RobotClass.Laser:
+                int lvL = BattleForm.Instance?._laserLevel ?? 1;
+                PrimaryColor = Color.FromArgb(0, 255, 255);
+                Size = 22;
+                MaxHP = (int)(900 * (1 + 0.18f * (lvL - 1)));
+                Damage = 150 + (lvL - 1) * 50;
+                AttackInterval = Math.Max(15, 45 - (lvL - 1) * 2);
+                CurrentAttackType = "LASER";
+                HP = MaxHP;
+                break;
+            case RobotClass.Lightning:
+                int lvLt = BattleForm.Instance?._lightningLevel ?? 1;
+                PrimaryColor = Color.FromArgb(255, 255, 100);
+                Size = 22;
+                MaxHP = (int)(1100 * (1 + 0.22f * (lvLt - 1)));
+                Damage = 120 + (lvLt - 1) * 40;
+                AttackInterval = Math.Max(10, 30 - (lvLt - 1) * 2);
+                CurrentAttackType = "LIGHTNING";
                 HP = MaxHP;
                 break;
             case RobotClass.Guardian:
                 int gLevel = BattleForm.Instance?._guardianLevel ?? 1;
-                PrimaryColor = Color.FromArgb(128, 128, 128); // 铁灰色
-                SecondaryColor = Color.FromArgb(80, 80, 80);
-                EyeColor = Color.Orange;
-                Size = 34; // 体型再次略微加大，增加撞击面积
-                SpeedMultiplier = 1.0f + 0.15f * (gLevel - 1); // 升级提升速度
-                MaxHP = (int)(2500 * (1 + 0.25f * (gLevel - 1))); // 血量大幅提升
-                Damage = 45 + (gLevel - 1) * 20; // 降低基础伤害, 升级平滑提升
+                PrimaryColor = Color.FromArgb(128, 128, 128); 
+                Size = 34;
+                SpeedMultiplier = 1.0f + 0.15f * (gLevel - 1); 
+                MaxHP = (int)(2500 * (1 + 0.25f * (gLevel - 1))); 
+                Damage = 45 + (gLevel - 1) * 25; 
                 HP = MaxHP;
                 break;
             case RobotClass.Engineer:
-                PrimaryColor = Color.FromArgb(0, 102, 204); // 藏蓝色
-                SecondaryColor = Color.FromArgb(0, 76, 153);
-                EyeColor = Color.LightSkyBlue;
+                int lvE = BattleForm.Instance?._engineerLevel ?? 1;
+                PrimaryColor = Color.FromArgb(0, 102, 204); 
                 Size = 20;
-                SpeedMultiplier = 1.3f;
-                MaxHP = (int)(800 * (1 + 0.2f * (BattleForm.Instance?._engineerLevel - 1 ?? 0)));
+                MaxHP = (int)(800 * (1 + 0.2f * (lvE - 1)));
+                Damage = 200 + (lvE - 1) * 100; // 提升死光伤害
+                AttackInterval = Math.Max(15, 150 - (lvE - 1) * 15); // 提升死光频率
                 HP = MaxHP;
                 break;
         }
@@ -1024,15 +1108,10 @@ public partial class Robot
         float maxSpeed = 3.0f * SpeedMultiplier;
 
         // 根据兵种决定走位和攻击距离
-        if (ClassType == RobotClass.Healer)
+        if (ClassType == RobotClass.Gunner || ClassType == RobotClass.Rocket || 
+                 ClassType == RobotClass.Plasma || ClassType == RobotClass.Laser || ClassType == RobotClass.Lightning)
         {
-            // 治疗型不主动攻击怪物，此逻辑在 UpdateHealerLogic 中处理
-            return;
-        }
-        else if (ClassType == RobotClass.Shooter)
-        {
-            // 输出型：不再无脑追，而是寻找敌人前方的城墙点驻扎防守 (Man the Walls)
-            // 只有当 AssignedWall 被解除、目标失效或 AssignedWall 被其他机器人占用（虽然 GarrisonRobot 会尽量避免）时刷新
+            // 输出型：寻找敌人前方的城墙点驻扎防守
             if (AssignedWall == null || (AssignedWall.GarrisonRobot != null && AssignedWall.GarrisonRobot != this))
             {
                 UnlockTargets();
@@ -1106,52 +1185,63 @@ public partial class Robot
         float centerX = X + Size / 2;
         float centerY = Y + Size / 2;
 
-        // 尝试释放大招 (提高到 25% 概率)
-        if (UltimateCooldown == 0 && Rand.Next(100) < 25)
-        {
-            PerformUltimateAttack(centerX, centerY, targetX, targetY, monster);
-            ShootCooldown = 30; // 降低大招后的硬直时间，让它能更快接下一个动作
-            return;
-        }
+        // 移除随机大招逻辑，确保兵种纯净度
 
-        int shooterLevel = BattleForm.Instance?._shooterLevel ?? 1;
-        
-        // 【帧率保底】射速适中，防止对象超载
-        ShootCooldown = Math.Max(5, 12 - shooterLevel * 2);
+        // 根据兵种确定攻击参数
+        string type = CurrentAttackType;
+        int level = 1;
+        float scatter = 60f;
+        int projectileCount = 1;
 
-        // 引入更多攻击方式：激光判定及高频率射击
-        if (shooterLevel >= 3 && Rand.Next(100) < 35)
+        switch (ClassType)
         {
-            IsFiringLaser = true;
-            LaserTargetX = targetX;
-            LaserTargetY = targetY;
-            _delayedAttackTimer = 25; 
-            return;
+            case RobotClass.Gunner:
+                level = BattleForm.Instance?._shooterLevel ?? 1;
+                ShootCooldown = AttackInterval;
+                projectileCount = 2 + (level / 3);
+                scatter = 40f;
+                break;
+            case RobotClass.Rocket:
+                level = BattleForm.Instance?._rocketLevel ?? 1;
+                ShootCooldown = AttackInterval;
+                projectileCount = 1 + (level / 5);
+                scatter = 20f;
+                break;
+            case RobotClass.Plasma:
+                level = BattleForm.Instance?._plasmaLevel ?? 1;
+                ShootCooldown = AttackInterval;
+                projectileCount = 3 + (level / 4);
+                scatter = 80f;
+                break;
+            case RobotClass.Laser:
+                level = BattleForm.Instance?._laserLevel ?? 1;
+                ShootCooldown = AttackInterval;
+                projectileCount = 1;
+                IsFiringLaser = true;
+                LaserTargetX = targetX;
+                LaserTargetY = targetY;
+                _delayedAttackTimer = 15;
+                return; // Laser handled by timer
+            case RobotClass.Lightning:
+                level = BattleForm.Instance?._lightningLevel ?? 1;
+                ShootCooldown = AttackInterval;
+                projectileCount = 1 + (level / 4);
+                break;
+            default:
+                ShootCooldown = 60;
+                break;
         }
 
         IsFiringLaser = false;
 
-        // 根据等级选择最强大的武器类型 (100% 概率使用当前解锁的最高级武器)
-        string type = "BULLET";
-        if (shooterLevel >= 10) type = "METEOR";
-        else if (shooterLevel >= 8) type = "LIGHTNING";
-        else if (shooterLevel >= 6) type = "CANNON";
-        else if (shooterLevel >= 4) type = "PLASMA";
-        else if (shooterLevel >= 2) type = "ROCKET";
-        
-        // 【帧率保底】适度减少子弹数量，避免卡顿
-        int projectileCount = 2 + (shooterLevel - 1);
-        if (projectileCount > 8) projectileCount = 8;
-
         for (int i = 0; i < projectileCount; i++)
         {
-            // 散射与偏移
-            float pTargetX = targetX + (float)((Rand.NextDouble() - 0.5) * 60);
-            float pTargetY = targetY + (float)((Rand.NextDouble() - 0.5) * 60);
+            float pTargetX = targetX + (float)((Rand.NextDouble() - 0.5) * scatter);
+            float pTargetY = targetY + (float)((Rand.NextDouble() - 0.5) * scatter);
             
             var p = new Projectile(this, centerX, centerY, pTargetX, pTargetY, type);
-            // 追踪能力：Lv.5 以上自动追踪
-            if (shooterLevel >= 5) p.TrackingMonster = monster;
+            // 基础追踪能力：所有攻击型单位等级 5 以上具备基本追踪，火箭 1 级即追踪
+            if (level >= 5 || ClassType == RobotClass.Rocket) p.TrackingMonster = monster;
             
             BattleForm.Instance?.AddProjectile(p);
         }
@@ -1203,16 +1293,15 @@ public partial class Robot
     {
         if (IsDead) return;
 
-        int shooterLevel = BattleForm.Instance?._shooterLevel ?? 1;
-        ShootCooldown = Math.Max(20, 120 - shooterLevel * 10);
+        // 使用自身确定的攻击类型与间隔
+        ShootCooldown = AttackInterval;
         SpecialState = "ANGRY";
         SpecialStateTimer = 100;
 
         float centerX = X + Size / 2;
         float centerY = Y + Size / 2;
 
-        string type = shooterLevel >= 3 ? "ROCKET" : "BULLET";
-        var p = new Projectile(this, centerX, centerY, tx, ty, type);
+        var p = new Projectile(this, centerX, centerY, tx, ty, CurrentAttackType);
         BattleForm.Instance?.AddProjectile(p);
     }
 
@@ -1230,8 +1319,8 @@ public partial class Robot
                 // 处理对怪物的激光伤害 - 伤害随射手等级增加
                 if (MonsterTarget != null && MonsterTarget.IsActive && !MonsterTarget.IsDead)
                 {
-                    int shooterLevel = BattleForm.Instance?._shooterLevel ?? 1;
-                    int laserDmg = 15 + (shooterLevel - 1) * 8;
+                    int laserLevel = BattleForm.Instance?._laserLevel ?? 1;
+                    int laserDmg = 15 + (laserLevel - 1) * 8;
                     MonsterTarget.TakeDamage(laserDmg); 
                 }
             }
@@ -1263,7 +1352,7 @@ public partial class Robot
             
             float idealRadius = baseRadius;
             if (ClassType == RobotClass.Guardian) idealRadius = baseRadius + (maxLayer > 0 ? 30f : 50f);
-            else if (ClassType == RobotClass.Shooter) idealRadius = baseRadius + (maxLayer > 0 ? 10f : 15f) + (Id % 4) * 12; 
+            else if (ClassType == RobotClass.Gunner || ClassType == RobotClass.Rocket || ClassType == RobotClass.Plasma || ClassType == RobotClass.Laser || ClassType == RobotClass.Lightning) idealRadius = baseRadius + (maxLayer > 0 ? 10f : 15f) + (Id % 4) * 12; 
             else if (ClassType == RobotClass.Healer) idealRadius = maxLayer > 0 ? (baseRadius - 20f) : 50f;
 
             float boostMult = SpeedBoostTimer > 0 ? 3.0f : 1.0f;
@@ -1500,7 +1589,11 @@ public partial class Robot
         {
             levelBonus = ClassType switch
             {
-                RobotClass.Shooter => BattleForm.Instance._shooterLevel - 1,
+                RobotClass.Gunner => BattleForm.Instance._shooterLevel - 1,
+                RobotClass.Rocket => BattleForm.Instance._rocketLevel - 1,
+                RobotClass.Plasma => BattleForm.Instance._plasmaLevel - 1,
+                RobotClass.Laser => BattleForm.Instance._laserLevel - 1,
+                RobotClass.Lightning => BattleForm.Instance._lightningLevel - 1,
                 RobotClass.Worker => BattleForm.Instance._workerLevel - 1,
                 RobotClass.Healer => BattleForm.Instance._healerLevel - 1,
                 RobotClass.Guardian => BattleForm.Instance._guardianLevel - 1,

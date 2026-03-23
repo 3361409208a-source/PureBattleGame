@@ -5,6 +5,14 @@ namespace PureBattleGame.Games.StarCoreDefense;
 
 public static class MonsterRenderer
 {
+    // 缓存静态 GDI+ 资源，避免每帧重复创建
+    private static readonly Font _damageFont = new Font("Impact", 14, FontStyle.Bold);
+    private static readonly StringFormat _centerFormat = new StringFormat { Alignment = StringAlignment.Center };
+    private static readonly SolidBrush _damageBrush = new SolidBrush(Color.OrangeRed);
+    private static readonly SolidBrush _eyeBrush = new SolidBrush(Color.Yellow);
+    private static readonly SolidBrush _hpBgBrush = new SolidBrush(Color.Gray);
+    private static readonly SolidBrush _hpRedBrush = new SolidBrush(Color.Red);
+
     public static void DrawMonster(Graphics g, Monster m)
     {
         if (!m.IsActive) return;
@@ -16,11 +24,9 @@ public static class MonsterRenderer
         switch (m.Type)
         {
             case "SPIDER":
-                // 绘制蜘蛛风格
                 using (var spiderBrush = new SolidBrush(Color.FromArgb(40, 40, 40)))
                 {
                     g.FillEllipse(spiderBrush, m.X + size * 0.1f, m.Y + size * 0.1f, size * 0.8f, size * 0.8f);
-                    // 蜘蛛腿
                     using var legPen = new Pen(Color.FromArgb(60, 60, 60), 2);
                     for (int i = 0; i < 8; i++)
                     {
@@ -34,10 +40,8 @@ public static class MonsterRenderer
                 }
                 break;
             case "BAT":
-                // 绘制蝙蝠/飞行器风格
                 using (var batBrush = new SolidBrush(Color.FromArgb(80, 0, 120)))
                 {
-                    // 翅膀
                     float wingWave = (float)Math.Sin(m.AnimationFrame * 1.0f) * 15;
                     PointF[] points = {
                         new PointF(cx, cy),
@@ -51,7 +55,6 @@ public static class MonsterRenderer
                 }
                 break;
             case "WORM":
-                // 绘制蠕虫/机械虫风格
                 using (var wormBrush = new SolidBrush(Color.FromArgb(0, 100, 50)))
                 {
                     for (int i = 0; i < 4; i++)
@@ -62,11 +65,9 @@ public static class MonsterRenderer
                 }
                 break;
             default: // SLIME
-                // 原有的红色史莱姆风格
                 using (var bodyBrush = new SolidBrush(Color.FromArgb(180, 50, 50)))
                 {
                     g.FillEllipse(bodyBrush, m.X, m.Y, size, size);
-                    // 触手
                     using var tentacleBrush = new SolidBrush(Color.FromArgb(150, 30, 30));
                     for (int i = 0; i < 8; i++)
                     {
@@ -80,12 +81,9 @@ public static class MonsterRenderer
         }
 
         // 共通：眼睛
-        using (var eyeBrush = new SolidBrush(Color.Yellow))
-        {
-            float eyeSize = size * 0.15f;
-            g.FillEllipse(eyeBrush, m.X + size * 0.25f, m.Y + size * 0.3f, eyeSize, eyeSize);
-            g.FillEllipse(eyeBrush, m.X + size * 0.6f, m.Y + size * 0.3f, eyeSize, eyeSize);
-        }
+        float eyeSize = size * 0.15f;
+        g.FillEllipse(_eyeBrush, m.X + size * 0.25f, m.Y + size * 0.3f, eyeSize, eyeSize);
+        g.FillEllipse(_eyeBrush, m.X + size * 0.6f, m.Y + size * 0.3f, eyeSize, eyeSize);
 
         // 血条 (共通)
         if (m.HP < m.MaxHP)
@@ -94,11 +92,9 @@ public static class MonsterRenderer
             float barHeight = 5;
             float barX = m.X + (size - barWidth) / 2;
             float barY = m.Y - 10;
-            using var bgBrush = new SolidBrush(Color.Gray);
-            g.FillRectangle(bgBrush, barX, barY, barWidth, barHeight);
-            float hpPercent = (float)m.HP / m.MaxHP;
-            using var hpBrush = new SolidBrush(Color.Red);
-            g.FillRectangle(hpBrush, barX, barY, barWidth * hpPercent, barHeight);
+            g.FillRectangle(_hpBgBrush, barX, barY, barWidth, barHeight);
+            float hpPercent = Math.Clamp((float)m.HP / m.MaxHP, 0, 1);
+            g.FillRectangle(_hpRedBrush, barX, barY, barWidth * hpPercent, barHeight);
         }
 
         // 受击闪烁 (共通)
@@ -111,10 +107,8 @@ public static class MonsterRenderer
         // 伤害文字 (共通)
         if (!string.IsNullOrEmpty(m.DamageText) && m.DamageTextTimer > 0)
         {
-            using var font = new Font("Impact", 14, FontStyle.Bold);
-            using var brush = new SolidBrush(Color.OrangeRed);
             float floatOffset = (30 - m.DamageTextTimer) * 1.5f;
-            g.DrawString(m.DamageText, font, brush, cx, m.Y - 20 - floatOffset, new StringFormat { Alignment = StringAlignment.Center });
+            g.DrawString(m.DamageText, _damageFont, _damageBrush, cx, m.Y - 20 - floatOffset, _centerFormat);
         }
     }
 }

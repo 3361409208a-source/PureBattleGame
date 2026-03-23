@@ -8,7 +8,15 @@
       "Bash(git checkout:*)",
       "Bash(git config:*)",
       "Bash(taskkill /f /im PureBattleGame.exe)",
-      "Bash(taskkill //f //im PureBattleGame.exe)"
+      "Bash(taskkill //f //im PureBattleGame.exe)",
+      "Bash(powershell -Command \"\\(Get-Content Games/StarCoreDefense/Robot.cs\\) -replace 'new Robot\\\\\\(-1, .patrol_point.,', 'new Robot\\(-1, \\\\\"patrol_point\\\\\",' | Set-Content Games/StarCoreDefense/Robot.cs\")",
+      "Bash(python:*)",
+      "Bash(dotnet run:*)",
+      "Bash(ls -la bin/Debug/net8.0-windows/*.exe bin/Debug/net8.0-windows/*.dll)",
+      "Bash(start:*)",
+      "Bash(taskkill /F /IM PureBattleGame.exe)",
+      "Bash(powershell -Command \"Stop-Process -Id 51248 -Force\")",
+      "Bash(taskkill /PID 51248 /F)"
     ]
   }
 }

@@ -1,0 +1,37 @@
+  µ¡úσ£¿τí«σ«ÜΦªüΦ┐ÿσÄƒτÜäΘí╣τ¢«ΓÇª
+  µëÇµ£ëΘí╣τ¢«σ¥çµÿ»µ£Çµû░τÜä∩╝îµùáµ│òΦ┐ÿσÄƒπÇé
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Core\MoyuLauncher.cs(184,30): error CS0104: ΓÇ£TimerΓÇ¥µÿ»ΓÇ£System.Windows.Forms.TimerΓÇ¥σÆîΓÇ£System.Threading.TimerΓÇ¥Σ╣ïΘù┤τÜäΣ╕ìµÿÄτí«τÜäσ╝òτö¿ [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Core\MoyuLauncher.cs(193,30): error CS0104: ΓÇ£TimerΓÇ¥µÿ»ΓÇ£System.Windows.Forms.TimerΓÇ¥σÆîΓÇ£System.Threading.TimerΓÇ¥Σ╣ïΘù┤τÜäΣ╕ìµÿÄτí«τÜäσ╝òτö¿ [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Core\BrowserForm.cs(176,71): warning CS8600: σ░å null µûçµ£¼µêûσÅ»Φâ╜τÜä null σÇ╝Φ╜¼µìóΣ╕║Σ╕ìσÅ»Σ╕║ null τ▒╗σ₧ïπÇé [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Core\BrowserForm.cs(176,71): warning CS8602: Φºúσ╝òτö¿σÅ»Φâ╜σç║τÄ░τ⌐║σ╝òτö¿πÇé [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Core\BrowserForm.cs(176,61): warning CS8600: σ░å null µûçµ£¼µêûσÅ»Φâ╜τÜä null σÇ╝Φ╜¼µìóΣ╕║Σ╕ìσÅ»Σ╕║ null τ▒╗σ₧ïπÇé [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Core\BrowserForm.cs(199,28): warning CS8600: σ░å null µûçµ£¼µêûσÅ»Φâ╜τÜä null σÇ╝Φ╜¼µìóΣ╕║Σ╕ìσÅ»Σ╕║ null τ▒╗σ₧ïπÇé [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Core\BrowserForm.cs(199,28): warning CS8602: Φºúσ╝òτö¿σÅ»Φâ╜σç║τÄ░τ⌐║σ╝òτö¿πÇé [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Core\BrowserForm.cs(200,62): warning CS8602: Φºúσ╝òτö¿σÅ»Φâ╜σç║τÄ░τ⌐║σ╝òτö¿πÇé [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Core\BrowserForm.cs(200,53): warning CS8600: σ░å null µûçµ£¼µêûσÅ»Φâ╜τÜä null σÇ╝Φ╜¼µìóΣ╕║Σ╕ìσÅ»Σ╕║ null τ▒╗σ₧ïπÇé [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Core\BrowserForm.cs(200,53): warning CS8604: ΓÇ£int TabPageCollection.IndexOf(TabPage page)ΓÇ¥Σ╕¡τÜäσ╜óσÅéΓÇ£pageΓÇ¥σÅ»Φâ╜Σ╝áσàÑ null σ╝òτö¿σ«₧σÅéπÇé [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Games\StarCoreDefense\Robot.cs(606,21): warning CS8602: Φºúσ╝òτö¿σÅ»Φâ╜σç║τÄ░τ⌐║σ╝òτö¿πÇé [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Games\StarCoreDefense\Robot.cs(621,47): warning CS8602: Φºúσ╝òτö¿σÅ»Φâ╜σç║τÄ░τ⌐║σ╝òτö¿πÇé [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Games\StarCoreDefense\BattleForm.cs(45,18): warning CS0414: σ¡ùµ«╡ΓÇ£BattleForm._hasFiredWaveMeteorΓÇ¥σ╖▓Φó½Φ╡ïσÇ╝∩╝îΣ╜åΣ╗Äµ£¬Σ╜┐τö¿Φ┐çσ«âτÜäσÇ╝ [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Core\BrowserForm.cs(22,19): warning CS0414: σ¡ùµ«╡ΓÇ£BrowserForm._navStripΓÇ¥σ╖▓Φó½Φ╡ïσÇ╝∩╝îΣ╜åΣ╗Äµ£¬Σ╜┐τö¿Φ┐çσ«âτÜäσÇ╝ [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+
+τöƒµêÉσñ▒Φ┤ÑπÇé
+
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Core\BrowserForm.cs(176,71): warning CS8600: σ░å null µûçµ£¼µêûσÅ»Φâ╜τÜä null σÇ╝Φ╜¼µìóΣ╕║Σ╕ìσÅ»Σ╕║ null τ▒╗σ₧ïπÇé [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Core\BrowserForm.cs(176,71): warning CS8602: Φºúσ╝òτö¿σÅ»Φâ╜σç║τÄ░τ⌐║σ╝òτö¿πÇé [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Core\BrowserForm.cs(176,61): warning CS8600: σ░å null µûçµ£¼µêûσÅ»Φâ╜τÜä null σÇ╝Φ╜¼µìóΣ╕║Σ╕ìσÅ»Σ╕║ null τ▒╗σ₧ïπÇé [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Core\BrowserForm.cs(199,28): warning CS8600: σ░å null µûçµ£¼µêûσÅ»Φâ╜τÜä null σÇ╝Φ╜¼µìóΣ╕║Σ╕ìσÅ»Σ╕║ null τ▒╗σ₧ïπÇé [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Core\BrowserForm.cs(199,28): warning CS8602: Φºúσ╝òτö¿σÅ»Φâ╜σç║τÄ░τ⌐║σ╝òτö¿πÇé [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Core\BrowserForm.cs(200,62): warning CS8602: Φºúσ╝òτö¿σÅ»Φâ╜σç║τÄ░τ⌐║σ╝òτö¿πÇé [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Core\BrowserForm.cs(200,53): warning CS8600: σ░å null µûçµ£¼µêûσÅ»Φâ╜τÜä null σÇ╝Φ╜¼µìóΣ╕║Σ╕ìσÅ»Σ╕║ null τ▒╗σ₧ïπÇé [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Core\BrowserForm.cs(200,53): warning CS8604: ΓÇ£int TabPageCollection.IndexOf(TabPage page)ΓÇ¥Σ╕¡τÜäσ╜óσÅéΓÇ£pageΓÇ¥σÅ»Φâ╜Σ╝áσàÑ null σ╝òτö¿σ«₧σÅéπÇé [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Games\StarCoreDefense\Robot.cs(606,21): warning CS8602: Φºúσ╝òτö¿σÅ»Φâ╜σç║τÄ░τ⌐║σ╝òτö¿πÇé [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Games\StarCoreDefense\Robot.cs(621,47): warning CS8602: Φºúσ╝òτö¿σÅ»Φâ╜σç║τÄ░τ⌐║σ╝òτö¿πÇé [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Games\StarCoreDefense\BattleForm.cs(45,18): warning CS0414: σ¡ùµ«╡ΓÇ£BattleForm._hasFiredWaveMeteorΓÇ¥σ╖▓Φó½Φ╡ïσÇ╝∩╝îΣ╜åΣ╗Äµ£¬Σ╜┐τö¿Φ┐çσ«âτÜäσÇ╝ [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Core\BrowserForm.cs(22,19): warning CS0414: σ¡ùµ«╡ΓÇ£BrowserForm._navStripΓÇ¥σ╖▓Φó½Φ╡ïσÇ╝∩╝îΣ╜åΣ╗Äµ£¬Σ╜┐τö¿Φ┐çσ«âτÜäσÇ╝ [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Core\MoyuLauncher.cs(184,30): error CS0104: ΓÇ£TimerΓÇ¥µÿ»ΓÇ£System.Windows.Forms.TimerΓÇ¥σÆîΓÇ£System.Threading.TimerΓÇ¥Σ╣ïΘù┤τÜäΣ╕ìµÿÄτí«τÜäσ╝òτö¿ [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+C:\Users\18229\.openclaw\workspace\PureBattleGame\Core\MoyuLauncher.cs(193,30): error CS0104: ΓÇ£TimerΓÇ¥µÿ»ΓÇ£System.Windows.Forms.TimerΓÇ¥σÆîΓÇ£System.Threading.TimerΓÇ¥Σ╣ïΘù┤τÜäΣ╕ìµÿÄτí«τÜäσ╝òτö¿ [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
+    12 Σ╕¬Φ¡ªσæè
+    2 Σ╕¬ΘöÖΦ»»
+
+σ╖▓τö¿µù╢Θù┤ 00:00:01.19

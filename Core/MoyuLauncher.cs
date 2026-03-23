@@ -13,6 +13,13 @@ public partial class MoyuLauncher : Form
     private BattleForm? _gameInstance;
     private Panel _settingsPanel = null!;
     private NotifyIcon _trayIcon = null!;
+    private bool _wasBrowserVisible = false; 
+    private bool _wasGameVisible = false; // 用于记忆游戏状态
+
+    // 全局热键常量
+    private const int HOTKEY_ID = 9000;
+    private const uint MOD_ALT = 0x0001;
+    private const uint VK_SPACE = 0x20;
 
     public MoyuLauncher()
     {
@@ -99,8 +106,12 @@ public partial class MoyuLauncher : Form
         });
 
         masterLayout.Controls.Add(new Label { Size = new Size(420, 25), Text = "右键托盘图标可彻底退出", Font = new Font("Segoe UI", 7), ForeColor = Color.FromArgb(60, 60, 65), TextAlign = ContentAlignment.MiddleCenter });
+    }
 
-        InitializeSettingsPanel();
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        RegisterHotKey(this.Handle, HOTKEY_ID, MOD_ALT, VK_SPACE);
     }
 
     private void AddEntryCard(FlowLayoutPanel parent, string title, string desc, EventHandler click)
@@ -166,10 +177,62 @@ public partial class MoyuLauncher : Form
         e.Graphics.DrawRectangle(pen, 0, 0, this.Width - 1, this.Height - 1);
     }
 
+    [DllImport("user32.dll")] public static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+    [DllImport("user32.dll")] public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
     [DllImport("user32.dll")] public static extern bool ReleaseCapture();
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern int SendMessage(IntPtr hWnd, int Msg, IntPtr wParam, IntPtr lParam);
     private void TitlePanel_MouseDown(object? sender, MouseEventArgs e) {
         if (e.Button == MouseButtons.Left) { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); }
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        // 1. 处理全局热键 (Alt + Space) - 无论焦点在哪都生效
+        if (m.Msg == 0x0312 && m.WParam.ToInt32() == HOTKEY_ID) {
+            ToggleBossVisibility();
+            return;
+        }
+
+        // 2. 拦截系统菜单快捷键 (Alt + Space) - 防止焦点在程序内时弹出菜单
+        if (m.Msg == 0x0112 && ((int)m.WParam & 0xFFF0) == 0xF100) { 
+            ToggleBossVisibility();
+            m.Result = IntPtr.Zero;
+            return;
+        }
+        base.WndProc(ref m);
+    }
+
+    private void ToggleBossVisibility() {
+        bool isAnyVisible = this.Opacity > 0.1 || 
+                           (BrowserForm.Instance != null && BrowserForm.Instance.Visible && BrowserForm.Instance.Opacity > 0.1) ||
+                           (_gameInstance != null && _gameInstance.Visible && _gameInstance.Opacity > 0.1);
+
+        if (isAnyVisible) { 
+            // 隐蔽一切并记忆现场
+            _wasBrowserVisible = BrowserForm.Instance.Visible;
+            _wasGameVisible = (_gameInstance != null && _gameInstance.Visible);
+            
+            this.Tag = this.Opacity;
+            this.Opacity = 0.0;
+            this.ShowInTaskbar = false;
+            if (BrowserForm.Instance.Visible) BrowserForm.Instance.Hide(); 
+            if (_gameInstance != null && _gameInstance.Visible) _gameInstance.Hide();
+        } else { 
+            // 回归现场
+            this.Opacity = (this.Tag is double op && op > 0.1) ? op : SettingsManager.Current.DefaultOpacity; 
+            this.ShowInTaskbar = true; 
+            
+            if (_wasGameVisible && _gameInstance != null) {
+                this.Hide(); _gameInstance.Show(); _gameInstance.Opacity = this.Opacity;
+                _gameInstance.BringToFront(); SetForegroundWindow(_gameInstance.Handle);
+            } else if (_wasBrowserVisible) {
+                this.Hide(); BrowserForm.Instance.Show(); BrowserForm.Instance.Opacity = this.Opacity;
+                BrowserForm.Instance.BringToFront(); SetForegroundWindow(BrowserForm.Instance.Handle);
+            } else {
+                this.Show(); this.BringToFront(); this.Activate(); SetForegroundWindow(this.Handle);
+            }
+        }
     }
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -179,11 +242,12 @@ public partial class MoyuLauncher : Form
             if (baseKey == Keys.Up) { this.Opacity = Math.Min(1.0, this.Opacity + 0.1); return true; }
             if (baseKey == Keys.Down) { this.Opacity = Math.Max(0.1, this.Opacity - 0.1); return true; }
             if (baseKey == Keys.Space) {
-                if (this.Opacity > 0.0) { this.Tag = this.Opacity; this.Opacity = 0.0; this.ShowInTaskbar = false; }
-                else { this.Opacity = (this.Tag is double op) ? op : SettingsManager.Current.DefaultOpacity; this.ShowInTaskbar = true; }
+                if (this.Opacity > 0.1) { this.Tag = this.Opacity; this.Opacity = 0.0; this.ShowInTaskbar = false; }
+                else { this.Opacity = (this.Tag is double op && op > 0.1) ? op : SettingsManager.Current.DefaultOpacity; this.ShowInTaskbar = true; }
                 return true;
             }
             if (baseKey == Keys.B) { BrowserForm.Instance.ToggleVisibility(); return true; }
+            if (baseKey == Keys.Q) { if (!this.Visible) this.Show(); this.BringToFront(); return true; }
             if ((keyData & Keys.Shift) == Keys.Shift && baseKey == Keys.Q) Environment.Exit(0);
         }
         return base.ProcessCmdKey(ref msg, keyData);
@@ -191,6 +255,7 @@ public partial class MoyuLauncher : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
+        UnregisterHotKey(this.Handle, HOTKEY_ID);
         // 确保退出时释放图标
         _trayIcon.Visible = false;
         _trayIcon.Dispose();
