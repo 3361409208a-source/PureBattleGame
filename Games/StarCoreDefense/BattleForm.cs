@@ -65,11 +65,6 @@ public partial class BattleForm : Form
     private int _guardianCost = 200;
     private int _engineerCost = 150;
 
-    // 办公浏览器
-    private WebView2? _webView;
-    private Panel? _browserPanel;
-    private bool _isBrowserVisible = false;
-
     // 渲染
     private Bitmap? _backBuffer;
     private Graphics? _bufferGraphics;
@@ -132,6 +127,7 @@ public partial class BattleForm : Form
     {
         Instance = this;
         InitializeComponent();
+        this.Opacity = SettingsManager.Current.DefaultOpacity;
         SetupGame();
         InitializeWalls();
     }
@@ -159,7 +155,6 @@ public partial class BattleForm : Form
         this.KeyUp += BattleForm_KeyUp;
 
         SetupZoomButtons();
-        InitializeBrowser();
     }
 
     private SpatialGrid _spatialGrid = new SpatialGrid(200);
@@ -170,126 +165,6 @@ public partial class BattleForm : Form
         // 为了风格统一，我们在 Render 中绘制。
     }
 
-    private Panel? _browserToolbar;
-    private TextBox? _addressBar;
-
-    private async void InitializeBrowser()
-    {
-        _browserPanel = new Panel
-        {
-            Size = new Size(this.ClientSize.Width - 40, this.ClientSize.Height - 80),
-            Location = new Point(20, 20),
-            BackColor = Color.FromArgb(40, 44, 52),
-            Visible = false,
-            BorderStyle = BorderStyle.None
-        };
-
-        // 1. 创建工具栏
-        _browserToolbar = new Panel
-        {
-            Dock = DockStyle.Top,
-            Height = 35,
-            BackColor = Color.FromArgb(33, 37, 43),
-            Padding = new Padding(5)
-        };
-
-        var btnBack = CreateToolbarButton("◀", 0);
-        var btnForward = CreateToolbarButton("▶", 35);
-        var btnReload = CreateToolbarButton("🔄", 70);
-        
-        _addressBar = new TextBox
-        {
-            Location = new Point(110, 6),
-            Size = new Size(_browserPanel.Width - 160, 23),
-            BackColor = Color.FromArgb(24, 26, 31),
-            ForeColor = Color.White,
-            BorderStyle = BorderStyle.FixedSingle,
-            Font = new Font("Segoe UI", 9)
-        };
-        _addressBar.KeyDown += (s, e) => {
-            if (e.KeyCode == Keys.Enter && _webView != null) {
-                string url = _addressBar.Text.Trim();
-                if (!url.StartsWith("http")) url = "https://" + url;
-                _webView.CoreWebView2.Navigate(url);
-                e.Handled = true; e.SuppressKeyPress = true;
-            }
-        };
-
-        var btnClose = CreateToolbarButton("❌", _browserPanel.Width - 40);
-        btnClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        btnClose.ForeColor = Color.IndianRed;
-        btnClose.Click += (s, e) => {
-            _isBrowserVisible = false;
-            _browserPanel.Visible = false;
-            this.Focus();
-        };
-
-        btnBack.Click += (s, e) => { if (_webView?.CoreWebView2.CanGoBack == true) _webView.GoBack(); };
-        btnForward.Click += (s, e) => { if (_webView?.CoreWebView2.CanGoForward == true) _webView.GoForward(); };
-        btnReload.Click += (s, e) => { _webView?.Reload(); };
-
-        _browserToolbar.Controls.AddRange(new Control[] { btnBack, btnForward, btnReload, _addressBar, btnClose });
-        _browserPanel.Controls.Add(_browserToolbar);
-
-        // 2. 创建 WebView 容器
-        var webContainer = new Panel { Dock = DockStyle.Fill };
-        _webView = new WebView2 { Dock = DockStyle.Fill };
-        webContainer.Controls.Add(_webView);
-        _browserPanel.Controls.Add(webContainer);
-        webContainer.BringToFront();
-
-        this.Controls.Add(_browserPanel);
-
-        // 初始化 WebView2
-        await _webView.EnsureCoreWebView2Async(null);
-
-        _webView.CoreWebView2.NewWindowRequested += (sender, e) => {
-            e.Handled = true;
-            _webView.CoreWebView2.Navigate(e.Uri);
-        };
-
-        _webView.CoreWebView2.SourceChanged += (s, e) => {
-            if (_addressBar != null) _addressBar.Text = _webView.Source.ToString();
-        };
-
-        // 键盘处理
-        _webView.KeyDown += (sender, e) => {
-            if (e.Alt) {
-                if (e.KeyCode == Keys.Up) {
-                    this.Opacity = Math.Min(1.0, this.Opacity + 0.1);
-                    e.Handled = true;
-                } else if (e.KeyCode == Keys.Down) {
-                    this.Opacity = Math.Max(0.1, this.Opacity - 0.1);
-                    e.Handled = true;
-                } else if (e.KeyCode == Keys.Space) {
-                    if (this.Opacity > 0.0) { this.Tag = this.Opacity; this.Opacity = 0.0; this.ShowInTaskbar = false; }
-                    else { this.Opacity = (this.Tag is double op) ? op : 1.0; this.ShowInTaskbar = true; }
-                    e.Handled = true;
-                } else if (e.KeyCode == Keys.B) {
-                    _isBrowserVisible = false; _browserPanel!.Visible = false; this.Focus();
-                    e.Handled = true;
-                } else if (e.KeyCode == Keys.Q) {
-                    ReturnToHome(); e.Handled = true;
-                }
-            }
-        };
-
-        _webView.CoreWebView2.Navigate("https://bing.com");
-    }
-
-    private Button CreateToolbarButton(string text, int x)
-    {
-        return new Button {
-            Text = text,
-            Location = new Point(x + 5, 4),
-            Size = new Size(30, 25),
-            FlatStyle = FlatStyle.Flat,
-            ForeColor = Color.LightGray,
-            BackColor = Color.FromArgb(45, 49, 57),
-            Font = new Font("Segoe UI Emoji", 9),
-            Cursor = Cursors.Hand
-        };
-    }
 
     private void SetupGame()
     {
@@ -762,14 +637,6 @@ public partial class BattleForm : Form
         }
 
         // 调整浏览器位置
-        if (_browserPanel != null)
-        {
-            _browserPanel.Size = new Size(this.ClientSize.Width - 40, this.ClientSize.Height - 80);
-            if (_addressBar != null)
-            {
-                _addressBar.Size = new Size(_browserPanel.Width - 160, 23);
-            }
-        }
     }
 
     private void Render(Graphics g)
@@ -966,26 +833,21 @@ public partial class BattleForm : Form
             // Alt + B: 切换浏览器
             else if (baseKey == Keys.B)
             {
-                if (_browserPanel != null)
-                {
-                    _isBrowserVisible = !_isBrowserVisible;
-                    _browserPanel.Visible = _isBrowserVisible;
-                    if (_isBrowserVisible)
-                    {
-                        _browserPanel.BringToFront();
-                        _webView?.Focus();
-                    }
-                    else
-                    {
-                        this.Focus();
-                    }
-                }
+                BrowserForm.Instance.ToggleVisibility();
                 return true;
             }
             // Alt + Q: 退出当前游戏，返回启动器
             else if (baseKey == Keys.Q)
             {
-                ReturnToHome();
+                if ((keyData & Keys.Shift) == Keys.Shift)
+                {
+                    // Alt + Shift + Q: 终极防老板 (彻底杀死程序)
+                    Environment.Exit(0);
+                }
+                else
+                {
+                    ReturnToHome();
+                }
                 return true;
             }
         }
