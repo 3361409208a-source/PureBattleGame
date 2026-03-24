@@ -89,9 +89,9 @@ public partial class MoyuLauncher : Form
         masterLayout.Controls.Add(new Panel { Size = new Size(420, 15), Margin = new Padding(0), BackColor = Color.Transparent });
 
         // 3. 入口卡片
-        AddEntryCard(masterLayout, "🎮 H5 游戏大厅", "内置 Poki 海量精品游戏", (s, e) => {
+        AddEntryCard(masterLayout, "🎮 极速游戏导航", "精选各类优质网站导航", (s, e) => {
              BrowserForm.Instance.Opacity = SettingsManager.Current.DefaultOpacity;
-             BrowserForm.Instance.Navigate("https://poki.com/zh");
+             BrowserForm.Instance.Navigate("https://www.xiaoheiv.top");
         });
 
         AddEntryCard(masterLayout, "🌐 极速浏览器", "沉浸式办公多标签环境", (s, e) => {

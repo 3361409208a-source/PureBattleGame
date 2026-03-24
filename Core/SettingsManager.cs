@@ -7,7 +7,7 @@ namespace PureBattleGame.Core;
 public class AppSettings
 {
     public double DefaultOpacity { get; set; } = 0.95;
-    public string HomeUrl { get; set; } = "https://www.bing.com";
+    public string HomeUrl { get; set; } = "https://www.xiaoheiv.top";
     public bool AutoHideInTaskbar { get; set; } = true;
 }
 
@@ -27,6 +27,10 @@ public static class SettingsManager
             if (File.Exists(SettingsPath)) {
                 string json = File.ReadAllText(SettingsPath);
                 Current = JsonSerializer.Deserialize<AppSettings>(json) ?? new();
+                if (Current.HomeUrl.Contains("bing.com")) {
+                    Current.HomeUrl = "https://www.xiaoheiv.top";
+                    Save();
+                }
             }
         } catch { }
     }

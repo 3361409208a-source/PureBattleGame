@@ -44,7 +44,7 @@ public partial class BrowserForm : Form
 
     private void InitializeComponent()
     {
-        this.Text = "极速搜索";
+        this.Text = "极速导航";
         this.Size = new Size(1200, 800);
         this.StartPosition = FormStartPosition.CenterScreen;
         this.BackColor = Color.FromArgb(30,30,34);
