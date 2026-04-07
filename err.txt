@@ -1,8 +1,0 @@
-
-C:\Users\18229\.openclaw\workspace\PureBattleGame\Games\StarCoreDefense\Robot.cs(68,16): warning CS0108: 'Robot.Size' hides inherited member 'Entity.Size'. Use the new keyword if hiding was intended. [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
-C:\Users\18229\.openclaw\workspace\PureBattleGame\Games\StarCoreDefense\Robot.cs(605,33): error CS0266: Cannot implicitly convert type 'PureBattleGame.Games.StarCoreDefense.Entity' to 'PureBattleGame.Games.StarCoreDefense.Robot'. An explicit conversion exists (are you missing a cast?) [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
-C:\Users\18229\.openclaw\workspace\PureBattleGame\Games\StarCoreDefense\Robot.cs(616,47): warning CS8602: Dereference of a possibly null reference. [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
-C:\Users\18229\.openclaw\workspace\PureBattleGame\Games\StarCoreDefense\Robot.cs(68,16): warning CS0108: 'Robot.Size' hides inherited member 'Entity.Size'. Use the new keyword if hiding was intended. [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
-C:\Users\18229\.openclaw\workspace\PureBattleGame\Games\StarCoreDefense\Robot.cs(616,47): warning CS8602: Dereference of a possibly null reference. [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
-C:\Users\18229\.openclaw\workspace\PureBattleGame\Games\StarCoreDefense\Robot.cs(605,33): error CS0266: Cannot implicitly convert type 'PureBattleGame.Games.StarCoreDefense.Entity' to 'PureBattleGame.Games.StarCoreDefense.Robot'. An explicit conversion exists (are you missing a cast?) [C:\Users\18229\.openclaw\workspace\PureBattleGame\PureBattleGame.csproj]
-

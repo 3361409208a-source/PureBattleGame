@@ -230,9 +230,31 @@ public partial class BattleForm : Form
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
-        // 1. 游戏空格键逻辑 (用于辅助控制)
+        // 1. 游戏快捷键 (Ctrl 组合) - 放在 ProcessCmdKey 确保子控件有焦点时也能响应
+        if (keyData == (Keys.Control | Keys.N)) {
+            string name = $"机器人-{_robotIdCounter}";
+            var robot = SpawnRobot(name, -1, -1);
+            if (_robots.Count > 5) robot.IsVisible = false;
+            return true;
+        }
+        if (keyData == (Keys.Control | Keys.M)) {
+            _isSpawningMonster = !_isSpawningMonster;
+            this.Cursor = _isSpawningMonster ? Cursors.Cross : Cursors.Default;
+            return true;
+        }
+        if (keyData == (Keys.Control | Keys.R)) {
+            ResetGame();
+            return true;
+        }
+        if (keyData == Keys.Escape) {
+            _isSpawningMonster = false;
+            this.Cursor = Cursors.Default;
+            return true;
+        }
         if (keyData == Keys.Space && (msg.Msg == 0x0100 || msg.Msg == 0x0104)) {
+            TogglePause();
             _isSpaceDown = true;
+            return true;
         }
 
         // 2. Alt 组合全局/办公快捷键

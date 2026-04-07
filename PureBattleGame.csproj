@@ -7,7 +7,7 @@
     <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <DefaultItemExcludes>$(DefaultItemExcludes);MoyuBrowser\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);MoyuBrowser\**;Games\CockroachPet\obj\**;Games\CockroachPet\bin\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

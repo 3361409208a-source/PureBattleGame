@@ -4,6 +4,7 @@ using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using System.Runtime.InteropServices;
 using PureBattleGame.Games.StarCoreDefense;
+using PureBattleGame.Games.CockroachPet;
 
 namespace PureBattleGame.Core;
 
@@ -11,6 +12,7 @@ public partial class MoyuLauncher : Form
 {
     public static MoyuLauncher? Instance { get; private set; }
     private BattleForm? _gameInstance;
+    private PetForm? _petInstance;
     private Panel _settingsPanel = null!;
     private NotifyIcon _trayIcon = null!;
     private bool _wasBrowserVisible = false; 
@@ -103,6 +105,12 @@ public partial class MoyuLauncher : Form
             if (_gameInstance == null || _gameInstance.IsDisposed) _gameInstance = new BattleForm();
             this.Hide(); _gameInstance.Opacity = SettingsManager.Current.DefaultOpacity; 
             _gameInstance.Show(); _gameInstance.Focus();
+        });
+
+        AddEntryCard(masterLayout, "🐜 像素电子宠", "桌面八爪鱼机器人互动终端", (s, e) => {
+            if (_petInstance == null || _petInstance.IsDisposed) _petInstance = new PetForm();
+            this.Hide(); _petInstance.Opacity = SettingsManager.Current.DefaultOpacity; 
+            _petInstance.Show(); _petInstance.Focus();
         });
 
         masterLayout.Controls.Add(new Label { Size = new Size(420, 25), Text = "右键托盘图标可彻底退出", Font = new Font("Segoe UI", 7), ForeColor = Color.FromArgb(60, 60, 65), TextAlign = ContentAlignment.MiddleCenter });
@@ -206,7 +214,8 @@ public partial class MoyuLauncher : Form
     private void ToggleBossVisibility() {
         bool isAnyVisible = this.Opacity > 0.1 || 
                            (BrowserForm.Instance != null && BrowserForm.Instance.Visible && BrowserForm.Instance.Opacity > 0.1) ||
-                           (_gameInstance != null && _gameInstance.Visible && _gameInstance.Opacity > 0.1);
+                           (_gameInstance != null && _gameInstance.Visible && _gameInstance.Opacity > 0.1) ||
+                           (_petInstance != null && _petInstance.Visible && _petInstance.Opacity > 0.1);
 
         if (isAnyVisible) { 
             // 隐蔽一切并记忆现场
@@ -218,6 +227,7 @@ public partial class MoyuLauncher : Form
             this.ShowInTaskbar = false;
             if (BrowserForm.Instance.Visible) BrowserForm.Instance.Hide(); 
             if (_gameInstance != null && _gameInstance.Visible) _gameInstance.Hide();
+            if (_petInstance != null && _petInstance.Visible) _petInstance.Hide();
         } else { 
             // 回归现场
             this.Opacity = (this.Tag is double op && op > 0.1) ? op : SettingsManager.Current.DefaultOpacity; 
@@ -226,6 +236,9 @@ public partial class MoyuLauncher : Form
             if (_wasGameVisible && _gameInstance != null) {
                 this.Hide(); _gameInstance.Show(); _gameInstance.Opacity = this.Opacity;
                 _gameInstance.BringToFront(); SetForegroundWindow(_gameInstance.Handle);
+            } else if (_wasGameVisible && _petInstance != null) { // 这里之前逻辑可能有误，假设摸鱼恢复时也会恢复宠物
+                 this.Hide(); _petInstance.Show(); _petInstance.Opacity = this.Opacity;
+                 _petInstance.BringToFront(); SetForegroundWindow(_petInstance.Handle);
             } else if (_wasBrowserVisible) {
                 this.Hide(); BrowserForm.Instance.Show(); BrowserForm.Instance.Opacity = this.Opacity;
                 BrowserForm.Instance.BringToFront(); SetForegroundWindow(BrowserForm.Instance.Handle);
