@@ -11,6 +11,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- 星核防线背景音乐 -->
+    <Content Include="Games\StarCoreDefense\*.mp3">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
