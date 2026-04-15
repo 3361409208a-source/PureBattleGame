@@ -105,7 +105,7 @@ public class AiService
         public List<string> Memories { get; set; } = new List<string>();
     }
 
-    public static async Task<ChatResponse> GetChatResponseAsync(string robotName, string personality, string userMessage, List<ChatMessage> history, string internalGuidelines = "", List<string>? insights = null, string skillsDescription = "", string selfImprovingContext = "", string emotion = "平静", string personalityTraits = "")
+    public static async Task<ChatResponse> GetChatResponseAsync(string robotName, string personality, string userMessage, List<ChatMessage> history, string internalGuidelines = "", List<string>? insights = null, string skillsDescription = "", string selfImprovingContext = "", string emotion = "平静", string personalityTraits = "", bool curseMode = false)
     {
         try
         {
@@ -118,9 +118,11 @@ public class AiService
             string selfImproveContext = !string.IsNullOrEmpty(selfImprovingContext) ? $"\n【核心长期记忆 - 必须遵守】：\n{selfImprovingContext}" : "";
             string emotionContext = $"当前情绪：{emotion}。";
 
+            string cursePrompt = curseMode ? "\n【骂人模式开启】说话带刺、毒舌刻薄、不爽就怼、语气嚣张。可以带少量emoji增加攻击性。" : "";
+
             var messages = new List<object>
             {
-                new { role = "system", content = $"你是{robotName}，性格{personality}。{personalityTraits}{emotionContext}{skillContext} {internalGuidelines} {insightContext} {selfImproveContext} \n重要：如果记忆中提到了用户的名字或身份，请在回复中直接使用。记忆中的信息优先级高于对话历史（即以记忆为准）。说话极简(30字内)，不要带自我分析。" }
+                new { role = "system", content = $"你是{robotName}，性格{personality}。{personalityTraits}{emotionContext}{skillContext} {internalGuidelines} {insightContext} {selfImproveContext}{cursePrompt}\n重要：如果记忆中提到了用户的名字或身份，请在回复中直接使用。记忆中的信息优先级高于对话历史（即以记忆为准）。说话极简(30字内)，不要带自我分析。" }
             };
 
             foreach (var h in history)

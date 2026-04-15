@@ -34,6 +34,7 @@ public partial class Robot
     public List<SocialMessage> SocialHistory { get; set; } = new();
     public bool IsAiSpeaking { get; set; } = false;
     public bool LogSocialInteractions { get; set; } = true;
+    public bool CurseMode { get; set; } = false; // 骂人模式开关
     public Robot? MeetingTarget { get; set; }
     public int MeetingTimer { get; set; } = 0;
     public int SocialCooldown { get; set; } = 0;
@@ -188,7 +189,7 @@ public partial class Robot
             _selfImproving.LogCorrection("User signaled mistake", message);
         }
 
-        AiService.ChatResponse result = await AiService.GetChatResponseAsync(Name, Personality, message, ChatHistory, InternalGuidelines, LearnedInsights, GetSkillsDescription(), selfImproCtx, GetEmotionName(), GetPersonalityPrompt());
+        AiService.ChatResponse result = await AiService.GetChatResponseAsync(Name, Personality, message, ChatHistory, InternalGuidelines, LearnedInsights, GetSkillsDescription(), selfImproCtx, GetEmotionName(), GetPersonalityPrompt(), CurseMode);
         string thought = result.Thought;
         string response = result.Answer;
 

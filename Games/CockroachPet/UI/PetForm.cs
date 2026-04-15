@@ -547,8 +547,9 @@ public partial class PetForm : Form
 
         menu.Items.Add(new ToolStripSeparator());
 
-        // 控制面板
+        // 控制面板 & 社交中心
         menu.Items.Add("🎛️ 打开控制面板", null, (s, e) => ShowControlPanel());
+        menu.Items.Add("💬 世界聊天频道", null, (s, e) => TerminalManagerForm.Instance.Show());
 
         menu.Items.Add(new ToolStripSeparator());
 
@@ -592,6 +593,28 @@ public partial class PetForm : Form
             _robots.Clear();
         });
         menu.Items.Add(controlMenu);
+
+        // 骂人模式开关
+        var anyCurseMode = _robots.Count > 0 && _robots.Any(r => r.CurseMode);
+        var allCurseMode = _robots.Count > 0 && _robots.All(r => r.CurseMode);
+        var curseMenu = new ToolStripMenuItem(anyCurseMode ? (allCurseMode ? "🤬 骂人模式 (全员开启)" : "🤬 骂人模式 (部分开启)") : "🤐 骂人模式 (已关闭)");
+        curseMenu.DropDownItems.Add("全员开启", null, (s, e) =>
+        {
+            foreach (var r in _robots) r.CurseMode = true;
+            ShowNotification("骂人模式已全员开启！🤬");
+        });
+        curseMenu.DropDownItems.Add("全员关闭", null, (s, e) =>
+        {
+            foreach (var r in _robots) r.CurseMode = false;
+            ShowNotification("骂人模式已关闭");
+        });
+        curseMenu.DropDownItems.Add(new ToolStripSeparator());
+        curseMenu.DropDownItems.Add("随机切换", null, (s, e) =>
+        {
+            foreach (var r in _robots) r.CurseMode = new Random().Next(100) < 50;
+            ShowNotification("骂人模式随机切换完成！");
+        });
+        menu.Items.Add(curseMenu);
 
         // 速度控制
         var speedMenu = new ToolStripMenuItem("全局速度");

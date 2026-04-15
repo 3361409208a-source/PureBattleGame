@@ -31,6 +31,7 @@ namespace PureBattleGame.Games.CockroachPet
         public int PrimaryColorG { get; set; }
         public int PrimaryColorB { get; set; }
         public List<string> CustomPhrases { get; set; } = new List<string>();
+        public bool CurseMode { get; set; } = false;
 
     }
 
@@ -109,6 +110,7 @@ namespace PureBattleGame.Games.CockroachPet
                     PrimaryColorG = r.PrimaryColor.G,
                     PrimaryColorB = r.PrimaryColor.B,
                     CustomPhrases = r.CustomPhrases,
+                    CurseMode = r.CurseMode,
 
                 }).ToList();
 
