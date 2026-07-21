@@ -198,7 +198,15 @@ public class SettingsForm : Form
         };
         AddRow("全局基础速度 (%):", _speedInput);
 
-        // 6. 开启 AI 自主思考
+        // 6. 自动启动
+        _autoStartCheck = new CheckBox
+        {
+            Text = "设置后直接进入战斗", Checked = false,
+            ForeColor = Color.White, AutoSize = true
+        };
+        AddRow("自动启动模式:", _autoStartCheck);
+
+        // 7. 开启 AI 自主思考
         _enableAiThinkingCheck = new CheckBox
         {
             Text = "允许机器人产生自主想法", Checked = false,
@@ -362,18 +370,18 @@ public class SettingsForm : Form
 
     public void SaveSettings()
     {
-        RobotCount = (int)_countInput.Value;
-        ShowNamingDialog = _namingCheck.Checked;
-        RobotName = _nameInput.Text.Trim();
-        RobotSize = (int)_sizeInput.Value;
-        RobotSpeed = (int)_speedInput.Value;
-        AutoStart = _autoStartCheck.Checked;
-        EnableAiThinking = _enableAiThinkingCheck.Checked;
-        AiThoughtFrequency = (int)_aiFrequencyInput.Value;
-        FightFrequency = (int)_fightFreqInput.Value;
-        IsWeaponMaster = _isWeaponMasterCheck.Checked;
-        DefaultPersonality = (RobotPersonalityType)Math.Max(0, _personalityCombo.SelectedIndex);
-        ApiKey = _apiKeyInput.Text.Trim();
+        if (_countInput != null) RobotCount = (int)_countInput.Value;
+        if (_namingCheck != null) ShowNamingDialog = _namingCheck.Checked;
+        if (_nameInput != null) RobotName = _nameInput.Text.Trim();
+        if (_sizeInput != null) RobotSize = (int)_sizeInput.Value;
+        if (_speedInput != null) RobotSpeed = (int)_speedInput.Value;
+        if (_autoStartCheck != null) AutoStart = _autoStartCheck.Checked;
+        if (_enableAiThinkingCheck != null) EnableAiThinking = _enableAiThinkingCheck.Checked;
+        if (_aiFrequencyInput != null) AiThoughtFrequency = (int)_aiFrequencyInput.Value;
+        if (_fightFreqInput != null) FightFrequency = (int)_fightFreqInput.Value;
+        if (_isWeaponMasterCheck != null) IsWeaponMaster = _isWeaponMasterCheck.Checked;
+        if (_personalityCombo != null) DefaultPersonality = (RobotPersonalityType)Math.Max(0, _personalityCombo.SelectedIndex);
+        if (_apiKeyInput != null) ApiKey = _apiKeyInput.Text.Trim();
 
         try
         {
