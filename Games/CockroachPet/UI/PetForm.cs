@@ -471,20 +471,26 @@ public partial class PetForm : Form
     public void ToggleCurseMode(bool? enable = null)
     {
         bool targetState = enable ?? !_robots.Any(r => r.CurseMode);
+        var rand = new Random();
         foreach (var r in _robots)
         {
             r.CurseMode = targetState;
             if (targetState)
             {
-                string[] barks = { "骂人模式就绪！谁来受死？！🖕", "暴躁系统上线，哪个废狗敢来？！🤬", "就你叫小日子啊？！看老子不打爆你！💥" };
-                r.SetBark(barks[new Random().Next(barks.Length)], 120);
+                string[] barks = { "骂人模式就绪！谁来受死？！🖕", "暴躁系统上线，哪个废狗敢来？！🤬", "看老子不打爆你！💥", "菜狗受死吧！🖕" };
+                r.SetBark(barks[rand.Next(barks.Length)], 120);
             }
             else
             {
                 r.SetBark("骂人模式关闭，做个礼貌像素人...😇", 90);
             }
         }
-        ShowNotification(targetState ? "骂人模式已全员开启！🤬 (离线战吼/AI攻击均生效)" : "骂人模式已全员关闭 🤐");
+        if (targetState)
+        {
+            TerminalManagerForm.Instance.Show();
+            TerminalManagerForm.Instance.Activate();
+        }
+        ShowNotification(targetState ? "骂人模式已全员开启！🤬 (聊天频道与战吼均生效)" : "骂人模式已全员关闭 🤐");
     }
 
     private void ShowNotification(string message)

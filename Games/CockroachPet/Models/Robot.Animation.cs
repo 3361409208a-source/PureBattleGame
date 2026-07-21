@@ -150,6 +150,14 @@ public partial class Robot
         _fullChatText = text;
         ChatText = text;
         ChatTimer = duration;
+
+        try
+        {
+            Color chatColor = CurseMode ? Color.Crimson : Color.LightSkyBlue;
+            string prefix = CurseMode ? "🤬 " : "";
+            TerminalManagerForm.Instance?.BroadcastToWorld(Name, prefix + text, chatColor);
+        }
+        catch { }
     }
 
     private void UpdateRandomDirection()
