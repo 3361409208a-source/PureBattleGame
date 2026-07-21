@@ -14,27 +14,25 @@ public class SettingsForm : Form
     public string RobotName { get; set; } = "Claude";
     public bool AutoStart { get; set; } = false;
     public bool EnableAiThinking { get; set; } = false;
-    public int AiThoughtFrequency { get; set; } = 60; // 默认 60 秒
-    public int FightFrequency { get; set; } = 15; // 默认 15% 几率打架
-    public bool IsWeaponMaster { get; set; } = false; // 武器大师模式
-    public string ApiKey { get; set; } = ""; // API Key
-    public RobotPersonalityType DefaultPersonality { get; set; } = RobotPersonalityType.Friendly; // 默认个性
+    public int AiThoughtFrequency { get; set; } = 60;
+    public int FightFrequency { get; set; } = 15;
+    public bool IsWeaponMaster { get; set; } = false;
+    public string ApiKey { get; set; } = "";
+    public RobotPersonalityType DefaultPersonality { get; set; } = RobotPersonalityType.Friendly;
 
-
-    private NumericUpDown _countInput;
-    private NumericUpDown _sizeInput;
-    private NumericUpDown _speedInput;
-    private TextBox _nameInput;
-    private CheckBox _namingCheck;
-    private CheckBox _autoStartCheck;
-    private CheckBox _enableAiThinkingCheck;
-    private NumericUpDown _aiFrequencyInput;
-    private NumericUpDown _fightFreqInput;
-    private CheckBox _isWeaponMasterCheck;
-    private TextBox _apiKeyInput;
-    private Label _apiKeyStatusLabel;
-    private ComboBox _personalityCombo;
-
+    private NumericUpDown _countInput = null!;
+    private NumericUpDown _sizeInput = null!;
+    private NumericUpDown _speedInput = null!;
+    private TextBox _nameInput = null!;
+    private CheckBox _namingCheck = null!;
+    private CheckBox _autoStartCheck = null!;
+    private CheckBox _enableAiThinkingCheck = null!;
+    private NumericUpDown _aiFrequencyInput = null!;
+    private NumericUpDown _fightFreqInput = null!;
+    private CheckBox _isWeaponMasterCheck = null!;
+    private TextBox _apiKeyInput = null!;
+    private Label _apiKeyStatusLabel = null!;
+    private ComboBox _personalityCombo = null!;
 
     public SettingsForm()
     {
@@ -44,195 +42,201 @@ public class SettingsForm : Form
 
     private void InitializeComponent()
     {
-        this.Text = "Robot Pet Settings";
-        this.Size = new Size(500, 500);
+        this.Text = "设置 - 像素机器人 (Robot Pet Settings)";
+        this.Size = new Size(560, 640);
+        this.MinimumSize = new Size(560, 640);
         this.StartPosition = FormStartPosition.CenterScreen;
         this.FormBorderStyle = FormBorderStyle.FixedDialog;
         this.MaximizeBox = false;
         this.MinimizeBox = false;
-        this.BackColor = Color.FromArgb(40, 40, 40);
+        this.TopMost = true;
+        this.BackColor = Color.FromArgb(32, 32, 32);
         this.ForeColor = Color.White;
-        this.Font = new Font("Microsoft YaHei", 10);
+        this.Font = new Font("Microsoft YaHeiUI", 9.5F, FontStyle.Regular, GraphicsUnit.Point);
 
-        // 创建主容器
-        var mainContainer = new TableLayoutPanel
+        // 顶栏标题
+        var titlePanel = new Panel
         {
-            Dock = DockStyle.Fill,
-            RowCount = 3,
-            ColumnCount = 1,
-            Padding = new Padding(0),
-            BackColor = Color.FromArgb(40, 40, 40)
+            Dock = DockStyle.Top,
+            Height = 55,
+            BackColor = Color.FromArgb(24, 24, 24)
         };
-        mainContainer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        mainContainer.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // 标题
-        mainContainer.RowStyles.Add(new RowStyle(SizeType.Percent, 100F)); // 内容区域
-        mainContainer.RowStyles.Add(new RowStyle(SizeType.Absolute, 60F)); // 按钮区域
-
-        // 标题
         var titleLabel = new Label
         {
-            Text = "⚙️ Robot Pet Settings",
-            Font = new Font("Microsoft YaHei", 16, FontStyle.Bold),
+            Text = "⚙️ 游戏与机器人设置",
+            Font = new Font("Microsoft YaHeiUI", 14F, FontStyle.Bold),
             ForeColor = Color.Lime,
-            Dock = DockStyle.Top,
-            Height = 50,
+            Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleCenter
         };
+        titlePanel.Controls.Add(titleLabel);
 
-        // 创建内容面板并设置滚动
+        // 底栏按钮
+        var buttonPanel = new Panel
+        {
+            Dock = DockStyle.Bottom,
+            Height = 60,
+            BackColor = Color.FromArgb(24, 24, 24),
+            Padding = new Padding(15)
+        };
+
+        var btnCancel = new Button
+        {
+            Text = "取消",
+            Size = new Size(90, 32),
+            Location = new Point(440, 14),
+            DialogResult = DialogResult.Cancel,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(60, 60, 60),
+            ForeColor = Color.White,
+            Cursor = Cursors.Hand
+        };
+        btnCancel.FlatAppearance.BorderSize = 0;
+
+        var btnSave = new Button
+        {
+            Text = "保存设置",
+            Size = new Size(110, 32),
+            Location = new Point(315, 14),
+            DialogResult = DialogResult.OK,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.Lime,
+            ForeColor = Color.Black,
+            Font = new Font("Microsoft YaHeiUI", 9.5F, FontStyle.Bold),
+            Cursor = Cursors.Hand
+        };
+        btnSave.FlatAppearance.BorderSize = 0;
+        btnSave.Click += (s, e) => SaveSettings();
+
+        buttonPanel.Controls.Add(btnSave);
+        buttonPanel.Controls.Add(btnCancel);
+
+        // 中间滚动内容面板
         var contentPanel = new Panel
         {
             Dock = DockStyle.Fill,
             AutoScroll = true,
             Padding = new Padding(20),
-            BackColor = Color.FromArgb(40, 40, 40)
+            BackColor = Color.FromArgb(32, 32, 32)
         };
 
-        var tableLayoutPanel = new TableLayoutPanel
+        int curY = 15;
+        int rowHeight = 38;
+        int labelWidth = 160;
+        int inputLeft = 180;
+
+        void AddRow(string labelText, Control control, string subTip = "")
         {
-            Dock = DockStyle.Top,
-            Padding = new Padding(0),
-            RowCount = 15, // 增加行数以容纳个性选择
-            ColumnCount = 2,
-            BackColor = Color.FromArgb(40, 40, 40),
-            AutoSize = true,
-            MaximumSize = new Size(contentPanel.Width - 40, 0) // 减去滚动条宽度
-        };
-        tableLayoutPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-        tableLayoutPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            var lbl = new Label
+            {
+                Text = labelText,
+                Location = new Point(10, curY + 4),
+                Size = new Size(labelWidth, 25),
+                ForeColor = Color.FromArgb(220, 220, 220),
+                TextAlign = ContentAlignment.MiddleRight,
+                Font = new Font("Microsoft YaHeiUI", 9.5F, FontStyle.Regular)
+            };
+            control.Location = new Point(inputLeft, curY);
 
-        // 机器人数量
-        tableLayoutPanel.Controls.Add(CreateLabel("机器人数量:"), 0, 0);
+            contentPanel.Controls.Add(lbl);
+            contentPanel.Controls.Add(control);
+
+            if (!string.IsNullOrEmpty(subTip))
+            {
+                var tipLbl = new Label
+                {
+                    Text = subTip,
+                    Location = new Point(inputLeft + control.Width + 10, curY + 4),
+                    AutoSize = true,
+                    ForeColor = Color.Gray,
+                    Font = new Font("Microsoft YaHeiUI", 8.5F)
+                };
+                contentPanel.Controls.Add(tipLbl);
+            }
+
+            curY += rowHeight;
+        }
+
+        // 1. 机器人数量
         _countInput = new NumericUpDown
         {
-            Minimum = 1,
-            Maximum = 10,
-            Value = 1,
-            Width = 100,
-            BackColor = Color.FromArgb(60, 60, 60),
-            ForeColor = Color.White,
-            BorderStyle = BorderStyle.FixedSingle
+            Minimum = 1, Maximum = 10, Value = 1, Width = 100,
+            BackColor = Color.FromArgb(50, 50, 50), ForeColor = Color.White
         };
-        tableLayoutPanel.Controls.Add(_countInput, 1, 0);
+        AddRow("机器人初始数量:", _countInput);
 
-        // 显示命名对话框
-        tableLayoutPanel.Controls.Add(CreateLabel("命名对话框:"), 0, 1);
-        _namingCheck = new CheckBox
-        {
-            Text = "启动时询问命名",
-            Checked = false, // 默认不询问
-            ForeColor = Color.White,
-            AutoSize = true
-        };
-        tableLayoutPanel.Controls.Add(_namingCheck, 1, 1);
-
-        // 默认名字
-        tableLayoutPanel.Controls.Add(CreateLabel("默认名字:"), 0, 2);
+        // 2. 默认名字
         _nameInput = new TextBox
         {
-            Text = "Claude",
-            Width = 150,
-            BackColor = Color.FromArgb(60, 60, 60),
-            ForeColor = Color.White,
+            Text = "Claude", Width = 180,
+            BackColor = Color.FromArgb(50, 50, 50), ForeColor = Color.White,
             BorderStyle = BorderStyle.FixedSingle
         };
-        tableLayoutPanel.Controls.Add(_nameInput, 1, 2);
+        AddRow("默认机器人名字:", _nameInput);
 
-        // 默认大小
-        tableLayoutPanel.Controls.Add(CreateLabel("默认大小 (px):"), 0, 3);
+        // 3. 询问命名
+        _namingCheck = new CheckBox
+        {
+            Text = "启动时询问自定义名字", Checked = false,
+            ForeColor = Color.White, AutoSize = true
+        };
+        AddRow("命名确认对话框:", _namingCheck);
+
+        // 4. 尺寸大小
         _sizeInput = new NumericUpDown
         {
-            Minimum = 32,
-            Maximum = 128,
-            Value = 64,
-            Width = 100,
-            BackColor = Color.FromArgb(60, 60, 60),
-            ForeColor = Color.White
+            Minimum = 8, Maximum = 128, Value = 32, Width = 100,
+            BackColor = Color.FromArgb(50, 50, 50), ForeColor = Color.White
         };
-        tableLayoutPanel.Controls.Add(_sizeInput, 1, 3);
+        AddRow("机器人尺寸 (px):", _sizeInput, "(8px ~ 128px, 调小可精细微型化)");
 
-        // 默认速度
-        tableLayoutPanel.Controls.Add(CreateLabel("默认速度 (%):"), 0, 4);
+        // 5. 移动速度
         _speedInput = new NumericUpDown
         {
-            Minimum = 50,
-            Maximum = 300,
-            Value = 100,
-            Width = 100,
-            BackColor = Color.FromArgb(60, 60, 60),
-            ForeColor = Color.White
+            Minimum = 50, Maximum = 300, Value = 100, Width = 100,
+            BackColor = Color.FromArgb(50, 50, 50), ForeColor = Color.White
         };
-        tableLayoutPanel.Controls.Add(_speedInput, 1, 4);
+        AddRow("全局基础速度 (%):", _speedInput);
 
-        // 自动启动
-        tableLayoutPanel.Controls.Add(CreateLabel("自动启动:"), 0, 5);
-        _autoStartCheck = new CheckBox
-        {
-            Text = "设置后直接启动",
-            Checked = false,
-            ForeColor = Color.White,
-            AutoSize = true
-        };
-        tableLayoutPanel.Controls.Add(_autoStartCheck, 1, 5);
-
-        // 开启 AI 思考
-        tableLayoutPanel.Controls.Add(CreateLabel("开启 AI 自主思考:"), 0, 6);
+        // 6. 开启 AI 自主思考
         _enableAiThinkingCheck = new CheckBox
         {
-            Text = "允许机器人随机产生想法",
-            Checked = false,
-            ForeColor = Color.White,
-            AutoSize = true
+            Text = "允许机器人产生自主想法", Checked = false,
+            ForeColor = Color.White, AutoSize = true
         };
-        tableLayoutPanel.Controls.Add(_enableAiThinkingCheck, 1, 6);
+        AddRow("AI 自主思考模式:", _enableAiThinkingCheck);
 
-        // AI 思考频率
-        tableLayoutPanel.Controls.Add(CreateLabel("思考频率 (秒):"), 0, 7);
+        // 7. 思考频率
         _aiFrequencyInput = new NumericUpDown
         {
-            Minimum = 10,
-            Maximum = 3600,
-            Value = 60,
-            Width = 100,
-            BackColor = Color.FromArgb(60, 60, 60),
-            ForeColor = Color.White
+            Minimum = 10, Maximum = 3600, Value = 60, Width = 100,
+            BackColor = Color.FromArgb(50, 50, 50), ForeColor = Color.White
         };
-        tableLayoutPanel.Controls.Add(_aiFrequencyInput, 1, 7);
+        AddRow("AI 思考间隔 (秒):", _aiFrequencyInput);
 
-        // 打架频率
-        tableLayoutPanel.Controls.Add(CreateLabel("互动打架几率 (%):"), 0, 8);
+        // 8. 互动打架几率
         _fightFreqInput = new NumericUpDown
         {
-            Minimum = 0,
-            Maximum = 100,
-            Value = 15,
-            Width = 100,
-            BackColor = Color.FromArgb(60, 60, 60),
-            ForeColor = Color.White
+            Minimum = 0, Maximum = 100, Value = 15, Width = 100,
+            BackColor = Color.FromArgb(50, 50, 50), ForeColor = Color.White
         };
-        tableLayoutPanel.Controls.Add(_fightFreqInput, 1, 8);
+        AddRow("遭遇打架几率 (%):", _fightFreqInput);
 
-        // 武器大师模式
-        tableLayoutPanel.Controls.Add(CreateLabel("武器大师模式:"), 0, 9);
+        // 9. 武器大师模式
         _isWeaponMasterCheck = new CheckBox
         {
-            Text = "开启世界机器人大战 (实体子弹)",
-            Checked = false,
-            ForeColor = Color.Orange,
-            AutoSize = true
+            Text = "开启超级武器库 (火箭/等离子/重炮)", Checked = false,
+            ForeColor = Color.Orange, AutoSize = true
         };
-        tableLayoutPanel.Controls.Add(_isWeaponMasterCheck, 1, 9);
+        AddRow("武器大师技能:", _isWeaponMasterCheck);
 
-        // 默认个性
-        tableLayoutPanel.Controls.Add(CreateLabel("默认个性:"), 0, 10);
+        // 10. 默认个性
         _personalityCombo = new ComboBox
         {
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            Width = 150,
-            BackColor = Color.FromArgb(60, 60, 60),
-            ForeColor = Color.White
+            DropDownStyle = ComboBoxStyle.DropDownList, Width = 220,
+            BackColor = Color.FromArgb(50, 50, 50), ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat
         };
-        // 添加个性选项
         var personalities = new[] {
             (RobotPersonalityType.Friendly, "🤝 友好 - 喜欢交朋友"),
             (RobotPersonalityType.Shy, "🙈 害羞 - 避开其他机器人"),
@@ -243,147 +247,63 @@ public class SettingsForm : Form
             (RobotPersonalityType.Lazy, "😴 懒惰 - 经常休息"),
             (RobotPersonalityType.Energetic, "⚡ 精力 - 快速移动")
         };
-        foreach (var (type, desc) in personalities)
-        {
-            _personalityCombo.Items.Add(desc);
-        }
+        foreach (var (_, desc) in personalities) _personalityCombo.Items.Add(desc);
         _personalityCombo.SelectedIndex = 0;
-        tableLayoutPanel.Controls.Add(_personalityCombo, 1, 10);
+        AddRow("默认初始个性:", _personalityCombo);
 
-        // API Key 设置
-        tableLayoutPanel.Controls.Add(CreateLabel("API Key:"), 0, 11);
-        var apiKeyPanel = new Panel
-        {
-            Dock = DockStyle.Fill,
-            Height = 50,
-            BackColor = Color.FromArgb(40, 40, 40)
-        };
+        // 11. API Key
+        var apiContainer = new Panel { Size = new Size(320, 50), BackColor = Color.Transparent };
         _apiKeyInput = new TextBox
         {
-            Width = 200,
-            Height = 25,
-            Location = new Point(0, 0),
-            BackColor = Color.FromArgb(60, 60, 60),
-            ForeColor = Color.White,
-            BorderStyle = BorderStyle.FixedSingle,
-            PasswordChar = '*',
-            PlaceholderText = "输入 SiliconFlow API Key"
+            Width = 220, Location = new Point(0, 0),
+            BackColor = Color.FromArgb(50, 50, 50), ForeColor = Color.White,
+            BorderStyle = BorderStyle.FixedSingle, PasswordChar = '*'
         };
+        _apiKeyInput.TextChanged += (s, e) => UpdateApiKeyStatus();
+
         _apiKeyStatusLabel = new Label
         {
-            Text = "⚠️ 未配置",
+            Text = "⚠️ 未配置 (离线战吼可用, 大模型禁用)",
             ForeColor = Color.Red,
-            Font = new Font("Microsoft YaHei", 8),
-            Location = new Point(0, 28),
-            AutoSize = true
+            Font = new Font("Microsoft YaHeiUI", 8.5F),
+            Location = new Point(0, 26), AutoSize = true
         };
-        apiKeyPanel.Controls.Add(_apiKeyInput);
-        apiKeyPanel.Controls.Add(_apiKeyStatusLabel);
-        tableLayoutPanel.Controls.Add(apiKeyPanel, 1, 10);
+        apiContainer.Controls.Add(_apiKeyInput);
+        apiContainer.Controls.Add(_apiKeyStatusLabel);
 
-        // 说明标签
+        AddRow("API Key (硅基流动):", apiContainer);
+        curY += 15;
+
+        // 提示说明卡片
+        var infoPanel = new Panel
+        {
+            Location = new Point(30, curY),
+            Size = new Size(470, 75),
+            BackColor = Color.FromArgb(24, 24, 24),
+            BorderStyle = BorderStyle.FixedSingle
+        };
         var infoLabel = new Label
         {
-            Text = "💡 提示: 左键点击机器人打开CMD终端\n    Ctrl+Shift+M 打开菜单 | Ctrl+Shift+P 暂停/继续 | Ctrl+Shift+H 摸鱼模式",
-            ForeColor = Color.Gray,
-            Font = new Font("Microsoft YaHei", 9),
-            AutoSize = true,
-            Margin = new Padding(0, 10, 0, 0)
+            Text = "💡 快捷键指南:\n • Ctrl + N : 添加新机器人  |  Ctrl + M : 投放怪物\n • Ctrl + K : 开/关骂人模式  |  Ctrl + R : 重置局势\n • 鼠标左键选中机器人，右键可指点集火发射！",
+            ForeColor = Color.FromArgb(180, 180, 180),
+            Font = new Font("Microsoft YaHeiUI", 8.8F),
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleCenter
         };
-        tableLayoutPanel.Controls.Add(infoLabel, 0, 12);
-        tableLayoutPanel.SetColumnSpan(infoLabel, 2);
+        infoPanel.Controls.Add(infoLabel);
+        contentPanel.Controls.Add(infoPanel);
 
-        // 调整表格布局高度
-        tableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); // 机器人数量
-        tableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); // 命名对话框
-        tableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); // 默认名字
-        tableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); // 默认大小
-        tableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); // 默认速度
-        tableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); // 自动启动
-        tableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); // 开启 AI 思考
-        tableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); // AI 思考频率
-        tableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); // 打架几率
-        tableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); // 武器大师
-        tableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); // 默认个性
-        tableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 60)); // API Key
-        tableLayoutPanel.RowStyles.Add(new RowStyle(SizeType.AutoSize)); // 说明
-
-        contentPanel.Controls.Add(tableLayoutPanel);
-
-        // 按钮面板
-        var buttonPanel = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Bottom,
-            Height = 60,
-            FlowDirection = FlowDirection.RightToLeft,
-            Padding = new Padding(20, 10, 20, 10),
-            BackColor = Color.FromArgb(40, 40, 40)
-        };
-
-        var btnCancel = new Button
-        {
-            Text = "取消",
-            Width = 80,
-            Height = 32,
-            DialogResult = DialogResult.Cancel,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.FromArgb(80, 80, 80),
-            ForeColor = Color.White
-        };
-
-        var btnSave = new Button
-        {
-            Text = "保存",
-            Width = 100,
-            Height = 32,
-            DialogResult = DialogResult.OK,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.Lime,
-            ForeColor = Color.Black,
-            Font = new Font("Microsoft YaHei", 10, FontStyle.Bold)
-        };
-        btnSave.Click += (s, e) => Console.WriteLine("[Settings] Save button clicked.");
-
-        buttonPanel.Controls.Add(btnCancel);
-        buttonPanel.Controls.Add(btnSave);
-
-        // 添加控件到主容器
-        mainContainer.Controls.Add(titleLabel, 0, 0);
-        mainContainer.Controls.Add(contentPanel, 0, 1);
-        mainContainer.Controls.Add(buttonPanel, 0, 2);
-
-        this.Controls.Add(mainContainer);
-        
-        // 关键修复：确保按钮在最上层
-        buttonPanel.BringToFront();
+        // 组装窗体
+        this.Controls.Add(contentPanel);
+        this.Controls.Add(titlePanel);
+        this.Controls.Add(buttonPanel);
 
         this.AcceptButton = btnSave;
         this.CancelButton = btnCancel;
-
-        // 重新调整TableLayoutPanel的大小以适应内容
-        tableLayoutPanel.ResumeLayout(false);
-        tableLayoutPanel.PerformLayout();
-        contentPanel.ResumeLayout(false);
-        contentPanel.PerformLayout();
-        mainContainer.ResumeLayout(false);
-        mainContainer.PerformLayout();
-    }
-
-    private Label CreateLabel(string text)
-    {
-        return new Label
-        {
-            Text = text,
-            ForeColor = Color.White,
-            AutoSize = true,
-            Anchor = AnchorStyles.Right,
-            TextAlign = ContentAlignment.MiddleRight
-        };
     }
 
     private void LoadSettings()
     {
-        // 从文件加载设置（如果有）
         try
         {
             string settingsPath = System.IO.Path.Combine(
@@ -398,15 +318,15 @@ public class SettingsForm : Form
                     {
                         switch (parts[0])
                         {
-                            case "Count": _countInput.Value = int.Parse(parts[1]); break;
+                            case "Count": _countInput.Value = Math.Clamp(int.Parse(parts[1]), 1, 10); break;
                             case "ShowNaming": _namingCheck.Checked = bool.Parse(parts[1]); break;
                             case "DefaultName": _nameInput.Text = parts[1]; break;
-                            case "DefaultSize": _sizeInput.Value = int.Parse(parts[1]); break;
-                            case "DefaultSpeed": _speedInput.Value = int.Parse(parts[1]); break;
+                            case "DefaultSize": _sizeInput.Value = Math.Clamp(int.Parse(parts[1]), 8, 128); break;
+                            case "DefaultSpeed": _speedInput.Value = Math.Clamp(int.Parse(parts[1]), 50, 300); break;
                             case "AutoStart": _autoStartCheck.Checked = bool.Parse(parts[1]); break;
                             case "EnableAi": _enableAiThinkingCheck.Checked = bool.Parse(parts[1]); break;
-                            case "AiFreq": _aiFrequencyInput.Value = int.Parse(parts[1]); break;
-                            case "FightFreq": _fightFreqInput.Value = int.Parse(parts[1]); break;
+                            case "AiFreq": _aiFrequencyInput.Value = Math.Clamp(int.Parse(parts[1]), 10, 3600); break;
+                            case "FightFreq": _fightFreqInput.Value = Math.Clamp(int.Parse(parts[1]), 0, 100); break;
                             case "WeaponMaster": _isWeaponMasterCheck.Checked = bool.Parse(parts[1]); break;
                             case "Personality":
                                 if (int.TryParse(parts[1], out int personalityIndex))
@@ -419,7 +339,6 @@ public class SettingsForm : Form
                 }
             }
 
-            // 从新的 settings.json 加载 API Key
             var appSettings = PersistenceManager.LoadAppSettings();
             _apiKeyInput.Text = appSettings.ApiKey ?? "";
             UpdateApiKeyStatus();
@@ -431,12 +350,12 @@ public class SettingsForm : Form
     {
         if (string.IsNullOrWhiteSpace(_apiKeyInput.Text))
         {
-            _apiKeyStatusLabel.Text = "⚠️ 未配置（AI功能不可用）";
-            _apiKeyStatusLabel.ForeColor = Color.Red;
+            _apiKeyStatusLabel.Text = "⚠️ 未配置 (离线战吼可用, 大模型禁用)";
+            _apiKeyStatusLabel.ForeColor = Color.OrangeRed;
         }
         else
         {
-            _apiKeyStatusLabel.Text = "✓ 已配置";
+            _apiKeyStatusLabel.Text = "✓ 已配置 (大模型聊天已就绪)";
             _apiKeyStatusLabel.ForeColor = Color.Lime;
         }
     }
@@ -453,11 +372,9 @@ public class SettingsForm : Form
         AiThoughtFrequency = (int)_aiFrequencyInput.Value;
         FightFrequency = (int)_fightFreqInput.Value;
         IsWeaponMaster = _isWeaponMasterCheck.Checked;
-        DefaultPersonality = (RobotPersonalityType)_personalityCombo.SelectedIndex;
+        DefaultPersonality = (RobotPersonalityType)Math.Max(0, _personalityCombo.SelectedIndex);
         ApiKey = _apiKeyInput.Text.Trim();
 
-
-        // 保存到文件
         try
         {
             string settingsPath = System.IO.Path.Combine(
@@ -475,11 +392,9 @@ public class SettingsForm : Form
                 $"FightFreq={FightFrequency}",
                 $"WeaponMaster={IsWeaponMaster}",
                 $"Personality={(int)DefaultPersonality}",
-
             };
             System.IO.File.WriteAllLines(settingsPath, lines);
 
-            // 保存 API Key 到新的 settings.json
             PersistenceManager.SetApiKey(ApiKey);
         }
         catch { }

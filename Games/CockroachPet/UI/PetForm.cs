@@ -468,6 +468,25 @@ public partial class PetForm : Form
         Invalidate();
     }
 
+    public void ToggleCurseMode(bool? enable = null)
+    {
+        bool targetState = enable ?? !_robots.Any(r => r.CurseMode);
+        foreach (var r in _robots)
+        {
+            r.CurseMode = targetState;
+            if (targetState)
+            {
+                string[] barks = { "骂人模式就绪！谁来受死？！🖕", "暴躁系统上线，哪个废狗敢来？！🤬", "就你叫小日子啊？！看老子不打爆你！💥" };
+                r.SetBark(barks[new Random().Next(barks.Length)], 120);
+            }
+            else
+            {
+                r.SetBark("骂人模式关闭，做个礼貌像素人...😇", 90);
+            }
+        }
+        ShowNotification(targetState ? "骂人模式已全员开启！🤬 (离线战吼/AI攻击均生效)" : "骂人模式已全员关闭 🤐");
+    }
+
     private void ShowNotification(string message)
     {
         if (_notifyIcon != null)
@@ -598,20 +617,18 @@ public partial class PetForm : Form
         var anyCurseMode = _robots.Count > 0 && _robots.Any(r => r.CurseMode);
         var allCurseMode = _robots.Count > 0 && _robots.All(r => r.CurseMode);
         var curseMenu = new ToolStripMenuItem(anyCurseMode ? (allCurseMode ? "🤬 骂人模式 (全员开启)" : "🤬 骂人模式 (部分开启)") : "🤐 骂人模式 (已关闭)");
-        curseMenu.DropDownItems.Add("全员开启", null, (s, e) =>
-        {
-            foreach (var r in _robots) r.CurseMode = true;
-            ShowNotification("骂人模式已全员开启！🤬");
-        });
-        curseMenu.DropDownItems.Add("全员关闭", null, (s, e) =>
-        {
-            foreach (var r in _robots) r.CurseMode = false;
-            ShowNotification("骂人模式已关闭");
-        });
+        curseMenu.DropDownItems.Add("全员开启 (Ctrl+K)", null, (s, e) => ToggleCurseMode(true));
+        curseMenu.DropDownItems.Add("全员关闭", null, (s, e) => ToggleCurseMode(false));
         curseMenu.DropDownItems.Add(new ToolStripSeparator());
         curseMenu.DropDownItems.Add("随机切换", null, (s, e) =>
         {
-            foreach (var r in _robots) r.CurseMode = new Random().Next(100) < 50;
+            var rand = new Random();
+            foreach (var r in _robots)
+            {
+                r.CurseMode = rand.Next(100) < 50;
+                if (r.CurseMode) r.SetBark("骂人模式就绪！谁来受死？！🖕", 120);
+                else r.SetBark("文明礼貌，从我做起...😇", 90);
+            }
             ShowNotification("骂人模式随机切换完成！");
         });
         menu.Items.Add(curseMenu);
@@ -1302,7 +1319,8 @@ public partial class PetForm : Form
         }
 
         Robot robot = new Robot(_robotIdCounter, name, startX, startY);
-        robot.Size = DefaultRobotSize + new Random().Next(-10, 10);
+        int delta = DefaultRobotSize <= 20 ? 0 : new Random().Next(-4, 4);
+        robot.Size = Math.Max(8, DefaultRobotSize + delta);
         robot.SpeedMultiplier = _globalSpeed / 100f;
         robot.EnableAiThinking = EnableAiThinking;
         robot.AiThoughtFrequency = AiThoughtFrequency;
@@ -1412,6 +1430,7 @@ public partial class PetForm : Form
                     DefaultPersonality = _settingsForm.DefaultPersonality;
 
 
+                    foreach (var r in _robots) r.Size = DefaultRobotSize;
                     foreach (var r in _robots) r.SpeedMultiplier = _globalSpeed / 100f;
                     foreach (var r in _robots) r.EnableAiThinking = EnableAiThinking;
                     foreach (var r in _robots) r.AiThoughtFrequency = AiThoughtFrequency;
@@ -1420,10 +1439,13 @@ public partial class PetForm : Form
                 }
                 _settingsForm = null;
             };
-            _settingsForm.Show();
+            _settingsForm.TopMost = true;
+            _settingsForm.ShowDialog();
         }
         else
         {
+            _settingsForm.TopMost = true;
+            _settingsForm.BringToFront();
             _settingsForm.Activate();
         }
     }

@@ -128,7 +128,9 @@ public partial class Robot
                 SpecialState = "ANGRY";
                 if (phase == 15)
                 {
-                    string[] clashBarks = { "吃我一记冲撞！", "💥 像素碎裂！", "给老子死！", "铁拳制裁！" };
+                    string[] clashBarks = CurseMode
+                        ? new[] { "给爷爬！🖕", "去死吧你这个废料！💥", "操！撞死你个傻逼！🤬", "垃圾就该待在垃圾桶里！🖕" }
+                        : new[] { "吃我一记冲撞！", "💥 像素碎裂！", "给老子死！", "铁拳制裁！" };
                     SetBark(clashBarks[Rand.Next(clashBarks.Length)], 30);
                 }
             }
@@ -218,7 +220,9 @@ public partial class Robot
     {
         if (other == null || !other.IsActive || other.IsDead || IsDead) return;
 
-        string[] attackBarks = { "看招！炸裂吧！💥", "吃我一记像素光波！⚡", "系统过载灌入！🔥", "目标锁定，发射！🎯", "吃我一记禁言锤！🔨", "像素风暴攻击！🌀" };
+        string[] attackBarks = CurseMode
+            ? new[] { "菜狗受死吧！🖕", "就你这垃圾也敢挡路？！🤬", "看老子不打爆你！💥", "废狗，滚远点！🖕", "吃老子一炮，脑残！🔥", "菜就多练，别出来丢人！🖕" }
+            : new[] { "看招！炸裂吧！💥", "吃我一记像素光波！⚡", "系统过载灌入！🔥", "目标锁定，发射！🎯", "吃我一记禁言锤！🔨", "像素风暴攻击！🌀" };
         SetBark(attackBarks[Rand.Next(attackBarks.Length)], 100);
         SpecialState = "ANGRY";
         SpecialStateTimer = 100;
@@ -230,12 +234,12 @@ public partial class Robot
             string selectedType = ammoTypes[Rand.Next(ammoTypes.Length)];
 
             string weaponBark = selectedType switch {
-                "CANNON" => "超级重炮...发射！💣",
-                "LIGHTNING" => "十万伏特！⚡",
-                "SPIT" => "受死吧！呗！🤢",
-                "INK" => "墨迹干扰！🕭️",
-                "ROCKET" => "追踪火箭！🚀",
-                _ => "接受像素打击吧！"
+                "CANNON" => CurseMode ? "尝尝老子的超级重炮，炸死你！💣" : "超级重炮...发射！💣",
+                "LIGHTNING" => CurseMode ? "给老子变成烤猪吧！⚡" : "十万伏特！⚡",
+                "SPIT" => CurseMode ? "垃圾！呸！吐你脸上！🤢" : "受死吧！呗！🤢",
+                "INK" => CurseMode ? "睁大你的狗眼看看！🕭️" : "墨迹干扰！🕭️",
+                "ROCKET" => CurseMode ? "飞天去吧，傻逼！🚀" : "追踪火箭！🚀",
+                _ => CurseMode ? "看我不揍扁你！🖕" : "接受像素打击吧！"
             };
             SetBark(weaponBark, 80);
 
@@ -274,7 +278,7 @@ public partial class Robot
             IsMoving = false;
             RotationAngle = 90f;
             Dx = 0; Dy = 0;
-            SetBark("核心崩溃...系统下线 💀", 200);
+            SetBark(CurseMode ? "操...老子被阴了 🖕💀" : "核心崩溃...系统下线 💀", 200);
             AudioManager.PlayDeathSound();
         }
         else
@@ -289,8 +293,10 @@ public partial class Robot
 
         SpecialState = "SHAKING";
         SpecialStateTimer = 60;
-        string[] reactBarks = { "哎呦！谁偷袭我？！", "我的电路着火了！", "你会付出代价的！", "发生错误！痛死我了！", "嗝呐！" };
-        if (Rand.Next(100) < 30) SetBark(reactBarks[Rand.Next(reactBarks.Length)], 120);
+        string[] reactBarks = CurseMode
+            ? new[] { "操！敢偷袭老子？！🤬", "狗杂种你打谁呢？！🖕", "你完蛋了，孙子！💢", "你个臭傻逼，找死！💥", "卧槽！下手这么狠？！🖕" }
+            : new[] { "哎呦！谁偷袭我？！", "我的电路着火了！", "你会付出代价的！", "发生错误！痛死我了！", "嗝呐！" };
+        if (Rand.Next(100) < 40) SetBark(reactBarks[Rand.Next(reactBarks.Length)], 120);
     }
 
     public void HandleProjectileHit(Projectile p)
@@ -429,7 +435,9 @@ public partial class Robot
     {
         if (monster == null || !monster.IsActive || monster.IsDead || IsDead) return;
 
-        string[] attackBarks = { "吃我一招！💥", "怪物受死！⚡", "集火攻击！🎯", "火力全开！🔥", "为了奖励！💰" };
+        string[] attackBarks = CurseMode
+            ? new[] { "丑八怪给我去死！🤬", "哪来的傻逼怪物，干死它！🖕", "看什么看，打的就是你这蠢货！💥", "死肥猪也配挡老子的路？！🖕" }
+            : new[] { "吃我一招！💥", "怪物受死！⚡", "集火攻击！🎯", "火力全开！🔥", "为了奖励！💰" };
         SetBark(attackBarks[Rand.Next(attackBarks.Length)], 80);
         SpecialState = "ANGRY";
         SpecialStateTimer = 100;

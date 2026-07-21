@@ -242,6 +242,10 @@ public partial class BattleForm : Form
             this.Cursor = _isSpawningMonster ? Cursors.Cross : Cursors.Default;
             return true;
         }
+        if (keyData == (Keys.Control | Keys.K)) {
+            PureBattleGame.Games.CockroachPet.PetForm.Instance?.ToggleCurseMode();
+            return true;
+        }
         if (keyData == (Keys.Control | Keys.R)) {
             ResetGame();
             return true;

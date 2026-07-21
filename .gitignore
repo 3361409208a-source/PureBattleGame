@@ -1,6 +1,8 @@
 bin/
 obj/
-publish/
+publish/*
+!publish/PureBattleGame.exe
+!PureBattleGame.exe
 *.user
 *.suo
 *.userosscache
