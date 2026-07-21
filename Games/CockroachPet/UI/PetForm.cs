@@ -563,7 +563,8 @@ public partial class PetForm : Form
         }
 
         // 新增机器人
-        menu.Items.Add("➕ 投放新机器人", null, (s, e) => SpawnRobotWithName());
+        menu.Items.Add("🤖 AI 自然语言生成/召唤...", null, (s, e) => ShowAiSpawnDialog());
+        menu.Items.Add("➕ 手动投放新机器人", null, (s, e) => SpawnRobotWithName());
         menu.Items.Add("⚡ 快速投放", null, (s, e) =>
         {
             string[] names = { "小八", "阿呆", "像素仔", "蓝灵", "红豆", "大眼", "触手大王", "碳基生物" };
@@ -1477,6 +1478,151 @@ public partial class PetForm : Form
         {
             _controlPanel.Activate();
         }
+    }
+
+    public void ShowAiSpawnDialog()
+    {
+        using var dialog = new Form
+        {
+            Text = "🤖 AI 自然语言智能生成角色 / 敌人",
+            Size = new Size(540, 320),
+            StartPosition = FormStartPosition.CenterScreen,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            MaximizeBox = false,
+            MinimizeBox = false,
+            BackColor = Color.FromArgb(28, 28, 34),
+            ForeColor = Color.White,
+            TopMost = true
+        };
+
+        var lblTip = new Label
+        {
+            Text = "💬 请输入自然语言指令（如：'加入赛罗'、'加入十个奥特曼成员'）：",
+            Location = new Point(20, 15),
+            AutoSize = true,
+            Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold),
+            ForeColor = Color.Cyan
+        };
+
+        var txtInput = new TextBox
+        {
+            Location = new Point(20, 45),
+            Size = new Size(484, 30),
+            Font = new Font("Microsoft YaHei UI", 10.5F),
+            BackColor = Color.FromArgb(42, 42, 50),
+            ForeColor = Color.White,
+            BorderStyle = BorderStyle.FixedSingle,
+            Text = "加入十个奥特曼成员"
+        };
+
+        var flowPresets = new FlowLayoutPanel
+        {
+            Location = new Point(20, 85),
+            Size = new Size(484, 90),
+            AutoScroll = true
+        };
+
+        string[] presets = { "加入赛罗", "加入十个奥特曼成员", "生成哥尔赞怪兽", "清空敌人并生成迪迦与戴拿", "加入3个武器大师" };
+        foreach (var p in presets)
+        {
+            var btnP = new Button
+            {
+                Text = p,
+                AutoSize = true,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.FromArgb(45, 45, 60),
+                ForeColor = Color.LightSkyBlue,
+                Cursor = Cursors.Hand,
+                Margin = new Padding(3)
+            };
+            btnP.FlatAppearance.BorderColor = Color.FromArgb(70, 70, 90);
+            btnP.Click += (s, e) => txtInput.Text = p;
+            flowPresets.Controls.Add(btnP);
+        }
+
+        var btnSubmit = new Button
+        {
+            Text = "✨ 让 AI 生成并生成入场",
+            Location = new Point(20, 190),
+            Size = new Size(484, 45),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(0, 150, 136),
+            ForeColor = Color.White,
+            Font = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold),
+            Cursor = Cursors.Hand
+        };
+        btnSubmit.FlatAppearance.BorderSize = 0;
+
+        btnSubmit.Click += async (s, e) =>
+        {
+            string prompt = txtInput.Text.Trim();
+            if (string.IsNullOrWhiteSpace(prompt)) return;
+
+            btnSubmit.Enabled = false;
+            btnSubmit.Text = "⏳ AI 正在解析分析生成指令...";
+
+            try
+            {
+                var spawnReq = await AiService.ParseSpawnCommandAsync(prompt);
+                
+                if (spawnReq.ClearExisting)
+                {
+                    ClearAllRobots();
+                    _monsters.Clear();
+                }
+
+                int spawnedCount = 0;
+                Random rnd = new Random();
+
+                foreach (var item in spawnReq.Robots)
+                {
+                    for (int i = 0; i < item.Count; i++)
+                    {
+                        string rName = item.Count > 1 ? $"{item.Name}-{i + 1}" : item.Name;
+                        float x = rnd.Next(Screen.PrimaryScreen.Bounds.Width - 150);
+                        float y = rnd.Next(Screen.PrimaryScreen.Bounds.Height - 150);
+                        
+                        Robot r = new Robot(_robotIdCounter++, rName, x, y);
+                        r.Personality = item.Personality;
+                        r.IsWeaponMaster = item.IsWeaponMaster;
+                        r.Size = DefaultRobotSize;
+                        r.SpeedMultiplier = _globalSpeed / 100f;
+                        r.SetBark($"{rName} 参上！谁敢与我一战？！", 120);
+                        
+                        _robots.Add(r);
+                        spawnedCount++;
+                    }
+                }
+
+                foreach (var mItem in spawnReq.Monsters)
+                {
+                    for (int i = 0; i < mItem.Count; i++)
+                    {
+                        float mx = rnd.Next(Screen.PrimaryScreen.Bounds.Width - 150);
+                        float my = rnd.Next(Screen.PrimaryScreen.Bounds.Height - 150);
+                        Monster m = new Monster(mx, my);
+                        _monsters.Add(m);
+                        spawnedCount++;
+                    }
+                }
+
+                ShowNotification($"🎉 AI 已自动解析并生成入场 {spawnedCount} 个角色/怪兽！");
+                dialog.DialogResult = DialogResult.OK;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("AI 生成错误：" + ex.Message);
+                btnSubmit.Enabled = true;
+                btnSubmit.Text = "✨ 让 AI 生成并生成入场";
+            }
+        };
+
+        dialog.Controls.Add(lblTip);
+        dialog.Controls.Add(txtInput);
+        dialog.Controls.Add(flowPresets);
+        dialog.Controls.Add(btnSubmit);
+
+        dialog.ShowDialog();
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)
