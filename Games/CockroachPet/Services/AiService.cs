@@ -18,7 +18,7 @@ public class AiService
     // 检查是否配置了 API Key
     public static bool IsApiKeyConfigured => !string.IsNullOrWhiteSpace(PersistenceManager.GetApiKey());
 
-    private static string GetApiKey()
+    public static string GetApiKey()
     {
         var key = PersistenceManager.GetApiKey();
         if (string.IsNullOrWhiteSpace(key))

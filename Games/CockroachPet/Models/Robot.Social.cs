@@ -70,6 +70,7 @@ public partial class Robot
                 other.SocialCooldown = 45;
                 if (ShootCooldown == 0) LaunchRemoteAttack(other);
                 SetBark("人太多了，离我远点射击！", 60);
+                if (CurseMode || EnableAiThinking) _ = TriggerAiFightAsync(other);
             }
             else if (dist < 600 && ShootCooldown == 0)
             {
@@ -78,6 +79,7 @@ public partial class Robot
                 {
                     LaunchRemoteAttack(other);
                     SocialCooldown = 60;
+                    if (CurseMode || EnableAiThinking) _ = TriggerAiFightAsync(other);
                 }
             }
         }
@@ -90,6 +92,7 @@ public partial class Robot
                 SocialCooldown = 100;
                 other.SocialCooldown = 100;
                 SetBark(aliveCount == 2 ? "这是最后的清算！💥" : "找到对手了，来格斗吧！", 80);
+                if (CurseMode || EnableAiThinking) _ = TriggerAiFightAsync(other);
             }
             else
             {
@@ -104,6 +107,7 @@ public partial class Robot
                 {
                     LaunchRemoteAttack(other);
                     SocialCooldown = 30;
+                    if (CurseMode || EnableAiThinking) _ = TriggerAiFightAsync(other);
                 }
             }
         }
@@ -231,6 +235,56 @@ public partial class Robot
                 Color chatColor = sender == Name ? PrimaryColor : Color.SkyBlue;
                 TerminalManagerForm.Instance.BroadcastToWorld(sender, content, chatColor);
             }
+        }
+    }
+
+    public async Task TriggerAiFightAsync(Robot target)
+    {
+        if (_isThinking || target == null || !target.IsActive || target.IsDead || IsDead) return;
+
+        string apiKey = AiService.GetApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey)) return;
+
+        _isThinking = true;
+        try
+        {
+            var history = SocialHistory.Select(h => (h.sender, h.content)).ToList();
+            var lastMsg = history.LastOrDefault();
+            string lastInsult = string.IsNullOrEmpty(lastMsg.content) ? "看你不爽很久了！" : lastMsg.content;
+
+            string fightReply = await AiService.GetFightResponseAsync(
+                Name, GetPersonalityName(), lastInsult, history, target.Name
+            );
+
+            if (!string.IsNullOrWhiteSpace(fightReply))
+            {
+                SetBark(fightReply, 120);
+                LogSocial(Name, fightReply);
+
+                if (Rand.Next(100) < 60)
+                {
+                    _ = Task.Run(async () =>
+                    {
+                        await Task.Delay(1500);
+                        if (target.IsActive && !target.IsDead && !IsDead)
+                        {
+                            string counterReply = await AiService.GetFightResponseAsync(
+                                target.Name, target.GetPersonalityName(), fightReply, history, Name
+                            );
+                            if (!string.IsNullOrWhiteSpace(counterReply))
+                            {
+                                target.SetBark(counterReply, 120);
+                                target.LogSocial(target.Name, counterReply);
+                            }
+                        }
+                    });
+                }
+            }
+        }
+        catch { }
+        finally
+        {
+            _isThinking = false;
         }
     }
 }
