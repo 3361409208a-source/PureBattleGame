@@ -1017,7 +1017,8 @@ public partial class PetForm : Form
             r.IsActive = true;
             r.IsMoving = true;
             r.HP = r.MaxHP;
-            r.Size = r.OriginalSize;
+            r.Size = Math.Max(8, DefaultRobotSize + (DefaultRobotSize <= 20 ? 0 : rnd.Next(-3, 3)));
+            r.OriginalSize = r.Size;
             r.X = rnd.Next(Screen.PrimaryScreen.Bounds.Width - 100);
             r.Y = rnd.Next(Screen.PrimaryScreen.Bounds.Height - 100);
             
@@ -1436,7 +1437,7 @@ public partial class PetForm : Form
                     DefaultPersonality = _settingsForm.DefaultPersonality;
 
 
-                    foreach (var r in _robots) r.Size = DefaultRobotSize;
+                    foreach (var r in _robots) { r.Size = DefaultRobotSize; r.OriginalSize = DefaultRobotSize; }
                     foreach (var r in _robots) r.SpeedMultiplier = _globalSpeed / 100f;
                     foreach (var r in _robots) r.EnableAiThinking = EnableAiThinking;
                     foreach (var r in _robots) r.AiThoughtFrequency = AiThoughtFrequency;
