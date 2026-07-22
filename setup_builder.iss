@@ -23,6 +23,7 @@ Name: "autostarticon"; Description: "开机自动启动 (可选)"; GroupDescript
 
 [Files]
 Source: "E:\PureBattleGame\publish\PureBattleGame.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "E:\PureBattleGame\publish\WebUI\dist\*"; DestDir: "{app}\WebUI\dist"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\PureBattleGame (像素机器人)"; Filename: "{app}\PureBattleGame.exe"

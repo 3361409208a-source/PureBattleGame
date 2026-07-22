@@ -16,6 +16,12 @@ export interface RobotInfo {
   curseMode: boolean;
   colorHex: string;
   chatText: string;
+  isMoving: boolean;
+  isVisible: boolean;
+  size: number;
+  speedMultiplier: number;
+  posX: number;
+  posY: number;
 }
 
 export interface SocialMessage {
@@ -33,7 +39,19 @@ export interface ChatMessage {
 
 export interface SystemStats {
   onlineCount: number;
+  totalRobots?: number;
+  movingRobots?: number;
+  pausedRobots?: number;
   battleMode: string;
   totalTokens: number;
   totalCostYuan: number;
+}
+
+export interface AppSettings {
+  opacity: number;
+  hideNameAndPersonality: boolean;
+  curseModeByDefault: boolean;
+  battleMode: string;
+  apiKey: string;
+  homeUrl: string;
 }

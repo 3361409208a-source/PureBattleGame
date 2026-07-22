@@ -1,25 +1,39 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Bot, MessageSquare, Globe, Zap, Shield, Search, 
-  Send, Flame, Cpu, RefreshCw, Sparkles, Terminal
+  Send, Flame, Cpu, RefreshCw, Sparkles, Terminal, SlidersHorizontal,
+  Table, Plus, Pause, Play, Trash2, Eye, EyeOff, Key, Save
 } from 'lucide-react';
 import { bridge } from '../../utils/bridge';
-import type { RobotInfo, SocialMessage, ChatMessage, SystemStats } from '../../types/bridge';
+import type { RobotInfo, SocialMessage, ChatMessage, SystemStats, AppSettings } from '../../types/bridge';
 
 export const SocialHubView: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'world' | string>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'world' | 'control' | 'settings' | string>('overview');
   const [robots, setRobots] = useState<RobotInfo[]>([]);
   const [stats, setStats] = useState<SystemStats>({
     onlineCount: 0,
+    totalRobots: 0,
+    movingRobots: 0,
+    pausedRobots: 0,
     battleMode: '近远交替',
     totalTokens: 0,
     totalCostYuan: 0,
   });
 
+  const [settings, setSettings] = useState<AppSettings>({
+    opacity: 0.95,
+    hideNameAndPersonality: false,
+    curseModeByDefault: true,
+    battleMode: '近远交替',
+    apiKey: '',
+    homeUrl: 'https://www.xiaoheiv.top',
+  });
+
   const [worldMessages, setWorldMessages] = useState<SocialMessage[]>([]);
   const [broadcastInput, setBroadcastInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  
+  const [saveStatus, setSaveStatus] = useState('');
+
   // 单人私聊状态
   const [privateChats, setPrivateChats] = useState<Record<string, ChatMessage[]>>({});
   const [privateInput, setPrivateInput] = useState('');
@@ -27,10 +41,8 @@ export const SocialHubView: React.FC = () => {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // 初始获取数据
     fetchData();
 
-    // 监听来自 C# 的实时推送
     const unsubRobots = bridge.on('robotsUpdated', (data: RobotInfo[]) => setRobots(data));
     const unsubStats = bridge.on('statsUpdated', (data: SystemStats) => setStats(data));
     const unsubWorld = bridge.on('worldMessageReceived', (msg: SocialMessage) => {
@@ -39,7 +51,6 @@ export const SocialHubView: React.FC = () => {
     const unsubPrivate = bridge.on('privateMessageReceived', ({ robotId, message }: { robotId: string; message: ChatMessage }) => {
       setPrivateChats(prev => {
         const currentList = prev[robotId] || [];
-        // 避免重复添加完全一样的 user 消息
         const isDuplicate = currentList.length > 0 && 
           currentList[currentList.length - 1].role === message.role && 
           currentList[currentList.length - 1].content === message.content;
@@ -75,6 +86,9 @@ export const SocialHubView: React.FC = () => {
 
       const worldHistory = await bridge.invoke<SocialMessage[]>('getWorldHistory');
       if (worldHistory) setWorldMessages(worldHistory);
+
+      const currentSettings = await bridge.invoke<AppSettings>('getSettings');
+      if (currentSettings) setSettings(currentSettings);
     } catch (e) {
       console.error(e);
     }
@@ -95,7 +109,6 @@ export const SocialHubView: React.FC = () => {
     const userText = privateInput.trim();
     setPrivateInput('');
 
-    // 乐观添加发送消息
     const userMsg: ChatMessage = { role: 'user', content: userText };
     setPrivateChats(prev => ({
       ...prev,
@@ -123,6 +136,13 @@ export const SocialHubView: React.FC = () => {
     });
   };
 
+  const handleSaveSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await bridge.invoke('saveSettings', settings);
+    setSaveStatus('✅ 设置保存成功！');
+    setTimeout(() => setSaveStatus(''), 3000);
+  };
+
   const filteredRobots = robots.filter(r => 
     r.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
     r.personality.toLowerCase().includes(searchQuery.toLowerCase())
@@ -132,7 +152,7 @@ export const SocialHubView: React.FC = () => {
 
   return (
     <div className="flex flex-col h-screen bg-zinc-950 text-zinc-100 font-sans select-none overflow-hidden">
-      {/* 顶部 Header (翡翠绿与温润金配色，无紫无蓝) */}
+      {/* 顶部 Header (黑晶+翡翠绿+温润金配色) */}
       <header className="flex items-center justify-between px-5 py-3 bg-zinc-900 border-b border-zinc-800">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-emerald-950 border border-emerald-700/50 rounded-xl text-emerald-400">
@@ -140,9 +160,9 @@ export const SocialHubView: React.FC = () => {
           </div>
           <div>
             <h1 className="text-base font-bold text-emerald-400">
-              🤖 机器人社交中心 | Robot Social Hub
+              🤖 机器人社交中心 & 控制台 | Robot Social Hub
             </h1>
-            <p className="text-xs text-zinc-400">实时大模型对话、全网广播与 1-on-1 极客终端</p>
+            <p className="text-xs text-zinc-400">大模型对话、控制面板与极客设置</p>
           </div>
         </div>
 
@@ -154,7 +174,7 @@ export const SocialHubView: React.FC = () => {
           </span>
           <span className="flex items-center gap-1.5 px-3 py-1 bg-zinc-950 border border-zinc-700 rounded-full text-xs font-semibold text-zinc-300">
             <Shield className="w-3.5 h-3.5 text-emerald-400" />
-            ⚔️ 模式: {stats.battleMode}
+            ⚔️ 模式: {settings.battleMode}
           </span>
           <span className="flex items-center gap-1.5 px-3 py-1 bg-zinc-950 border border-amber-600/50 rounded-full text-xs font-semibold text-amber-400">
             <Zap className="w-3.5 h-3.5 text-amber-400" />
@@ -196,6 +216,30 @@ export const SocialHubView: React.FC = () => {
           🌍 世界广播频道
         </button>
 
+        <button
+          onClick={() => setActiveTab('control')}
+          className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-semibold transition ${
+            activeTab === 'control'
+              ? 'bg-emerald-950 text-emerald-300 border border-emerald-600/60 shadow-md'
+              : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
+          }`}
+        >
+          <Table className="w-4 h-4" />
+          📊 控制面板
+        </button>
+
+        <button
+          onClick={() => setActiveTab('settings')}
+          className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-semibold transition ${
+            activeTab === 'settings'
+              ? 'bg-zinc-800 text-amber-400 border border-amber-600/60 shadow-md'
+              : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
+          }`}
+        >
+          <SlidersHorizontal className="w-4 h-4" />
+          ⚙️ 系统设置
+        </button>
+
         {/* 动态单人私聊选项卡 */}
         {robots.filter(r => privateChats[r.id]).map(robot => (
           <button
@@ -208,7 +252,7 @@ export const SocialHubView: React.FC = () => {
             }`}
           >
             <Terminal className="w-3.5 h-3.5 text-emerald-400" />
-            <span>💬 {robot.name}</span>
+            <span>💬 {settings.hideNameAndPersonality ? `机器人#${robot.id}` : robot.name}</span>
           </button>
         ))}
       </nav>
@@ -224,7 +268,7 @@ export const SocialHubView: React.FC = () => {
                 <Search className="w-4 h-4 absolute left-3 top-2.5 text-zinc-500" />
                 <input
                   type="text"
-                  placeholder="搜索机器人姓名或性格..."
+                  placeholder="搜索机器人..."
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-9 pr-4 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50"
@@ -256,16 +300,20 @@ export const SocialHubView: React.FC = () => {
                         <div
                           className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-zinc-950 text-sm shadow-md bg-emerald-500"
                         >
-                          {robot.name.slice(0, 2)}
+                          {settings.hideNameAndPersonality ? '🤖' : robot.name.slice(0, 2)}
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <h3 className="font-bold text-sm text-zinc-100">{robot.name}</h3>
+                            <h3 className="font-bold text-sm text-zinc-100">
+                              {settings.hideNameAndPersonality ? `机器人 #${robot.id}` : robot.name}
+                            </h3>
                             <span className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-emerald-400 rounded font-mono border border-zinc-700">
                               LV.{robot.level}
                             </span>
                           </div>
-                          <p className="text-xs text-zinc-400">{robot.personality}</p>
+                          {!settings.hideNameAndPersonality && (
+                            <p className="text-xs text-zinc-400">{robot.personality}</p>
+                          )}
                         </div>
                       </div>
 
@@ -294,10 +342,10 @@ export const SocialHubView: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* 当前对话/气泡文本 */}
+                    {/* 当前对话/气泡文本 (纯文本，去除 AI生成 字样) */}
                     {robot.chatText && (
                       <div className="p-2.5 bg-zinc-950 rounded-xl border border-zinc-800 text-xs text-zinc-300 mb-3 italic">
-                        "{robot.chatText}"
+                        "{robot.chatText.replace(/🤖\s*\[AI生成\]/g, '')}"
                       </div>
                     )}
                   </div>
@@ -325,7 +373,7 @@ export const SocialHubView: React.FC = () => {
                           ? 'bg-rose-950 text-rose-400 border-rose-700'
                           : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:text-zinc-200'
                       }`}
-                      title={robot.curseMode ? '骂人模式开启中' : '点击开启骂人模式'}
+                      title={robot.curseMode ? '对骂模式开启中' : '点击开启对骂模式'}
                     >
                       <Flame className="w-3.5 h-3.5" />
                     </button>
@@ -339,7 +387,6 @@ export const SocialHubView: React.FC = () => {
         {/* 2. 世界广播频道 */}
         {activeTab === 'world' && (
           <div className="flex flex-col h-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
-            {/* 消息滚动区 */}
             <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-thin">
               {worldMessages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-zinc-500 text-xs">
@@ -349,15 +396,18 @@ export const SocialHubView: React.FC = () => {
               ) : (
                 worldMessages.map((msg, i) => (
                   <div key={i} className="flex gap-3 text-xs">
-                    <span className="font-bold text-amber-400 whitespace-nowrap">[{msg.sender}]</span>
-                    <span className="text-zinc-200 leading-relaxed">{msg.content}</span>
+                    <span className="font-bold text-amber-400 whitespace-nowrap">
+                      [{settings.hideNameAndPersonality ? '机器人' : msg.sender}]
+                    </span>
+                    <span className="text-zinc-200 leading-relaxed">
+                      {msg.content.replace(/🤖\s*\[AI生成\]/g, '')}
+                    </span>
                   </div>
                 ))
               )}
               <div ref={chatEndRef} />
             </div>
 
-            {/* 广播输入栏 */}
             <form onSubmit={handleBroadcast} className="mt-3 flex items-center gap-2 pt-3 border-t border-zinc-800">
               <input
                 type="text"
@@ -377,15 +427,239 @@ export const SocialHubView: React.FC = () => {
           </div>
         )}
 
-        {/* 3. 1-on-1 单人对话终端 */}
-        {activeTab !== 'overview' && activeTab !== 'world' && activeRobot && (
+        {/* 3. 📊 控制面板 (Control Panel Tab - 完全对应用户截图功能) */}
+        {activeTab === 'control' && (
+          <div className="flex flex-col h-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4 gap-3">
+            {/* 顶栏说明 */}
+            <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+              <h2 className="text-sm font-bold text-emerald-400 flex items-center gap-2">
+                <Table className="w-4 h-4" />
+                Pixel Robot Pet - Control Panel (控制面板)
+              </h2>
+              <span className="text-xs font-mono text-zinc-400">双击列表或使用下方动作按钮实施快速投放与状态管控</span>
+            </div>
+
+            {/* 机器人表格数据列表 */}
+            <div className="flex-1 overflow-x-auto overflow-y-auto border border-zinc-800 rounded-xl bg-zinc-950">
+              <table className="w-full text-left text-xs font-mono">
+                <thead className="bg-zinc-900 text-zinc-400 border-b border-zinc-800">
+                  <tr>
+                    <th className="px-3 py-2">ID</th>
+                    <th className="px-3 py-2">名称</th>
+                    <th className="px-3 py-2">个性</th>
+                    <th className="px-3 py-2">状态</th>
+                    <th className="px-3 py-2">意识</th>
+                    <th className="px-3 py-2">经验</th>
+                    <th className="px-3 py-2">位置</th>
+                    <th className="px-3 py-2">速度</th>
+                    <th className="px-3 py-2">大小</th>
+                    <th className="px-3 py-2 text-center">显示</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800 text-zinc-300">
+                  {robots.map((r, index) => (
+                    <tr key={r.id} className="hover:bg-zinc-900/60 transition">
+                      <td className="px-3 py-2 font-bold text-emerald-400">{index + 1}</td>
+                      <td className="px-3 py-2 font-semibold">
+                        {settings.hideNameAndPersonality ? `机器人 #${r.id}` : r.name}
+                      </td>
+                      <td className="px-3 py-2 text-zinc-400">
+                        {settings.hideNameAndPersonality ? '***' : r.personality}
+                      </td>
+                      <td className="px-3 py-2">
+                        {r.isDead ? (
+                          <span className="text-rose-400 font-bold">☠ 阵亡</span>
+                        ) : r.isMoving ? (
+                          <span className="text-emerald-400">▶ 移动</span>
+                        ) : (
+                          <span className="text-amber-400">⏸ 暂停</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-emerald-400">Lvl 1.0</td>
+                      <td className="px-3 py-2 text-zinc-400">{r.exp}/{r.maxExp}</td>
+                      <td className="px-3 py-2 text-zinc-400">({r.posX}, {r.posY})</td>
+                      <td className="px-3 py-2 text-zinc-300">{r.speedMultiplier || 1.0}x</td>
+                      <td className="px-3 py-2 text-zinc-300">{r.size || 64}px</td>
+                      <td className="px-3 py-2 text-center">
+                        <button
+                          onClick={() => bridge.invoke('toggleRobotVisibility', { robotId: r.id })}
+                          className={`p-1 rounded hover:bg-zinc-800 ${r.isVisible ? 'text-emerald-400' : 'text-zinc-600'}`}
+                          title={r.isVisible ? '已在屏幕显示' : '已被隐藏'}
+                        >
+                          {r.isVisible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* 底部动作按钮栏 (完全匹配用户截图样式与功能) */}
+            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-zinc-800">
+              <button
+                onClick={() => bridge.invoke('spawnRobot')}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold rounded-xl text-xs shadow-md transition"
+              >
+                <Plus className="w-4 h-4" />
+                投放机器人
+              </button>
+
+              <button
+                onClick={() => bridge.invoke('aiSpawnRobot')}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-950 hover:bg-emerald-900 border border-emerald-600 text-emerald-400 font-bold rounded-xl text-xs transition"
+              >
+                <Bot className="w-4 h-4" />
+                🤖 AI智能生成
+              </button>
+
+              <button
+                onClick={() => bridge.invoke('quickSpawnRobot')}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-zinc-800 hover:bg-zinc-700 text-emerald-400 font-bold rounded-xl text-xs border border-zinc-700 transition"
+              >
+                ⚡ 快速投放
+              </button>
+
+              <button
+                onClick={() => bridge.invoke('pauseAllRobots')}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-950 hover:bg-amber-900 text-amber-400 border border-amber-700 font-bold rounded-xl text-xs transition"
+              >
+                <Pause className="w-4 h-4" />
+                全部暂停
+              </button>
+
+              <button
+                onClick={() => bridge.invoke('resumeAllRobots')}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-950 hover:bg-emerald-900 text-emerald-400 border border-emerald-700 font-bold rounded-xl text-xs transition"
+              >
+                <Play className="w-4 h-4" />
+                全部启动
+              </button>
+
+              <button
+                onClick={() => bridge.invoke('clearAllRobots')}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-950 hover:bg-rose-900 text-rose-400 border border-rose-700 font-bold rounded-xl text-xs transition"
+              >
+                <Trash2 className="w-4 h-4" />
+                清除全部
+              </button>
+            </div>
+
+            {/* 统计信息汇总栏 */}
+            <div className="flex items-center justify-between text-xs font-mono text-zinc-400 px-2 pt-1 border-t border-zinc-800/60">
+              <span>
+                总数: <b className="text-emerald-400">{stats.totalRobots || robots.length}</b> | 
+                移动中: <b className="text-emerald-400">{stats.movingRobots || 0}</b> | 
+                已暂停: <b className="text-amber-400">{stats.pausedRobots || 0}</b> | 
+                🪙 Token 使用: <b className="text-amber-400">{stats.totalTokens}</b>
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* 4. ⚙️ 系统设置 Tab */}
+        {activeTab === 'settings' && (
+          <form onSubmit={handleSaveSettings} className="flex flex-col h-full bg-zinc-900 border border-zinc-800 rounded-2xl p-6 overflow-y-auto space-y-6">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+              <h2 className="text-base font-bold text-amber-400 flex items-center gap-2">
+                <SlidersHorizontal className="w-5 h-5" />
+                系统与对话逻辑设置
+              </h2>
+              {saveStatus && <span className="text-xs text-emerald-400 font-bold animate-bounce">{saveStatus}</span>}
+            </div>
+
+            {/* 对话模式与隐藏选项 */}
+            <div className="space-y-4 bg-zinc-950 p-4 rounded-xl border border-zinc-800">
+              <h3 className="text-sm font-bold text-emerald-400 flex items-center gap-2">
+                <Flame className="w-4 h-4" />
+                对话模式与偏好设置
+              </h3>
+
+              {/* 默认对骂模式 */}
+              <label className="flex items-center justify-between p-3 bg-zinc-900 rounded-lg border border-zinc-800 hover:border-amber-600/40 cursor-pointer">
+                <div>
+                  <div className="text-xs font-bold text-zinc-200">默认开启对骂模式 (Curse / Taunt Mode)</div>
+                  <div className="text-[11px] text-zinc-400">开启后新生成的机器人默认进行激烈对骂与嘲讽，对话更逼真</div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={settings.curseModeByDefault}
+                  onChange={e => setSettings({ ...settings, curseModeByDefault: e.target.checked })}
+                  className="w-4 h-4 accent-amber-500 rounded"
+                />
+              </label>
+
+              {/* 隐藏名称与性格 */}
+              <label className="flex items-center justify-between p-3 bg-zinc-900 rounded-lg border border-zinc-800 hover:border-emerald-600/40 cursor-pointer">
+                <div>
+                  <div className="text-xs font-bold text-zinc-200">隐藏名称与性格</div>
+                  <div className="text-[11px] text-zinc-400">打勾后屏幕上的宠物头顶和界面卡片将隐藏机器人真实名称与性格标签</div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={settings.hideNameAndPersonality}
+                  onChange={e => setSettings({ ...settings, hideNameAndPersonality: e.target.checked })}
+                  className="w-4 h-4 accent-emerald-500 rounded"
+                />
+              </label>
+
+              {/* 战斗模式设置 */}
+              <div className="p-3 bg-zinc-900 rounded-lg border border-zinc-800">
+                <label className="block text-xs font-bold text-zinc-200 mb-1">⚔️ 对战模式 (Battle Mode)</label>
+                <select
+                  value={settings.battleMode}
+                  onChange={e => setSettings({ ...settings, battleMode: e.target.value })}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-emerald-500/50"
+                >
+                  <option value="近战">近战 (近身格斗模式)</option>
+                  <option value="远程">远程 (远程狙击模式)</option>
+                  <option value="近远交替">近远交替 (根据存活数量交替进行)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* 大模型 API Key 设置 */}
+            <div className="space-y-4 bg-zinc-950 p-4 rounded-xl border border-zinc-800">
+              <h3 className="text-sm font-bold text-amber-400 flex items-center gap-2">
+                <Key className="w-4 h-4" />
+                大模型服务设置 (SiliconFlow API)
+              </h3>
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 mb-1">SiliconFlow API Key</label>
+                <input
+                  type="password"
+                  placeholder="sk-..."
+                  value={settings.apiKey}
+                  onChange={e => setSettings({ ...settings, apiKey: e.target.value })}
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 text-xs text-zinc-200 font-mono focus:outline-none focus:border-amber-500/50"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="submit"
+                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg transition"
+              >
+                <Save className="w-4 h-4" />
+                保存所有配置并生效
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* 5. 1-on-1 单人对话终端 */}
+        {activeTab !== 'overview' && activeTab !== 'world' && activeTab !== 'control' && activeTab !== 'settings' && activeRobot && (
           <div className="flex flex-col h-full bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
-            {/* 极客 Header */}
             <div className="flex items-center justify-between pb-3 border-b border-zinc-800 mb-3">
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-full bg-emerald-500" />
-                <h2 className="font-bold text-sm text-zinc-100">{activeRobot.name} 的私聊终端</h2>
-                <span className="text-xs text-zinc-400">({activeRobot.personality})</span>
+                <h2 className="font-bold text-sm text-zinc-100">
+                  {settings.hideNameAndPersonality ? `机器人 #${activeRobot.id}` : activeRobot.name} 的私聊终端
+                </h2>
+                {!settings.hideNameAndPersonality && (
+                  <span className="text-xs text-zinc-400">({activeRobot.personality})</span>
+                )}
               </div>
 
               <div className="flex items-center gap-2">
@@ -398,11 +672,9 @@ export const SocialHubView: React.FC = () => {
               </div>
             </div>
 
-            {/* 对话消息区 */}
             <div className="flex-1 overflow-y-auto space-y-3 pr-2">
               {(privateChats[activeRobot.id] || []).map((msg, i) => (
                 <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                  {/* 思维链 Thought 展开框 */}
                   {msg.thought && (
                     <div className="max-w-[80%] mb-1 p-2 bg-zinc-950 border border-amber-800/40 rounded-lg text-[11px] text-amber-400 font-mono italic">
                       💭 [思维链]: {msg.thought}
@@ -416,27 +688,25 @@ export const SocialHubView: React.FC = () => {
                         : 'bg-zinc-950 text-zinc-200 rounded-bl-none border border-zinc-800'
                     }`}
                   >
-                    {msg.content}
+                    {msg.content.replace(/🤖\s*\[AI生成\]/g, '')}
                   </div>
                 </div>
               ))}
 
-              {/* AI 思考中浮层 */}
               {activeRobot.isThinking && (
                 <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-950/60 p-2.5 rounded-xl border border-amber-800/50 w-fit font-mono">
                   <Cpu className="w-3.5 h-3.5 animate-spin" />
-                  <span>{activeRobot.name} 正在思考回应...</span>
+                  <span>{settings.hideNameAndPersonality ? '机器人' : activeRobot.name} 正在思考回应...</span>
                 </div>
               )}
 
               <div ref={chatEndRef} />
             </div>
 
-            {/* 发送消息栏 */}
             <form onSubmit={e => handleSendPrivate(activeRobot.id, e)} className="mt-3 flex items-center gap-2 pt-3 border-t border-zinc-800">
               <input
                 type="text"
-                placeholder={`与 ${activeRobot.name} 单独对话...`}
+                placeholder={`与 ${settings.hideNameAndPersonality ? '机器人' : activeRobot.name} 单独对话...`}
                 value={privateInput}
                 onChange={e => setPrivateInput(e.target.value)}
                 className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50"

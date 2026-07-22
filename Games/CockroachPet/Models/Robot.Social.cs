@@ -264,7 +264,7 @@ public partial class Robot
             if (!string.IsNullOrWhiteSpace(fightReply))
             {
                 SetBark(fightReply, 140);
-                TerminalManagerForm.Instance?.BroadcastToWorld(Name, $"🤖 [AI生成] {fightReply}", System.Drawing.Color.OrangeRed);
+                TerminalManagerForm.Instance?.BroadcastToWorld(Name, fightReply, System.Drawing.Color.OrangeRed);
                 LogSocial(Name, fightReply, broadcast: false);
 
                 if (Rand.Next(100) < 70)
@@ -280,7 +280,7 @@ public partial class Robot
                             if (!string.IsNullOrWhiteSpace(counterReply))
                             {
                                 target.SetBark(counterReply, 140);
-                                TerminalManagerForm.Instance?.BroadcastToWorld(target.Name, $"🤖 [AI生成] {counterReply}", System.Drawing.Color.Crimson);
+                                TerminalManagerForm.Instance?.BroadcastToWorld(target.Name, counterReply, System.Drawing.Color.Crimson);
                                 target.LogSocial(target.Name, counterReply, broadcast: false);
                             }
                         }

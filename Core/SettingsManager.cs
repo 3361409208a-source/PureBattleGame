@@ -9,6 +9,9 @@ public class AppSettings
     public double DefaultOpacity { get; set; } = 0.95;
     public string HomeUrl { get; set; } = "https://www.xiaoheiv.top";
     public bool AutoHideInTaskbar { get; set; } = true;
+    public bool HideNameAndPersonality { get; set; } = false;
+    public bool CurseModeByDefault { get; set; } = true;
+    public string BattleMode { get; set; } = "近远交替";
 }
 
 public static class SettingsManager

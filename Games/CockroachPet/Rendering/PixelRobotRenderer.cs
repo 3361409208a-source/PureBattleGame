@@ -748,6 +748,7 @@ public static class PixelRobotRenderer
 
     private static void DrawName(Graphics g, Robot robot, float rx, float ry, float alpha = 1.0f)
     {
+        if (PureBattleGame.Core.SettingsManager.Current.HideNameAndPersonality) return;
         if (string.IsNullOrEmpty(robot.Name)) return;
 
         using var font = new Font("Consolas", 8, FontStyle.Bold);

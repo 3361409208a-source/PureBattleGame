@@ -27,10 +27,10 @@ public class TerminalManagerForm : WebUIHostForm
         }
     }
 
-    private TerminalManagerForm() : base("social-hub", "💬 机器人社交中心 | Robot Social Hub")
+    private TerminalManagerForm() : base("social-hub", "💬 机器人社交中心 & 控制台 | Robot Social Hub")
     {
-        this.Size = new Size(1100, 720);
-        this.MinimumSize = new Size(800, 600);
+        this.Size = new Size(1150, 750);
+        this.MinimumSize = new Size(850, 620);
 
         _pushTimer = new System.Windows.Forms.Timer
         {
@@ -148,6 +148,75 @@ public class TerminalManagerForm : WebUIHostForm
             }
             return true;
         });
+
+        // 9. 获取系统设置
+        bridge.RegisterSyncHandler("getSettings", payload => new
+        {
+            opacity = SettingsManager.Current.DefaultOpacity,
+            hideNameAndPersonality = SettingsManager.Current.HideNameAndPersonality,
+            curseModeByDefault = SettingsManager.Current.CurseModeByDefault,
+            battleMode = SettingsManager.Current.BattleMode,
+            apiKey = PersistenceManager.GetApiKey(),
+            homeUrl = SettingsManager.Current.HomeUrl
+        });
+
+        // 10. 保存系统设置
+        bridge.RegisterSyncHandler("saveSettings", payload =>
+        {
+            if (payload.TryGetProperty("hideNameAndPersonality", out var hideProp))
+                SettingsManager.Current.HideNameAndPersonality = hideProp.GetBoolean();
+            if (payload.TryGetProperty("curseModeByDefault", out var curseProp))
+                SettingsManager.Current.CurseModeByDefault = curseProp.GetBoolean();
+            if (payload.TryGetProperty("battleMode", out var battleProp))
+                SettingsManager.Current.BattleMode = battleProp.GetString() ?? "近远交替";
+            if (payload.TryGetProperty("apiKey", out var keyProp))
+            {
+                var appSet = PersistenceManager.LoadAppSettings();
+                appSet.ApiKey = keyProp.GetString() ?? "";
+                PersistenceManager.SaveAppSettings(appSet);
+            }
+
+            SettingsManager.Save();
+            return true;
+        });
+
+        // 11. 控制面板快捷操作
+        bridge.RegisterSyncHandler("spawnRobot", payload => {
+            this.Invoke(() => PetForm.Instance?.SpawnRobotWithName());
+            return true;
+        });
+        bridge.RegisterSyncHandler("quickSpawnRobot", payload => {
+            string[] names = { "小八", "阿呆", "像素仔", "蓝灵", "红豆", "大眼", "触手大王", "碳基生物" };
+            string name = names[new Random().Next(names.Length)];
+            this.Invoke(() => PetForm.Instance?.SpawnRobot(name, -1, -1));
+            return true;
+        });
+        bridge.RegisterSyncHandler("aiSpawnRobot", payload => {
+            this.Invoke(() => PetForm.Instance?.ShowAiRobotGenerator());
+            return true;
+        });
+        bridge.RegisterSyncHandler("pauseAllRobots", payload => {
+            var robots = PetForm.Instance?.GetRobots() ?? new List<Robot>();
+            foreach (var r in robots) r.IsMoving = false;
+            return true;
+        });
+        bridge.RegisterSyncHandler("resumeAllRobots", payload => {
+            var robots = PetForm.Instance?.GetRobots() ?? new List<Robot>();
+            foreach (var r in robots) r.IsMoving = true;
+            return true;
+        });
+        bridge.RegisterSyncHandler("clearAllRobots", payload => {
+            this.Invoke(() => PetForm.Instance?.ClearAllRobots());
+            return true;
+        });
+        bridge.RegisterSyncHandler("toggleRobotVisibility", payload => {
+            if (payload.TryGetProperty("robotId", out var idProp)) {
+                string robotId = idProp.GetString() ?? "";
+                var target = PetForm.Instance?.GetRobots().FirstOrDefault(r => r.Name == robotId);
+                if (target != null) target.IsVisible = !target.IsVisible;
+            }
+            return true;
+        });
     }
 
     private void EnsureSubscribedToRobots()
@@ -196,7 +265,13 @@ public class TerminalManagerForm : WebUIHostForm
             isAiSpeaking = r.IsAiSpeaking,
             curseMode = r.CurseMode,
             colorHex = ColorToHex(r.PrimaryColor),
-            chatText = r.ChatText
+            chatText = r.ChatText,
+            isMoving = r.IsMoving,
+            isVisible = r.IsVisible,
+            size = r.Size,
+            speedMultiplier = r.SpeedMultiplier,
+            posX = (int)r.X,
+            posY = (int)r.Y
         }).ToList();
     }
 
@@ -204,10 +279,18 @@ public class TerminalManagerForm : WebUIHostForm
     {
         long tokens = AiService.TotalTokensUsed;
         double cost = tokens * 0.000002;
+        var robots = PetForm.Instance?.GetRobots() ?? new List<Robot>();
+        int total = robots.Count;
+        int moving = robots.Count(r => r.IsMoving && !r.IsDead);
+        int paused = robots.Count(r => !r.IsMoving && !r.IsDead);
+
         return new
         {
-            onlineCount = PetForm.Instance?.GetRobots().Count(r => !r.IsDead && r.IsVisible && r.IsActive) ?? 0,
-            battleMode = "近远交替",
+            onlineCount = robots.Count(r => !r.IsDead && r.IsVisible && r.IsActive),
+            totalRobots = total,
+            movingRobots = moving,
+            pausedRobots = paused,
+            battleMode = SettingsManager.Current.BattleMode,
             totalTokens = tokens,
             totalCostYuan = cost
         };

@@ -108,6 +108,7 @@ public partial class Robot
         // 初始化自愈/进化逻辑
         _selfImproving = new SelfImprovingManager(Id, Name);
         OriginalSize = Size;
+        CurseMode = Core.SettingsManager.Current.CurseModeByDefault;
     }
 
     public void Update(int screenWidth, int screenHeight)
