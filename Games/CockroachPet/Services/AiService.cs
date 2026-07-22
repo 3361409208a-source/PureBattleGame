@@ -277,9 +277,14 @@ public class AiService
             UpdateTokenUsage(doc);
             var result = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString();
             
-            return result?.Trim(' ', '"', '\n', '\r', '。', '！') ?? "哼！";
+            string reply = result?.Trim(' ', '"', '\n', '\r', '。', '！') ?? "";
+            if (!string.IsNullOrEmpty(reply) && !reply.Contains(targetName))
+            {
+                reply = $"{targetName}，{reply}";
+            }
+            return !string.IsNullOrEmpty(reply) ? reply : $"{targetName}，受死吧！";
         }
-        catch { return "别挡道！"; }
+        catch { return $"{targetName}，别挡老子的道！"; }
     }
 
     public static async Task<string> GetSocialResponseAsync(string robotName, string personality, string incomeMessage, List<(string sender, string content)> history, string targetName, string targetPersonality)

@@ -386,41 +386,7 @@ public static class PixelRobotRenderer
 
     private static void DrawChatBubble(Graphics g, Robot robot, float rx, float ry)
     {
-        if (robot.ChatTimer <= 0 || string.IsNullOrEmpty(robot.ChatText)) return;
-
-        using var font = new Font("Microsoft YaHei", 9, FontStyle.Bold);
-        float maxWidth = 150; // 气泡最大宽度
-        
-        // 测量带换行限制的尺寸
-        var rawSize = g.MeasureString(robot.ChatText, font, (int)maxWidth);
-        
-        float bx = rx + robot.Size / 2;
-        float by = ry - rawSize.Height - 30; // 根据文字高度动态调整位置
-        
-        RectangleF bubbleRect = new RectangleF(bx - rawSize.Width / 2 - 10, by - rawSize.Height / 2 - 5, rawSize.Width + 20, rawSize.Height + 10);
-        
-        // 绘制气泡背景
-        using var shadowBrush = new SolidBrush(Color.FromArgb(80, 0, 0, 0));
-        g.FillRoundedRectangle(shadowBrush, bubbleRect.X + 2, bubbleRect.Y + 2, bubbleRect.Width, bubbleRect.Height, 8);
-        
-        using var bgBrush = new SolidBrush(Color.White);
-        g.FillRoundedRectangle(bgBrush, bubbleRect.X, bubbleRect.Y, bubbleRect.Width, bubbleRect.Height, 8);
-        
-        using var borderPen = new Pen(Color.FromArgb(200, 200, 200), 1);
-        g.DrawRoundedRectangle(borderPen, bubbleRect.X, bubbleRect.Y, bubbleRect.Width, bubbleRect.Height, 8);
-        
-        using var textBrush = new SolidBrush(Color.FromArgb(50, 50, 50));
-        // 使用 StringFormat 处理自动换行
-        var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-        g.DrawString(robot.ChatText, font, textBrush, bubbleRect, format);
-        
-        // 小尾巴
-        PointF[] tail = {
-            new PointF(bx - 5, bubbleRect.Bottom),
-            new PointF(bx + 5, bubbleRect.Bottom),
-            new PointF(bx, bubbleRect.Bottom + 6)
-        };
-        g.FillPolygon(Brushes.White, tail);
+        DrawChatBubble(g, robot, rx, ry, 1.0f);
     }
 
     private static void DrawThinkingIndicator(Graphics g, Robot robot, float rx, float ry)
@@ -690,31 +656,27 @@ public static class PixelRobotRenderer
         string text = !string.IsNullOrEmpty(robot.ChatText) ? robot.ChatText : (robot.ChatMessage ?? "");
         if (robot.ChatTimer <= 0 || string.IsNullOrEmpty(text)) return;
 
-        using var font = new Font("Microsoft YaHei", 9.5f, robot.CurseMode ? FontStyle.Bold : FontStyle.Regular);
-        var size = g.MeasureString(text, font);
-
+        using var font = new Font("Microsoft YaHei UI", 10.0f, FontStyle.Bold);
+        
         float bx = rx + robot.Size / 2;
-        float by = ry - 50;
+        float by = ry - 35;
 
-        // 气泡背景
-        RectangleF bubbleRect = new RectangleF(bx - size.Width / 2 - 8, by - size.Height / 2 - 4, size.Width + 16, size.Height + 8);
+        using var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+        
+        // 四向外描边，消除黑框矩形，保证文字在任何背景上悬浮且清澈醒目
+        Color strokeColor = robot.CurseMode ? Color.FromArgb((int)(240 * alpha), 80, 0, 0) : Color.FromArgb((int)(240 * alpha), 0, 0, 0);
+        using var strokeBrush = new SolidBrush(strokeColor);
 
-        using var shadowBrush = new SolidBrush(Color.FromArgb((int)(100 * alpha), 0, 0, 0));
-        g.FillRectangle(shadowBrush, bubbleRect.X + 3, bubbleRect.Y + 3, bubbleRect.Width, bubbleRect.Height);
+        float off = 1.5f;
+        g.DrawString(text, font, strokeBrush, bx + off, by + off, format);
+        g.DrawString(text, font, strokeBrush, bx - off, by + off, format);
+        g.DrawString(text, font, strokeBrush, bx + off, by - off, format);
+        g.DrawString(text, font, strokeBrush, bx - off, by - off, format);
 
-        Color bgColor = robot.CurseMode ? Color.FromArgb((int)(245 * alpha), 255, 235, 235) : Color.FromArgb((int)(230 * alpha), 240, 240, 240);
-        using var bubbleBrush = new SolidBrush(bgColor);
-        g.FillRectangle(bubbleBrush, bubbleRect);
-
-        if (robot.CurseMode)
-        {
-            using var borderPen = new Pen(Color.FromArgb((int)(220 * alpha), Color.Crimson), 1.5f);
-            g.DrawRectangle(borderPen, bubbleRect.X, bubbleRect.Y, bubbleRect.Width, bubbleRect.Height);
-        }
-
-        Color textColor = robot.CurseMode ? Color.DarkRed : Color.Black;
-        using var textBrush = new SolidBrush(Color.FromArgb((int)(255 * alpha), textColor));
-        g.DrawString(text, font, textBrush, bx, by, new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center });
+        // 主字体颜色：骂人模式下亮红，普通模式亮白/浅金
+        Color textColor = robot.CurseMode ? Color.FromArgb((int)(255 * alpha), 255, 65, 65) : Color.FromArgb((int)(255 * alpha), 255, 255, 255);
+        using var textBrush = new SolidBrush(textColor);
+        g.DrawString(text, font, textBrush, bx, by, format);
     }
 
     private static void DrawEmojiBubble(Graphics g, Robot robot, float rx, float ry, float alpha = 1.0f)
