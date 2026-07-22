@@ -53,7 +53,7 @@ public class TerminalManagerForm : WebUIHostForm
         // 3. 获取世界广播历史
         bridge.RegisterSyncHandler("getWorldHistory", payload => _globalWorldHistory);
 
-        // 4. 全局广播
+        // 4. 全局广播 (发送到世界频道并触发活跃机器人公开回应)
         bridge.RegisterSyncHandler("sendWorldBroadcast", payload =>
         {
             if (payload.TryGetProperty("message", out var msgProp))
@@ -62,14 +62,28 @@ public class TerminalManagerForm : WebUIHostForm
                 if (!string.IsNullOrWhiteSpace(msg))
                 {
                     BroadcastToWorld("管理员", msg, Color.Yellow);
-                    var robots = PetForm.Instance?.GetRobots() ?? new List<Robot>();
-                    foreach (var r in robots)
+
+                    var activeRobots = (PetForm.Instance?.GetRobots() ?? new List<Robot>())
+                        .Where(r => r.IsActive && !r.IsDead).ToList();
+
+                    if (activeRobots.Count > 0)
                     {
-                        if (r.IsActive && !r.IsDead)
+                        var responder = activeRobots[new Random().Next(activeRobots.Count)];
+                        System.Threading.Tasks.Task.Run(async () =>
                         {
-                            r.SocialHistory.Add(new SocialMessage("管理员", msg));
-                            _ = r.SendUserMessage(msg);
-                        }
+                            string langMode = SettingsManager.Current.LanguageInteractionMode;
+                            var history = _globalWorldHistory.Select(m => (m.sender, m.content)).ToList();
+                            string reply = await AiService.GetFightResponseAsync(
+                                responder.Name, responder.GetPersonalityName(), msg,
+                                history, "管理员", langMode
+                            );
+
+                            if (!string.IsNullOrWhiteSpace(reply))
+                            {
+                                responder.SetBark(reply, 120);
+                                BroadcastToWorld(responder.Name, reply, responder.PrimaryColor);
+                            }
+                        });
                     }
                 }
             }

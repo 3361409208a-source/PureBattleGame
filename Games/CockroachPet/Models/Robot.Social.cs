@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
+using System.Threading.Tasks;
+using PureBattleGame.Core;
 
 namespace PureBattleGame.Games.CockroachPet;
 
@@ -34,7 +36,7 @@ public partial class Robot
     public List<SocialMessage> SocialHistory { get; set; } = new();
     public bool IsAiSpeaking { get; set; } = false;
     public bool LogSocialInteractions { get; set; } = true;
-    public bool CurseMode { get; set; } = false; // 骂人模式开关
+    public bool CurseMode { get; set; } = false; // 吐槽/骂人模式开关
     public Robot? MeetingTarget { get; set; }
     public int MeetingTimer { get; set; } = 0;
     public int SocialCooldown { get; set; } = 0;
@@ -59,6 +61,76 @@ public partial class Robot
         float dy = other.Y - Y;
         float dist = (float)Math.Sqrt(dx * dx + dy * dy);
 
+        string actionMode = SettingsManager.Current.ActionInteractionMode;
+        string langMode = SettingsManager.Current.LanguageInteractionMode;
+
+        if (actionMode == "和平相处")
+        {
+            // 和平相处模式：不决斗、不轰炸、不推搡
+            if (dist < 120)
+            {
+                SocialCooldown = 120;
+                other.SocialCooldown = 120;
+                SpecialState = "HAPPY";
+                other.SpecialState = "HEART_EYES";
+                SpecialStateTimer = 60;
+                other.SpecialStateTimer = 60;
+
+                string[] peacefulBarks = langMode switch
+                {
+                    "科幻极客" => new[] { $"{other.Name}，检测到协议对齐！🤖", $"{other.Name}，量子通信链路已建立！✨", $"{other.Name}，同频共振中...⚡" },
+                    "友好哲理" => new[] { $"{other.Name}，很高兴遇见你！🌸", $"{other.Name}，漫漫星河，幸甚有你。✨", $"{other.Name}，今天也是充满希望的一天~" },
+                    "幽默搞笑" => new[] { $"{other.Name}，好巧啊，你也在这遛弯？", $"{other.Name}，吃了吗？没吃吃我一脚！开玩笑的~😜" },
+                    _ => new[] { $"{other.Name}，哈啰！小伙伴！", $"{other.Name}，一起在桌面上逛逛吧~" }
+                };
+
+                SetBark(peacefulBarks[Rand.Next(peacefulBarks.Length)], 80);
+                if (EnableAiThinking) _ = TriggerAiFightAsync(other);
+            }
+            return;
+        }
+
+        if (actionMode == "近身格斗")
+        {
+            if (dist < 90)
+            {
+                StartDuel(other);
+                SocialCooldown = 100;
+                other.SocialCooldown = 100;
+                SetBark($"对决开始！{other.Name}！", 80);
+                if (EnableAiThinking) _ = TriggerAiFightAsync(other);
+            }
+            else if (dist < 300 && ChaseTimer <= 0)
+            {
+                ChasingTarget = other;
+                ChaseTimer = 250;
+            }
+            return;
+        }
+
+        if (actionMode == "远程狙击")
+        {
+            if (dist < 80)
+            {
+                PerformPush(other);
+                SocialCooldown = 45;
+                other.SocialCooldown = 45;
+                if (ShootCooldown == 0) LaunchRemoteAttack(other);
+                if (EnableAiThinking) _ = TriggerAiFightAsync(other);
+            }
+            else if (dist < 600 && ShootCooldown == 0)
+            {
+                if (Rand.Next(100) < 30)
+                {
+                    LaunchRemoteAttack(other);
+                    SocialCooldown = 60;
+                    if (EnableAiThinking) _ = TriggerAiFightAsync(other);
+                }
+            }
+            return;
+        }
+
+        // 近远交替（默认）
         int aliveCount = PetForm.Instance?.GetRobots().Count(r => !r.IsDead && r.IsVisible && r.IsActive) ?? 0;
 
         if (aliveCount % 2 != 0)
@@ -70,8 +142,7 @@ public partial class Robot
                 SocialCooldown = 45;
                 other.SocialCooldown = 45;
                 if (ShootCooldown == 0) LaunchRemoteAttack(other);
-                SetBark("人太多了，离我远点射击！", 60);
-                if (CurseMode || EnableAiThinking) _ = TriggerAiFightAsync(other);
+                if (EnableAiThinking) _ = TriggerAiFightAsync(other);
             }
             else if (dist < 600 && ShootCooldown == 0)
             {
@@ -80,7 +151,7 @@ public partial class Robot
                 {
                     LaunchRemoteAttack(other);
                     SocialCooldown = 60;
-                    if (CurseMode || EnableAiThinking) _ = TriggerAiFightAsync(other);
+                    if (EnableAiThinking) _ = TriggerAiFightAsync(other);
                 }
             }
         }
@@ -93,7 +164,7 @@ public partial class Robot
                 SocialCooldown = 100;
                 other.SocialCooldown = 100;
                 SetBark(aliveCount == 2 ? "这是最后的清算！💥" : "找到对手了，来格斗吧！", 80);
-                if (CurseMode || EnableAiThinking) _ = TriggerAiFightAsync(other);
+                if (EnableAiThinking) _ = TriggerAiFightAsync(other);
             }
             else
             {
@@ -101,14 +172,13 @@ public partial class Robot
                 {
                     ChasingTarget = other;
                     ChaseTimer = 350;
-                    SetBark($"锁定目标：{other.Name}！", 60);
                 }
 
                 if (dist > 150 && ShootCooldown == 0 && Rand.Next(100) < 15)
                 {
                     LaunchRemoteAttack(other);
                     SocialCooldown = 30;
-                    if (CurseMode || EnableAiThinking) _ = TriggerAiFightAsync(other);
+                    if (EnableAiThinking) _ = TriggerAiFightAsync(other);
                 }
             }
         }
@@ -161,7 +231,6 @@ public partial class Robot
             {
                 string phrase = CustomPhrases[Rand.Next(CustomPhrases.Count)];
                 SetBark(phrase, 120);
-                Console.WriteLine($"[CustomPhrase] {Name} 说: {phrase}");
             }
             _customPhraseTimer = Rand.Next(180, 600);
         }
@@ -175,7 +244,6 @@ public partial class Robot
         ChatHistory.Add(new ChatMessage("user", message));
         if (ChatHistory.Count > 10) ChatHistory.RemoveAt(0);
 
-        // 用户聊天触发开心情绪
         TriggerEmotionEvent(EmotionTrigger.UserChat);
 
         _isThinking = true;
@@ -221,29 +289,10 @@ public partial class Robot
         }
     }
 
-    private void LogSocial(string sender, string content, bool broadcast = true)
-    {
-        string log = $"[SOCIAL] {sender}: {content}";
-        SocialHistory.Add(new SocialMessage(sender, content));
-        if (SocialHistory.Count > 20) SocialHistory.RemoveAt(0);
-
-        if (LogSocialInteractions)
-        {
-            NotifyOutput(log);
-
-            if (broadcast)
-            {
-                Color chatColor = sender == Name ? PrimaryColor : Color.SkyBlue;
-                TerminalManagerForm.Instance.BroadcastToWorld(sender, content, chatColor);
-            }
-        }
-    }
-
     public async Task TriggerAiFightAsync(Robot target)
     {
         if (_isThinking || target == null || !target.IsActive || target.IsDead || IsDead) return;
 
-        // 频率控制：4秒内不频繁重复请求大模型，防止刷屏与过度开销
         if ((DateTime.Now - _lastAiFightTime).TotalSeconds < 4) return;
 
         string apiKey = AiService.GetApiKey();
@@ -255,17 +304,19 @@ public partial class Robot
         {
             var history = SocialHistory.Select(h => (h.sender, h.content)).ToList();
             var lastMsg = history.LastOrDefault();
-            string lastInsult = string.IsNullOrEmpty(lastMsg.content) ? "看你不爽很久了！" : lastMsg.content;
+            string lastInsult = string.IsNullOrEmpty(lastMsg.content) ? "在干嘛呢？" : lastMsg.content;
+
+            string langMode = SettingsManager.Current.LanguageInteractionMode;
 
             string fightReply = await AiService.GetFightResponseAsync(
-                Name, GetPersonalityName(), lastInsult, history, target.Name
+                Name, GetPersonalityName(), lastInsult, history, target.Name, langMode
             );
 
             if (!string.IsNullOrWhiteSpace(fightReply))
             {
                 SetBark(fightReply, 140);
-                TerminalManagerForm.Instance?.BroadcastToWorld(Name, fightReply, System.Drawing.Color.OrangeRed);
-                LogSocial(Name, fightReply, broadcast: false);
+                TerminalManagerForm.Instance?.BroadcastToWorld(Name, fightReply, PrimaryColor);
+                SocialHistory.Add(new SocialMessage(Name, fightReply));
 
                 if (Rand.Next(100) < 70)
                 {
@@ -275,13 +326,13 @@ public partial class Robot
                         if (target.IsActive && !target.IsDead && !IsDead)
                         {
                             string counterReply = await AiService.GetFightResponseAsync(
-                                target.Name, target.GetPersonalityName(), fightReply, history, Name
+                                target.Name, target.GetPersonalityName(), fightReply, history, Name, langMode
                             );
                             if (!string.IsNullOrWhiteSpace(counterReply))
                             {
                                 target.SetBark(counterReply, 140);
-                                TerminalManagerForm.Instance?.BroadcastToWorld(target.Name, counterReply, System.Drawing.Color.Crimson);
-                                target.LogSocial(target.Name, counterReply, broadcast: false);
+                                TerminalManagerForm.Instance?.BroadcastToWorld(target.Name, counterReply, target.PrimaryColor);
+                                target.SocialHistory.Add(new SocialMessage(target.Name, counterReply));
                             }
                         }
                     });

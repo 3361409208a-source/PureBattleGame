@@ -174,6 +174,15 @@ public partial class Robot
 
     private void UpdateChaseAndAttack()
     {
+        if (PureBattleGame.Core.SettingsManager.Current.ActionInteractionMode == "和平相处")
+        {
+            ChaseTimer = 0;
+            ChasingTarget = null;
+            DuelTimer = 0;
+            DuelTarget = null;
+            return;
+        }
+
         // 如果有怪物目标，优先攻击怪物，不互殴
         if (MonsterTarget != null && MonsterTarget.IsActive && !MonsterTarget.IsDead)
             return;

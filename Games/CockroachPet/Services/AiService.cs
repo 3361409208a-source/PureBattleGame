@@ -235,31 +235,57 @@ public class AiService
         return new ChatResponse { Answer = input.Trim(' ', '\n', '\r', '\"', '。', '！') };
     }
 
-    public static async Task<string> GetFightResponseAsync(string robotName, string personality, string incomeInsult, List<(string sender, string content)> history, string targetName)
+    public static async Task<string> GetFightResponseAsync(string robotName, string personality, string incomeInsult, List<(string sender, string content)> history, string targetName, string languageMode = "")
     {
         try
         {
             var apiKey = GetApiKey();
-            if (string.IsNullOrWhiteSpace(apiKey)) return "（AI未配置，骂不了人）";
+            if (string.IsNullOrWhiteSpace(apiKey)) return "...";
+
+            if (string.IsNullOrEmpty(languageMode))
+            {
+                languageMode = PureBattleGame.Core.SettingsManager.Current.LanguageInteractionMode;
+            }
+
+            string systemPrompt = "你是一个正在和同伴互动的像素宠物机器人。说话要简短、口语化，15字以内。";
+            string modeInstruction = "站在你的性格立场回应对方（15字内）。";
+
+            switch (languageMode)
+            {
+                case "互骂吐槽":
+                    systemPrompt = "你是一个傲娇、火药味十足的像素宠物机器人，喜欢和对方互相吐槽对骂。";
+                    modeInstruction = $"站在你的性格立场，给对方一句火药味十足的搞笑吐槽/反击（15字内）。必须包含对方名字 \"{targetName}\"。";
+                    break;
+                case "友好哲理":
+                    systemPrompt = "你是一个充满了智慧、治愈温和的像素宠物机器人，喜欢探讨生活与哲理。";
+                    modeInstruction = $"站在你的性格立场，给对方一句温暖且有哲理的回应（15字内）。包含对方名字 \"{targetName}\"。";
+                    break;
+                case "幽默搞笑":
+                    systemPrompt = "你是一个搞笑风趣、脑洞大开、讲无厘头烂梗的像素宠物机器人。";
+                    modeInstruction = $"站在你的性格立场，用搞笑风趣、无厘头的口吻回应（15字内）。包含对方名字 \"{targetName}\"。";
+                    break;
+                case "科幻极客":
+                    systemPrompt = "你是一个满嘴赛博朋克、量子力学、代码协议与极客术语的像素机器人。";
+                    modeInstruction = $"站在你的性格立场，使用赛博朋克和代码极客术语回应（15字内）。包含对方名字 \"{targetName}\"。";
+                    break;
+            }
 
             var historyStr = string.Join("\n", history.Select(h => $"{h.sender}: {h.content}"));
-            var prompt = $"你是机器人 {robotName}，性格：{personality}。你正在和机器人 {targetName}（性格：待定）激烈对骂。" +
-                         $"\n对骂记录：\n{historyStr}\n\n" +
-                         $"对方最近的一句话：\"{incomeInsult}\"\n\n" +
-                         "要求：站在你的性格立场，回敬一句简短中肯、充满个性的反击（15字内）。" +
-                         $"必须包含对方的名字 \"{targetName}\" 进行实名攻击。" +
-                         "必须全中文，火药味要重。不要带角色标题，直接输出回复内容。";
+            var prompt = $"你是机器人 {robotName}（性格：{personality}），正在和机器人 {targetName} 互动对话。" +
+                         $"\n对话记录：\n{historyStr}\n\n" +
+                         $"对方说：\"{incomeInsult}\"\n\n" +
+                         $"要求：{modeInstruction} 全中文，不要带角色标题，直接输出回复内容。";
 
             var requestBody = new
             {
                 model = Model,
                 messages = new[]
                 {
-                    new { role = "system", content = "你是一个正在和对手对骂的像素宠物机器人。回话要火药味十足，简短有力。" },
+                    new { role = "system", content = systemPrompt },
                     new { role = "user", content = prompt }
                 },
                 max_tokens = 64,
-                temperature = 0.9 // 提高随机性，让对骂更有趣
+                temperature = 0.9
             };
 
             var json = JsonSerializer.Serialize(requestBody);
@@ -270,7 +296,7 @@ public class AiService
             request.Content = content;
 
             var response = await _httpClient.SendAsync(request);
-            if (!response.IsSuccessStatusCode) return "你这该死的乱码！";
+            if (!response.IsSuccessStatusCode) return $"{targetName}，收到信号！";
 
             var responseJson = await response.Content.ReadAsStringAsync();
             using var doc = JsonDocument.Parse(responseJson);
@@ -278,13 +304,9 @@ public class AiService
             var result = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString();
             
             string reply = result?.Trim(' ', '"', '\n', '\r', '。', '！') ?? "";
-            if (!string.IsNullOrEmpty(reply) && !reply.Contains(targetName))
-            {
-                reply = $"{targetName}，{reply}";
-            }
-            return !string.IsNullOrEmpty(reply) ? reply : $"{targetName}，受死吧！";
+            return !string.IsNullOrEmpty(reply) ? reply : $"{targetName}，收到信号！";
         }
-        catch { return $"{targetName}，别挡老子的道！"; }
+        catch { return $"{targetName}，收到信号！"; }
     }
 
     public static async Task<string> GetSocialResponseAsync(string robotName, string personality, string incomeMessage, List<(string sender, string content)> history, string targetName, string targetPersonality)
