@@ -143,6 +143,11 @@ public static class PixelRobotRenderer
         // 恢复原始合成模式
         g.CompositingMode = oldCompositingMode;
 
+        // 计算当前机器人的技能特效缩放因子 (结合角色尺寸与全局设置)
+        float rRatio = robot.Size / 64.0f;
+        float gRatio = PetForm.Instance != null ? PetForm.Instance.GlobalSkillScale / 100.0f : 1.0f;
+        float skillScale = Math.Max(0.12f, rRatio * gRatio);
+
         // 远程攻击效果 - 多样化增强 (不受翻转影响)
         if (robot.IsFiringLaser)
         {
@@ -152,16 +157,16 @@ public static class PixelRobotRenderer
             switch (robot.CurrentAttackType)
             {
                 case "SHOCK": // 电能震撼 - 单根强力闪电
-                    using (var shockPen = new Pen(Color.Cyan, 4))
-                    using (var whitePen = new Pen(Color.White, 1))
+                    using (var shockPen = new Pen(Color.Cyan, Math.Max(1f, 4 * skillScale)))
+                    using (var whitePen = new Pen(Color.White, Math.Max(1f, 1 * skillScale)))
                     {
-                        // 减少线条数量，强调主干
                         DrawElectricArc(g, r, worldCenterX, worldCenterY, robot.LaserTargetX, robot.LaserTargetY, shockPen, whitePen);
-                        g.DrawEllipse(new Pen(Color.White, 2), robot.LaserTargetX - 15, robot.LaserTargetY - 15, 30, 30);
+                        float circleR = Math.Max(3f, 15 * skillScale);
+                        g.DrawEllipse(new Pen(Color.White, Math.Max(1f, 2 * skillScale)), robot.LaserTargetX - circleR, robot.LaserTargetY - circleR, circleR * 2, circleR * 2);
                     }
                     break;
 
-                case "INK_BLAST": // 墨汁弹 - 保持现状，属于块状攻击
+                case "INK_BLAST": // 墨汁弹
                     using (var inkBrush = new SolidBrush(Color.FromArgb(230, 10, 10, 10)))
                     {
                         for (int i = 0; i < 6; i++)
@@ -169,46 +174,48 @@ public static class PixelRobotRenderer
                             float t = (float)(r.NextDouble()); 
                             float px = worldCenterX + (robot.LaserTargetX - worldCenterX) * t;
                             float py = worldCenterY + (robot.LaserTargetY - worldCenterY) * t;
-                            float jitter = (1 - t) * 15;
-                            float pSize = 8 + (1-t) * 12;
-                            g.FillEllipse(inkBrush, px - pSize/2 + r.Next(-(int)jitter, (int)jitter), 
-                                                 py - pSize/2 + r.Next(-(int)jitter, (int)jitter), pSize, pSize);
+                            float jitter = (1 - t) * 15 * skillScale;
+                            float pSize = Math.Max(2f, (8 + (1-t) * 12) * skillScale);
+                            g.FillEllipse(inkBrush, px - pSize/2 + r.Next(-(int)jitter, (int)jitter + 1), 
+                                                 py - pSize/2 + r.Next(-(int)jitter, (int)jitter + 1), pSize, pSize);
                         }
                         for (int i = 0; i < 10; i++)
                         {
                             float ang = (float)(r.NextDouble() * Math.PI * 2);
-                            float d = (float)(r.NextDouble() * 30);
-                            g.FillEllipse(inkBrush, robot.LaserTargetX + (float)Math.Cos(ang)*d - 4, 
-                                                 robot.LaserTargetY + (float)Math.Sin(ang)*d - 4, 8, 8);
+                            float d = (float)(r.NextDouble() * 30 * skillScale);
+                            float dotR = Math.Max(1.5f, 8 * skillScale);
+                            g.FillEllipse(inkBrush, robot.LaserTargetX + (float)Math.Cos(ang)*d - dotR/2, 
+                                                 robot.LaserTargetY + (float)Math.Sin(ang)*d - dotR/2, dotR, dotR);
                         }
                     }
                     break;
 
-                case "BURST": // 像素爆发 - 减少线条数，增加厚度
+                case "BURST": // 像素爆发
                     using (var burstBrush = new SolidBrush(Color.FromArgb(220, Color.OrangeRed)))
                     {
-                        for (int i = 0; i < 6; i++) // 减少到 6 根
+                        for (int i = 0; i < 6; i++)
                         {
                             float angleOff = (float)(r.NextDouble() - 0.5) * 0.5f;
                             float baseAngle = (float)Math.Atan2(robot.LaserTargetY - worldCenterY, robot.LaserTargetX - worldCenterX);
                             float pDist = (float)Math.Sqrt(Math.Pow(robot.LaserTargetX - worldCenterX, 2) + Math.Pow(robot.LaserTargetY - worldCenterY, 2));
                             float tx = worldCenterX + (float)Math.Cos(baseAngle + angleOff) * pDist;
                             float ty = worldCenterY + (float)Math.Sin(baseAngle + angleOff) * pDist;
-                            DrawPixelLine(g, burstBrush, worldCenterX, worldCenterY, tx, ty, 6); // 变粗
+                            DrawPixelLine(g, burstBrush, worldCenterX, worldCenterY, tx, ty, Math.Max(1, (int)(6 * skillScale)));
                         }
                     }
                     break;
 
-                default: // LASER - 这一块改为单线条平滑激光，解决“线条太多”的问题
-                    using (var glowPen = new Pen(Color.FromArgb(150, robot.PrimaryColor), 12)) 
-                    using (var corePen = new Pen(Color.White, 4))
+                default: // LASER - 单线条平滑激光
+                    using (var glowPen = new Pen(Color.FromArgb(150, robot.PrimaryColor), Math.Max(1.5f, 12 * skillScale))) 
+                    using (var corePen = new Pen(Color.White, Math.Max(1f, 4 * skillScale)))
                     {
-                        // 使用 GDI+ 自带的 DrawLine 以获得平滑感，减少重复线
                         g.DrawLine(glowPen, worldCenterX, worldCenterY, robot.LaserTargetX, robot.LaserTargetY);
                         g.DrawLine(corePen, worldCenterX, worldCenterY, robot.LaserTargetX, robot.LaserTargetY);
                         
-                        g.FillEllipse(Brushes.White, worldCenterX - 10, worldCenterY - 10, 20, 20);
-                        g.FillRectangle(new SolidBrush(Color.FromArgb(200, robot.PrimaryColor)), robot.LaserTargetX - 12, robot.LaserTargetY - 12, 24, 24);
+                        float muzzleR = Math.Max(2f, 10 * skillScale);
+                        g.FillEllipse(Brushes.White, worldCenterX - muzzleR, worldCenterY - muzzleR, muzzleR * 2, muzzleR * 2);
+                        float targetBoxR = Math.Max(2f, 12 * skillScale);
+                        g.FillRectangle(new SolidBrush(Color.FromArgb(200, robot.PrimaryColor)), robot.LaserTargetX - targetBoxR, robot.LaserTargetY - targetBoxR, targetBoxR * 2, targetBoxR * 2);
                     }
                     break;
             }
@@ -223,8 +230,8 @@ public static class PixelRobotRenderer
             {
                 // 冲击星
                 PointF[] points = new PointF[10];
-                float radiusOuter = 25 + r.Next(15);
-                float radiusInner = 10;
+                float radiusOuter = Math.Max(4f, (25 + r.Next(15)) * skillScale);
+                float radiusInner = Math.Max(2f, 10 * skillScale);
                 for (int i = 0; i < 10; i++)
                 {
                     float angle = (float)(i * Math.PI * 2 / 10);
@@ -239,11 +246,11 @@ public static class PixelRobotRenderer
         // 5. 物理互动视觉 (触手抓住)
         if (robot.PhysicalAction != "NONE" && robot.PhysicalTarget != null)
         {
-            DrawPhysicalInteraction(g, robot, worldCenterX, worldCenterY);
+            DrawPhysicalInteraction(g, robot, worldCenterX, worldCenterY, alpha, skillScale);
         }
     }
 
-    private static void DrawPhysicalInteraction(Graphics g, Robot robot, float cx, float cy, float alpha = 1.0f)
+    private static void DrawPhysicalInteraction(Graphics g, Robot robot, float cx, float cy, float alpha = 1.0f, float skillScale = 1.0f)
     {
         var target = robot.PhysicalTarget;
         if (target == null) return;
@@ -251,8 +258,8 @@ public static class PixelRobotRenderer
         float tx = target.X + target.Size / 2;
         float ty = target.Y + target.Size / 2;
 
-        using (var armPen = new Pen(Color.FromArgb((int)(255 * alpha), robot.PrimaryColor), 10))
-        using (var glowPen = new Pen(Color.FromArgb((int)(120 * alpha), robot.PrimaryColor), 18))
+        using (var armPen = new Pen(Color.FromArgb((int)(255 * alpha), robot.PrimaryColor), Math.Max(2f, 10 * skillScale)))
+        using (var glowPen = new Pen(Color.FromArgb((int)(120 * alpha), robot.PrimaryColor), Math.Max(3f, 18 * skillScale)))
         using (var suckerBrush = new SolidBrush(Color.FromArgb((int)(220 * alpha), Color.White)))
         {
             armPen.LineJoin = System.Drawing.Drawing2D.LineJoin.Round;
@@ -266,30 +273,32 @@ public static class PixelRobotRenderer
             for (int j = 0; j < 2; j++)
             {
                 float sideAngle = angle + (j == 0 ? -0.5f : 0.5f);
-                float startX = cx + (float)Math.Cos(sideAngle) * 12;
-                float startY = cy + (float)Math.Sin(sideAngle) * 12;
+                float startX = cx + (float)Math.Cos(sideAngle) * 12 * skillScale;
+                float startY = cy + (float)Math.Sin(sideAngle) * 12 * skillScale;
 
                 PointF[] pts = new PointF[4];
                 pts[0] = new PointF(startX, startY);
 
-                float wave = (float)Math.Sin(DateTime.Now.Millisecond * 0.01 + j) * 35;
+                float wave = (float)Math.Sin(DateTime.Now.Millisecond * 0.01 + j) * 35 * skillScale;
                 float midX = cx + (tx - cx) * 0.5f + (float)Math.Cos(angle + Math.PI/2) * wave;
                 float midY = cy + (ty - cy) * 0.5f + (float)Math.Sin(angle + Math.PI/2) * wave;
 
                 pts[1] = new PointF(midX, midY);
-                pts[2] = new PointF(tx + (float)r.Next(-15, 15), ty + (float)r.Next(-15, 15));
+                pts[2] = new PointF(tx + (float)r.Next(-(int)(15 * skillScale), (int)(15 * skillScale) + 1), ty + (float)r.Next(-(int)(15 * skillScale), (int)(15 * skillScale) + 1));
                 pts[3] = new PointF(tx, ty);
 
                 g.DrawCurve(glowPen, pts);
                 g.DrawCurve(armPen, pts);
 
                 // 吸盘
+                float suckerR = Math.Max(1.5f, 5 * skillScale);
                 for (int i = 1; i < pts.Length - 1; i++)
                 {
-                    g.FillEllipse(suckerBrush, pts[i].X - 5, pts[i].Y - 5, 10, 10);
+                    g.FillEllipse(suckerBrush, pts[i].X - suckerR, pts[i].Y - suckerR, suckerR * 2, suckerR * 2);
                 }
 
-                g.FillEllipse(new SolidBrush(Color.FromArgb((int)(255 * alpha), robot.PrimaryColor)), tx-8, ty-8, 16, 16);
+                float headR = Math.Max(2f, 8 * skillScale);
+                g.FillEllipse(new SolidBrush(Color.FromArgb((int)(255 * alpha), robot.PrimaryColor)), tx - headR, ty - headR, headR * 2, headR * 2);
             }
         }
     }
@@ -298,30 +307,32 @@ public static class PixelRobotRenderer
     {
         if (robot.TargetRobot == null) return;
 
+        float rRatio = robot.Size / 64.0f;
+        float gRatio = PetForm.Instance != null ? PetForm.Instance.GlobalSkillScale / 100.0f : 1.0f;
+        float skillScale = Math.Max(0.12f, rRatio * gRatio);
+
         // 限制坐标在有效范围内
         worldCenterX = Math.Clamp(worldCenterX, -10000, 10000);
         worldCenterY = Math.Clamp(worldCenterY, -10000, 10000);
         float targetX = Math.Clamp(robot.LaserTargetX, -10000, 10000);
         float targetY = Math.Clamp(robot.LaserTargetY, -10000, 10000);
 
-        using (var laserPen = new Pen(Color.FromArgb((int)(200 * alpha), 255, 50, 50), 4))
-        using (var corePen = new Pen(Color.FromArgb((int)(255 * alpha), 255, 255, 255), 2))
+        using (var laserPen = new Pen(Color.FromArgb((int)(200 * alpha), 255, 50, 50), Math.Max(1f, 4 * skillScale)))
+        using (var corePen = new Pen(Color.FromArgb((int)(255 * alpha), 255, 255, 255), Math.Max(1f, 2 * skillScale)))
         {
-            // 激光主体
             g.DrawLine(laserPen, worldCenterX, worldCenterY, targetX, targetY);
-            // 激光核心
             g.DrawLine(corePen, worldCenterX, worldCenterY, targetX, targetY);
 
-            // 起点发光效果
+            float glowR = Math.Max(2f, 8 * skillScale);
             using (var glowBrush = new SolidBrush(Color.FromArgb((int)(100 * alpha), 255, 100, 100)))
             {
-                g.FillEllipse(glowBrush, worldCenterX - 8, worldCenterY - 8, 16, 16);
+                g.FillEllipse(glowBrush, worldCenterX - glowR, worldCenterY - glowR, glowR * 2, glowR * 2);
             }
 
-            // 终点击中效果
+            float hitR = Math.Max(1.5f, 6 * skillScale);
             using (var hitBrush = new SolidBrush(Color.FromArgb((int)(150 * alpha), 255, 200, 200)))
             {
-                g.FillEllipse(hitBrush, targetX - 6, targetY - 6, 12, 12);
+                g.FillEllipse(hitBrush, targetX - hitR, targetY - hitR, hitR * 2, hitR * 2);
             }
         }
     }
@@ -330,33 +341,35 @@ public static class PixelRobotRenderer
     {
         if (robot.DuelTarget == null) return;
 
+        float rRatio = robot.Size / 64.0f;
+        float gRatio = PetForm.Instance != null ? PetForm.Instance.GlobalSkillScale / 100.0f : 1.0f;
+        float skillScale = Math.Max(0.12f, rRatio * gRatio);
+
         float targetCenterX = robot.DuelTarget.X + robot.DuelTarget.Size / 2;
         float targetCenterY = robot.DuelTarget.Y + robot.DuelTarget.Size / 2;
 
-        // 绘制对决连线
-        using (var duelPen = new Pen(Color.FromArgb((int)(180 * alpha), 255, 100, 100), 3))
-        using (var sparkPen = new Pen(Color.FromArgb((int)(255 * alpha), 255, 255, 0), 1))
+        using (var duelPen = new Pen(Color.FromArgb((int)(180 * alpha), 255, 100, 100), Math.Max(1f, 3 * skillScale)))
+        using (var sparkPen = new Pen(Color.FromArgb((int)(255 * alpha), 255, 255, 0), Math.Max(1f, 1 * skillScale)))
         {
             duelPen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dot;
             g.DrawLine(duelPen, worldCenterX, worldCenterY, targetCenterX, targetCenterY);
 
-            // 中心碰撞点
             float midX = (worldCenterX + targetCenterX) / 2;
             float midY = (worldCenterY + targetCenterY) / 2;
 
-            // 火花效果
             var r = new Random();
+            float sparkRange = Math.Max(5f, 30 * skillScale);
             for (int i = 0; i < 8; i++)
             {
-                float sx = midX + (float)(r.NextDouble() - 0.5) * 30;
-                float sy = midY + (float)(r.NextDouble() - 0.5) * 30;
+                float sx = midX + (float)(r.NextDouble() - 0.5) * sparkRange;
+                float sy = midY + (float)(r.NextDouble() - 0.5) * sparkRange;
                 g.DrawLine(sparkPen, midX, midY, sx, sy);
             }
 
-            // 碰撞点发光
+            float glowR = Math.Max(2f, 10 * skillScale);
             using (var glowBrush = new SolidBrush(Color.FromArgb((int)(120 * alpha), 255, 200, 100)))
             {
-                g.FillEllipse(glowBrush, midX - 10, midY - 10, 20, 20);
+                g.FillEllipse(glowBrush, midX - glowR, midY - glowR, glowR * 2, glowR * 2);
             }
         }
     }

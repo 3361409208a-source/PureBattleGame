@@ -68,6 +68,7 @@ public partial class PetForm : Form
     public int AiThoughtFrequency { get; set; } = 60;
     public int FightFrequency { get; set; } = 15;
     public bool IsWeaponMaster { get; set; } = false;
+    public int GlobalSkillScale { get; set; } = 100;
     public RobotPersonalityType DefaultPersonality { get; set; } = RobotPersonalityType.Friendly;
 
     private List<Projectile> _projectiles = new List<Projectile>();
@@ -1080,30 +1081,37 @@ public partial class PetForm : Form
             if (p == null || !p.IsActive) continue;
             e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
+            if (p == null || !p.IsActive) continue;
+            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+            // 根据发射者尺寸与全局技能缩放，动态计算技能弹道尺寸
+            float ownerSize = p.Owner != null ? p.Owner.Size : DefaultRobotSize;
+            float pScale = Math.Max(0.12f, (ownerSize / 64.0f) * (GlobalSkillScale / 100.0f));
+
             switch (p.Type)
             {
                 case "CANNON":
-                    // 渐变球体感
-                    using (var cannonBrush = new System.Drawing.Drawing2D.LinearGradientBrush(new RectangleF(p.X - 10, p.Y - 10, 20, 20), Color.FromArgb(60, 60, 60), Color.Black, 45f))
+                    float cannonR = Math.Max(2f, 9 * pScale);
+                    using (var cannonBrush = new System.Drawing.Drawing2D.LinearGradientBrush(new RectangleF(p.X - cannonR, p.Y - cannonR, cannonR * 2, cannonR * 2), Color.FromArgb(60, 60, 60), Color.Black, 45f))
                     {
-                        e.Graphics.FillEllipse(cannonBrush, p.X - 9, p.Y - 9, 18, 18);
+                        e.Graphics.FillEllipse(cannonBrush, p.X - cannonR, p.Y - cannonR, cannonR * 2, cannonR * 2);
                     }
-                    e.Graphics.DrawEllipse(Pens.DimGray, p.X - 9, p.Y - 9, 18, 18);
+                    e.Graphics.DrawEllipse(Pens.DimGray, p.X - cannonR, p.Y - cannonR, cannonR * 2, cannonR * 2);
                     break;
 
                 case "LIGHTNING":
-                    // 绘制三层发光叠波闪电
                     Color[] lightningColors = { Color.White, Color.Yellow, Color.FromArgb(150, Color.Gold) };
-                    float[] lightningWidths = { 1f, 3f, 6f };
+                    float[] lightningWidths = { 1f * pScale, 3f * pScale, 6f * pScale };
+                    float jitter = Math.Max(2f, 12 * pScale);
                     for (int layer = 2; layer >= 0; layer--)
                     {
-                        using var pen = new Pen(lightningColors[layer], lightningWidths[layer]);
+                        using var pen = new Pen(lightningColors[layer], Math.Max(1f, lightningWidths[layer]));
                         float lx = p.X - p.Dx, ly = p.Y - p.Dy;
-                        Random rng = new Random((int)p.X + (int)p.Y + layer); // 固定种子保持帧间稳定感但随位置变
+                        Random rng = new Random((int)p.X + (int)p.Y + layer);
                         for (int k = 0; k < 4; k++)
                         {
-                            float nxtX = lx + p.Dx * 0.4f + rng.Next(-12, 12);
-                            float nxtY = ly + p.Dy * 0.4f + rng.Next(-12, 12);
+                            float nxtX = lx + p.Dx * 0.4f + rng.Next(-(int)jitter, (int)jitter + 1);
+                            float nxtY = ly + p.Dy * 0.4f + rng.Next(-(int)jitter, (int)jitter + 1);
                             e.Graphics.DrawLine(pen, lx, ly, nxtX, nxtY);
                             lx = nxtX; ly = nxtY;
                         }
@@ -1111,57 +1119,62 @@ public partial class PetForm : Form
                     break;
 
                 case "SPIT":
-                    // 粘稠液体感
+                    float spitR = Math.Max(1.5f, 6 * pScale);
                     using (var spitBrush = new SolidBrush(Color.FromArgb(160, Color.Chartreuse)))
                     {
-                        e.Graphics.FillEllipse(spitBrush, p.X - 6, p.Y - 6, 12, 12);
-                        // 拖尾液滴
-                        e.Graphics.FillEllipse(spitBrush, p.X - p.Dx * 1.5f + 4, p.Y - p.Dy * 1.5f, 5, 5);
-                        e.Graphics.FillEllipse(spitBrush, p.X - p.Dx * 0.8f - 3, p.Y - p.Dy * 0.8f + 2, 4, 4);
+                        e.Graphics.FillEllipse(spitBrush, p.X - spitR, p.Y - spitR, spitR * 2, spitR * 2);
+                        float sub1 = Math.Max(1f, 5 * pScale);
+                        float sub2 = Math.Max(1f, 4 * pScale);
+                        e.Graphics.FillEllipse(spitBrush, p.X - p.Dx * 1.5f + 4 * pScale, p.Y - p.Dy * 1.5f, sub1, sub1);
+                        e.Graphics.FillEllipse(spitBrush, p.X - p.Dx * 0.8f - 3 * pScale, p.Y - p.Dy * 0.8f + 2 * pScale, sub2, sub2);
                     }
                     break;
 
                 case "INK":
-                    // 墨水分离感
+                    float inkR = Math.Max(2f, 8 * pScale);
                     using (var inkBrush = new SolidBrush(Color.FromArgb(200, Color.Indigo)))
                     {
                         float currentAngle = (float)Math.Atan2(p.Dy, p.Dx);
-                        e.Graphics.FillEllipse(inkBrush, p.X - 8, p.Y - 8, 16, 16);
-                        e.Graphics.FillEllipse(inkBrush, p.X + (float)Math.Cos(currentAngle + 0.5) * 10, p.Y + (float)Math.Sin(currentAngle + 0.5) * 10, 6, 6);
-                        e.Graphics.FillEllipse(inkBrush, p.X + (float)Math.Cos(currentAngle - 0.5) * 12, p.Y + (float)Math.Sin(currentAngle - 0.5) * 12, 5, 5);
+                        e.Graphics.FillEllipse(inkBrush, p.X - inkR, p.Y - inkR, inkR * 2, inkR * 2);
+                        float sub1 = Math.Max(1.5f, 6 * pScale);
+                        float sub2 = Math.Max(1.5f, 5 * pScale);
+                        e.Graphics.FillEllipse(inkBrush, p.X + (float)Math.Cos(currentAngle + 0.5) * 10 * pScale, p.Y + (float)Math.Sin(currentAngle + 0.5) * 10 * pScale, sub1, sub1);
+                        e.Graphics.FillEllipse(inkBrush, p.X + (float)Math.Cos(currentAngle - 0.5) * 12 * pScale, p.Y + (float)Math.Sin(currentAngle - 0.5) * 12 * pScale, sub2, sub2);
                     }
                     break;
 
                 case "ROCKET":
-                    // 带有火光的火箭
                     using (var rocketPath = new System.Drawing.Drawing2D.GraphicsPath())
                     {
-                        float rSize = 10;
+                        float rSize = Math.Max(3f, 10 * pScale);
                         rocketPath.AddRectangle(new RectangleF(p.X - rSize/2, p.Y - rSize/2, rSize, rSize));
                         e.Graphics.FillPath(Brushes.DarkRed, rocketPath);
-                        // 尾部火焰
                         using var fireBrush = new System.Drawing.Drawing2D.LinearGradientBrush(new PointF(p.X, p.Y), new PointF(p.X - p.Dx * 2, p.Y - p.Dy * 2), Color.Orange, Color.Transparent);
-                        e.Graphics.FillEllipse(fireBrush, p.X - p.Dx * 1.5f - 5, p.Y - p.Dy * 1.5f - 5, 10, 10);
+                        float fireSize = Math.Max(3f, 10 * pScale);
+                        e.Graphics.FillEllipse(fireBrush, p.X - p.Dx * 1.5f - fireSize/2, p.Y - p.Dy * 1.5f - fireSize/2, fireSize, fireSize);
                     }
                     break;
 
                 case "PLASMA":
-                    // 核心高能脉冲
-                    e.Graphics.FillEllipse(Brushes.White, p.X - 3, p.Y - 3, 6, 6);
-                    using (var pPen = new Pen(Color.FromArgb(150, p.ProjectileColor), 4))
+                    float cCore = Math.Max(1.5f, 3 * pScale);
+                    float cMid = Math.Max(3f, 7 * pScale);
+                    float cOuter = Math.Max(4f, 10 * pScale);
+                    e.Graphics.FillEllipse(Brushes.White, p.X - cCore, p.Y - cCore, cCore * 2, cCore * 2);
+                    using (var pPen = new Pen(Color.FromArgb(150, p.ProjectileColor), Math.Max(1f, 4 * pScale)))
                     {
-                        e.Graphics.DrawEllipse(pPen, p.X - 7, p.Y - 7, 14, 14);
+                        e.Graphics.DrawEllipse(pPen, p.X - cMid, p.Y - cMid, cMid * 2, cMid * 2);
                     }
-                    using (var outerPen = new Pen(Color.FromArgb(60, p.ProjectileColor), 8))
+                    using (var outerPen = new Pen(Color.FromArgb(60, p.ProjectileColor), Math.Max(1f, 8 * pScale)))
                     {
-                        e.Graphics.DrawEllipse(outerPen, p.X - 10, p.Y - 10, 20, 20);
+                        e.Graphics.DrawEllipse(outerPen, p.X - cOuter, p.Y - cOuter, cOuter * 2, cOuter * 2);
                     }
                     break;
 
                 default:
+                    float defR = Math.Max(1.5f, 3 * pScale);
                     using (var defBrush = new SolidBrush(p.ProjectileColor))
                     {
-                        e.Graphics.FillEllipse(defBrush, p.X - 3, p.Y - 3, 6, 6);
+                        e.Graphics.FillEllipse(defBrush, p.X - defR, p.Y - defR, defR * 2, defR * 2);
                     }
                     break;
             }
@@ -1506,6 +1519,7 @@ public partial class PetForm : Form
             _settingsForm.AiThoughtFrequency = AiThoughtFrequency;
             _settingsForm.FightFrequency = FightFrequency;
             _settingsForm.IsWeaponMaster = IsWeaponMaster;
+            _settingsForm.SkillScale = GlobalSkillScale;
             _settingsForm.DefaultPersonality = DefaultPersonality;
             _settingsForm.FormClosed += (sender, args) =>
             {
@@ -1519,6 +1533,7 @@ public partial class PetForm : Form
                     AiThoughtFrequency = _settingsForm.AiThoughtFrequency;
                     FightFrequency = _settingsForm.FightFrequency;
                     IsWeaponMaster = _settingsForm.IsWeaponMaster;
+                    GlobalSkillScale = _settingsForm.SkillScale;
                     DefaultPersonality = _settingsForm.DefaultPersonality;
 
 

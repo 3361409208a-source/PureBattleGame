@@ -17,12 +17,14 @@ public class SettingsForm : Form
     public int AiThoughtFrequency { get; set; } = 60;
     public int FightFrequency { get; set; } = 15;
     public bool IsWeaponMaster { get; set; } = false;
+    public int SkillScale { get; set; } = 100;
     public string ApiKey { get; set; } = "";
     public RobotPersonalityType DefaultPersonality { get; set; } = RobotPersonalityType.Friendly;
 
     private NumericUpDown _countInput = null!;
     private NumericUpDown _sizeInput = null!;
     private NumericUpDown _speedInput = null!;
+    private NumericUpDown _skillScaleInput = null!;
     private TextBox _nameInput = null!;
     private CheckBox _namingCheck = null!;
     private CheckBox _autoStartCheck = null!;
@@ -198,6 +200,14 @@ public class SettingsForm : Form
         };
         AddRow("全局基础速度 (%):", _speedInput);
 
+        // 5.5 技能特效尺寸缩放
+        _skillScaleInput = new NumericUpDown
+        {
+            Minimum = 10, Maximum = 200, Value = 100, Width = 100,
+            BackColor = Color.FromArgb(50, 50, 50), ForeColor = Color.White
+        };
+        AddRow("技能特效尺寸 (%):", _skillScaleInput, "(10% ~ 200%, 按角色自适应并可手调)");
+
         // 6. 自动启动
         _autoStartCheck = new CheckBox
         {
@@ -331,6 +341,7 @@ public class SettingsForm : Form
                             case "DefaultName": _nameInput.Text = parts[1]; break;
                             case "DefaultSize": _sizeInput.Value = Math.Clamp(int.Parse(parts[1]), 8, 128); break;
                             case "DefaultSpeed": _speedInput.Value = Math.Clamp(int.Parse(parts[1]), 50, 300); break;
+                            case "SkillScale": _skillScaleInput.Value = Math.Clamp(int.Parse(parts[1]), 10, 200); break;
                             case "AutoStart": _autoStartCheck.Checked = bool.Parse(parts[1]); break;
                             case "EnableAi": _enableAiThinkingCheck.Checked = bool.Parse(parts[1]); break;
                             case "AiFreq": _aiFrequencyInput.Value = Math.Clamp(int.Parse(parts[1]), 10, 3600); break;
@@ -375,6 +386,7 @@ public class SettingsForm : Form
         if (_nameInput != null) RobotName = _nameInput.Text.Trim();
         if (_sizeInput != null) RobotSize = (int)_sizeInput.Value;
         if (_speedInput != null) RobotSpeed = (int)_speedInput.Value;
+        if (_skillScaleInput != null) SkillScale = (int)_skillScaleInput.Value;
         if (_autoStartCheck != null) AutoStart = _autoStartCheck.Checked;
         if (_enableAiThinkingCheck != null) EnableAiThinking = _enableAiThinkingCheck.Checked;
         if (_aiFrequencyInput != null) AiThoughtFrequency = (int)_aiFrequencyInput.Value;
@@ -394,6 +406,7 @@ public class SettingsForm : Form
                 $"DefaultName={RobotName}",
                 $"DefaultSize={RobotSize}",
                 $"DefaultSpeed={RobotSpeed}",
+                $"SkillScale={SkillScale}",
                 $"AutoStart={AutoStart}",
                 $"EnableAi={EnableAiThinking}",
                 $"AiFreq={AiThoughtFrequency}",
