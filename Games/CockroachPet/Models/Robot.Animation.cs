@@ -143,20 +143,23 @@ public partial class Robot
         }
     }
 
-    public void SetBark(string text, int duration = 90)
+    public void SetBark(string text, int duration = 90, bool broadcastToWorld = false)
     {
         _fullChatText = text;
         ChatText = text;
         ChatMessage = text;
         ChatTimer = duration;
 
-        try
+        if (broadcastToWorld)
         {
-            Color chatColor = CurseMode ? Color.Crimson : Color.LightSkyBlue;
-            string prefix = CurseMode ? "🤬 " : "";
-            TerminalManagerForm.Instance?.BroadcastToWorld(Name, prefix + text, chatColor);
+            try
+            {
+                Color chatColor = CurseMode ? Color.Crimson : Color.LightSkyBlue;
+                string prefix = CurseMode ? "🤬 " : "";
+                TerminalManagerForm.Instance?.BroadcastToWorld(Name, prefix + text, chatColor);
+            }
+            catch { }
         }
-        catch { }
     }
 
     private void UpdateRandomDirection()

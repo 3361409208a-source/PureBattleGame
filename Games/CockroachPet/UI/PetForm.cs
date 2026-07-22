@@ -489,12 +489,27 @@ public partial class PetForm : Form
                 r.SetBark("骂人模式关闭，做个礼貌像素人...😇", 90);
             }
         }
+        if (_notifyIcon != null)
+        {
+            _notifyIcon.ContextMenuStrip = CreateContextMenu();
+        }
+
+        bool hasKey = !string.IsNullOrWhiteSpace(AiService.GetApiKey());
+        string keyStatusStr = hasKey 
+            ? "✓ 已检测到 AI API Key！机器人将在遭遇时调用大模型实时生成骂人词汇 (带 🤖 [AI生成] 标识)。" 
+            : "⚠️ 当前未配置 AI Key！正使用内置暴躁对战语库。(如需开启真实 AI 大模型对骂，请在右键【设置】中填写 DeepSeek/OpenAI API Key)。";
+
         if (GlobalCurseMode)
         {
             TerminalManagerForm.Instance.Show();
             TerminalManagerForm.Instance.Activate();
+            TerminalManagerForm.Instance.BroadcastToWorld("系统提示", $"🤬 骂人模式已全员开启！\n{keyStatusStr}", Color.Gold);
         }
-        ShowNotification(GlobalCurseMode ? "骂人模式已全员开启！🤬 (头顶气泡与世界频道均生效)" : "骂人模式已全员关闭 🤐");
+        else
+        {
+            TerminalManagerForm.Instance.BroadcastToWorld("系统提示", "🤐 骂人模式已全员关闭", Color.Gray);
+        }
+        ShowNotification(GlobalCurseMode ? "骂人模式已全员开启！🤬" : "骂人模式已全员关闭 🤐");
     }
 
     private void ShowNotification(string message)

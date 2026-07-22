@@ -38,6 +38,7 @@ public partial class Robot
     public Robot? MeetingTarget { get; set; }
     public int MeetingTimer { get; set; } = 0;
     public int SocialCooldown { get; set; } = 0;
+    private DateTime _lastAiFightTime = DateTime.MinValue;
     public Robot? FollowingTarget { get; set; }
     public int FollowTimer { get; set; } = 0;
 
@@ -242,10 +243,14 @@ public partial class Robot
     {
         if (_isThinking || target == null || !target.IsActive || target.IsDead || IsDead) return;
 
+        // 频率控制：4秒内不频繁重复请求大模型，防止刷屏与过度开销
+        if ((DateTime.Now - _lastAiFightTime).TotalSeconds < 4) return;
+
         string apiKey = AiService.GetApiKey();
         if (string.IsNullOrWhiteSpace(apiKey)) return;
 
         _isThinking = true;
+        _lastAiFightTime = DateTime.Now;
         try
         {
             var history = SocialHistory.Select(h => (h.sender, h.content)).ToList();
@@ -258,14 +263,15 @@ public partial class Robot
 
             if (!string.IsNullOrWhiteSpace(fightReply))
             {
-                SetBark(fightReply, 120);
-                LogSocial(Name, fightReply);
+                SetBark(fightReply, 140);
+                TerminalManagerForm.Instance?.BroadcastToWorld(Name, $"🤖 [AI生成] {fightReply}", System.Drawing.Color.OrangeRed);
+                LogSocial(Name, fightReply, broadcast: false);
 
-                if (Rand.Next(100) < 60)
+                if (Rand.Next(100) < 70)
                 {
                     _ = Task.Run(async () =>
                     {
-                        await Task.Delay(1500);
+                        await Task.Delay(1800);
                         if (target.IsActive && !target.IsDead && !IsDead)
                         {
                             string counterReply = await AiService.GetFightResponseAsync(
@@ -273,8 +279,9 @@ public partial class Robot
                             );
                             if (!string.IsNullOrWhiteSpace(counterReply))
                             {
-                                target.SetBark(counterReply, 120);
-                                target.LogSocial(target.Name, counterReply);
+                                target.SetBark(counterReply, 140);
+                                TerminalManagerForm.Instance?.BroadcastToWorld(target.Name, $"🤖 [AI生成] {counterReply}", System.Drawing.Color.Crimson);
+                                target.LogSocial(target.Name, counterReply, broadcast: false);
                             }
                         }
                     });
