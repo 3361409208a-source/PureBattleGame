@@ -246,7 +246,6 @@ public partial class Robot
 
                 string t = thoughts[Rand.Next(thoughts.Length)];
                 SetBark(t, 100);
-                TerminalManagerForm.Instance?.BroadcastToWorld(Name, t, PrimaryColor);
             }
         }
     }
@@ -349,7 +348,6 @@ public partial class Robot
             if (!string.IsNullOrWhiteSpace(fightReply))
             {
                 SetBark(fightReply, 140);
-                TerminalManagerForm.Instance?.BroadcastToWorld(Name, fightReply, PrimaryColor);
                 SocialHistory.Add(new SocialMessage(Name, fightReply));
 
                 if (Rand.Next(100) < 70)
@@ -365,7 +363,6 @@ public partial class Robot
                             if (!string.IsNullOrWhiteSpace(counterReply))
                             {
                                 target.SetBark(counterReply, 140);
-                                TerminalManagerForm.Instance?.BroadcastToWorld(target.Name, counterReply, target.PrimaryColor);
                                 target.SocialHistory.Add(new SocialMessage(target.Name, counterReply));
                             }
                         }

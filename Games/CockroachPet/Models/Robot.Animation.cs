@@ -143,8 +143,10 @@ public partial class Robot
         }
     }
 
-    public void SetBark(string text, int duration = 90, bool broadcastToWorld = false)
+    public void SetBark(string text, int duration = 90, bool broadcastToWorld = true)
     {
+        if (string.IsNullOrWhiteSpace(text)) return;
+
         _fullChatText = text;
         ChatText = text;
         ChatMessage = text;
@@ -154,9 +156,8 @@ public partial class Robot
         {
             try
             {
-                Color chatColor = CurseMode ? Color.Crimson : Color.LightSkyBlue;
-                string prefix = CurseMode ? "🤬 " : "";
-                TerminalManagerForm.Instance?.BroadcastToWorld(Name, prefix + text, chatColor);
+                Color chatColor = PrimaryColor != Color.Empty ? PrimaryColor : (CurseMode ? Color.Crimson : Color.LightSkyBlue);
+                TerminalManagerForm.Instance?.BroadcastToWorld(Name, text, chatColor);
             }
             catch { }
         }
