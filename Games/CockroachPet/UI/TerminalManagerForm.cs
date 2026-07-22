@@ -1,20 +1,29 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Linq;
 using System.Windows.Forms;
+using PureBattleGame.Core;
 
 namespace PureBattleGame.Games.CockroachPet;
 
 public class TerminalManagerForm : Form
 {
-    private TabControl _tabControl;
+    private TabControl _tabControl = null!;
     private Dictionary<Robot, ChatTab> _terminals = new Dictionary<Robot, ChatTab>();
-    private TabPage _worldChatPage;
-    private TabPage _overviewPage;
-    private FlowLayoutPanel _worldMessagePanel;
-    private FlowLayoutPanel _overviewPanel;
+    private TabPage _worldChatPage = null!;
+    private TabPage _overviewPage = null!;
+    private FlowLayoutPanel _worldMessagePanel = null!;
+    private FlowLayoutPanel _overviewPanel = null!;
+    private TextBox _worldInputBox = null!;
+    private TextBox _searchBox = null!;
+    private Label _lblOnlinePill = null!;
+    private Label _lblModePill = null!;
+    private Label _lblTokenPill = null!;
     private static TerminalManagerForm? _instance;
-    private System.Windows.Forms.Timer _titleUpdateTimer;
+    private System.Windows.Forms.Timer _titleUpdateTimer = null!;
+    private string _searchKeyword = "";
 
     public static TerminalManagerForm Instance
     {
@@ -35,68 +44,328 @@ public class TerminalManagerForm : Form
 
     private void InitializeComponent()
     {
-        this.Text = "💬 机器人社交中心";
-        this.Size = new Size(600, 700);
+        this.Text = "💬 机器人社交中心 | Robot Social Hub";
+        this.Size = new Size(780, 800);
+        this.MinimumSize = new Size(700, 680);
         this.StartPosition = FormStartPosition.CenterScreen;
-        this.BackColor = Color.FromArgb(30, 30, 30);
+        this.BackColor = Color.FromArgb(24, 25, 28);
+        this.ForeColor = Color.White;
+        this.Font = new Font("Microsoft YaHei UI", 9.5F, FontStyle.Regular, GraphicsUnit.Point);
 
+        // 1. 顶部炫彩 Header 面板
+        var headerPanel = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = 58,
+            BackColor = Color.FromArgb(17, 18, 20),
+            Padding = new Padding(15, 8, 15, 8)
+        };
+
+        var titleLabel = new Label
+        {
+            Text = "💬 机器人社交中心",
+            Font = new Font("Microsoft YaHei UI", 12F, FontStyle.Bold),
+            ForeColor = Color.FromArgb(0, 229, 255),
+            Location = new Point(15, 15),
+            AutoSize = true
+        };
+
+        // 右侧状态 Badges (在线/模式/Token)
+        _lblOnlinePill = CreatePillLabel("🟢 在线: 0", Color.FromArgb(0, 230, 118));
+        _lblOnlinePill.Location = new Point(360, 15);
+
+        _lblModePill = CreatePillLabel("⚔️ 模式: 近远交替", Color.FromArgb(0, 229, 255));
+        _lblModePill.Location = new Point(475, 15);
+
+        _lblTokenPill = CreatePillLabel("🪙 Token: 0", Color.FromArgb(255, 215, 0));
+        _lblTokenPill.Location = new Point(625, 15);
+
+        headerPanel.Controls.Add(titleLabel);
+        headerPanel.Controls.Add(_lblOnlinePill);
+        headerPanel.Controls.Add(_lblModePill);
+        headerPanel.Controls.Add(_lblTokenPill);
+        this.Controls.Add(headerPanel);
+
+        // 2. 主 TabControl
         _tabControl = new TabControl
         {
             Dock = DockStyle.Fill,
-            BackColor = Color.FromArgb(40, 40, 40),
-            ForeColor = Color.White,
-            Font = new Font("Microsoft YaHei", 10)
+            DrawMode = TabDrawMode.OwnerDrawFixed,
+            ItemSize = new Size(150, 34),
+            SizeMode = TabSizeMode.Fixed,
+            Padding = new Point(12, 6),
+            BackColor = Color.FromArgb(24, 25, 28),
+            Font = new Font("Microsoft YaHei UI", 9.5F, FontStyle.Bold)
         };
+        _tabControl.DrawItem += TabControl_DrawItem;
 
-        // 初始化世界频道
-        _worldChatPage = new TabPage { Text = " 🌍 世界频道 ", BackColor = Color.FromArgb(25, 25, 25) };
-        _worldMessagePanel = new FlowLayoutPanel
+        // --- Tab 1: 🤖 机器人概览 ---
+        _overviewPage = new TabPage { Text = "🤖 机器人概览", BackColor = Color.FromArgb(24, 25, 28) };
+        var overviewLayout = new Panel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(24, 25, 28) };
+
+        // 概览页搜索与快捷工具栏
+        var overviewToolBar = new Panel
         {
-            Dock = DockStyle.Fill,
-            AutoScroll = true,
-            BackColor = Color.FromArgb(15, 15, 15),
-            FlowDirection = FlowDirection.TopDown,
-            WrapContents = false,
-            Padding = new Padding(10)
+            Dock = DockStyle.Top,
+            Height = 48,
+            BackColor = Color.FromArgb(30, 31, 35),
+            Padding = new Padding(12, 8, 12, 8)
         };
-        _worldChatPage.Controls.Add(_worldMessagePanel);
 
-        // 初始化概览频道 (网格布局)
-        _overviewPage = new TabPage { Text = " 🤖 机器人概览 ", BackColor = Color.FromArgb(25, 25, 25) };
+        _searchBox = new TextBox
+        {
+            Width = 180,
+            Location = new Point(12, 10),
+            BackColor = Color.FromArgb(45, 47, 52),
+            ForeColor = Color.White,
+            BorderStyle = BorderStyle.FixedSingle,
+            Font = new Font("Microsoft YaHei UI", 9.5F),
+            Text = ""
+        };
+        _searchBox.PlaceholderText = "🔍 搜索名字或状态...";
+        _searchBox.TextChanged += (s, e) =>
+        {
+            _searchKeyword = _searchBox.Text.Trim().ToLower();
+            SyncOverview();
+        };
+
+        var btnAddRobot = CreateActionButton("➕ 添加", Color.FromArgb(0, 200, 83), 75);
+        btnAddRobot.Location = new Point(205, 9);
+        btnAddRobot.Click += (s, e) => PetForm.Instance?.SpawnRobotWithName();
+
+        var btnAiGen = CreateActionButton("🤖 AI 生成", Color.FromArgb(156, 39, 176), 90);
+        btnAiGen.Location = new Point(287, 9);
+        btnAiGen.Click += (s, e) => PetForm.Instance?.ShowAiRobotGenerator();
+
+        var btnCurseToggle = CreateActionButton("🤬 骂人开关", Color.FromArgb(244, 67, 54), 95);
+        btnCurseToggle.Location = new Point(384, 9);
+        btnCurseToggle.Click += (s, e) => PetForm.Instance?.ToggleCurseMode();
+
+        var btnChaos = CreateActionButton("🥊 全员对决", Color.FromArgb(255, 152, 0), 95);
+        btnChaos.Location = new Point(486, 9);
+        btnChaos.Click += (s, e) =>
+        {
+            var robots = PetForm.Instance?.GetRobots() ?? new List<Robot>();
+            if (robots.Count >= 2)
+            {
+                var rand = new Random();
+                var r1 = robots[rand.Next(robots.Count)];
+                var r2 = robots.Where(r => r != r1).ElementAtOrDefault(rand.Next(robots.Count - 1));
+                if (r1 != null && r2 != null)
+                {
+                    r1.InteractWith(r2);
+                    BroadcastToWorld("系统广播", $"⚔️ 已强制触发对决：{r1.Name} VS {r2.Name}！", Color.Gold);
+                }
+            }
+        };
+
+        overviewToolBar.Controls.Add(_searchBox);
+        overviewToolBar.Controls.Add(btnAddRobot);
+        overviewToolBar.Controls.Add(btnAiGen);
+        overviewToolBar.Controls.Add(btnCurseToggle);
+        overviewToolBar.Controls.Add(btnChaos);
+        overviewLayout.Controls.Add(overviewToolBar);
+
+        // 卡片网格 FlowLayoutPanel
         _overviewPanel = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
             AutoScroll = true,
-            BackColor = Color.FromArgb(20, 20, 20),
+            BackColor = Color.FromArgb(24, 25, 28),
             Padding = new Padding(15),
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = true
         };
-        _overviewPage.Controls.Add(_overviewPanel);
+        overviewLayout.Controls.Add(_overviewPanel);
+        _overviewPanel.BringToFront();
+        _overviewPage.Controls.Add(overviewLayout);
+
+        // --- Tab 2: 🌍 世界广播频道 ---
+        _worldChatPage = new TabPage { Text = "🌍 世界广播频道", BackColor = Color.FromArgb(24, 25, 28) };
+        var worldLayout = new Panel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(24, 25, 28) };
+
+        // 世界频道顶部状态条
+        var worldHeader = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = 35,
+            BackColor = Color.FromArgb(30, 31, 35),
+            Padding = new Padding(10, 6, 10, 6)
+        };
+        var worldTipLabel = new Label
+        {
+            Text = "📢 提示: 在此频道的发言将同步广播给所有在线机器人，引发全员响应与讨论",
+            ForeColor = Color.FromArgb(180, 180, 180),
+            Font = new Font("Microsoft YaHei UI", 8.5F),
+            Dock = DockStyle.Fill
+        };
+        var btnClearWorld = new Button
+        {
+            Text = "🧹 清屏",
+            Size = new Size(60, 23),
+            Dock = DockStyle.Right,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(50, 50, 50),
+            ForeColor = Color.White,
+            Cursor = Cursors.Hand
+        };
+        btnClearWorld.FlatAppearance.BorderSize = 0;
+        btnClearWorld.Click += (s, e) => _worldMessagePanel.Controls.Clear();
+
+        worldHeader.Controls.Add(worldTipLabel);
+        worldHeader.Controls.Add(btnClearWorld);
+        worldLayout.Controls.Add(worldHeader);
+
+        // 世界频道消息面板
+        _worldMessagePanel = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            AutoScroll = true,
+            BackColor = Color.FromArgb(18, 19, 21),
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            Padding = new Padding(12)
+        };
+        worldLayout.Controls.Add(_worldMessagePanel);
+        _worldMessagePanel.BringToFront();
+
+        // 世界频道底部广播输入框栏
+        var worldInputPanel = new Panel
+        {
+            Dock = DockStyle.Bottom,
+            Height = 52,
+            BackColor = Color.FromArgb(30, 31, 35),
+            Padding = new Padding(10, 8, 10, 8)
+        };
+        _worldInputBox = new TextBox
+        {
+            Width = 520,
+            Location = new Point(10, 10),
+            BackColor = Color.FromArgb(45, 47, 52),
+            ForeColor = Color.White,
+            BorderStyle = BorderStyle.FixedSingle,
+            Font = new Font("Microsoft YaHei UI", 10.5F),
+            PlaceholderText = "💬 喊话给全员机器人，广播全服消息..."
+        };
+        _worldInputBox.KeyDown += (s, e) =>
+        {
+            if (e.KeyCode == Keys.Enter)
+            {
+                SendWorldBroadcastMessage();
+                e.SuppressKeyPress = true;
+            }
+        };
+
+        var btnWorldSend = new Button
+        {
+            Text = "📢 广播喊话",
+            Size = new Size(110, 32),
+            Location = new Point(540, 9),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(0, 229, 255),
+            ForeColor = Color.Black,
+            Font = new Font("Microsoft YaHei UI", 9.5F, FontStyle.Bold),
+            Cursor = Cursors.Hand
+        };
+        btnWorldSend.FlatAppearance.BorderSize = 0;
+        btnWorldSend.Click += (s, e) => SendWorldBroadcastMessage();
+
+        worldInputPanel.Controls.Add(_worldInputBox);
+        worldInputPanel.Controls.Add(btnWorldSend);
+        worldLayout.Controls.Add(worldInputPanel);
+
+        _worldChatPage.Controls.Add(worldLayout);
 
         _tabControl.TabPages.Add(_overviewPage);
         _tabControl.TabPages.Add(_worldChatPage);
 
         this.Controls.Add(_tabControl);
-        this.FormClosing += (s, e) => { 
+        headerPanel.BringToFront();
+
+        this.FormClosing += (s, e) =>
+        {
             if (e.CloseReason == CloseReason.UserClosing)
             {
-                e.Cancel = true; 
-                this.Hide(); 
+                e.Cancel = true;
+                this.Hide();
             }
         };
 
-        // 实时更新 Token 显示在标题栏
+        // 实时刷新 Timer
         _titleUpdateTimer = new System.Windows.Forms.Timer { Interval = 1000 };
-        _titleUpdateTimer.Tick += (s, e) => {
-            this.Text = $"💬 机器人社交中心 | 🪙 Token: {AiService.TotalTokensUsed:N0}";
-            UpdateOverviewIfVisible();
-        };
+        _titleUpdateTimer.Tick += (s, e) => UpdateUIState();
         _titleUpdateTimer.Start();
     }
 
-    private void UpdateOverviewIfVisible()
+    private Label CreatePillLabel(string text, Color borderColor)
     {
+        return new Label
+        {
+            Text = text,
+            ForeColor = borderColor,
+            Font = new Font("Microsoft YaHei UI", 8.5F, FontStyle.Bold),
+            AutoSize = true,
+            Padding = new Padding(8, 3, 8, 3),
+            BorderStyle = BorderStyle.FixedSingle,
+            BackColor = Color.FromArgb(28, 30, 34)
+        };
+    }
+
+    private Button CreateActionButton(string text, Color bg, int width)
+    {
+        var btn = new Button
+        {
+            Text = text,
+            Size = new Size(width, 28),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = bg,
+            ForeColor = Color.White,
+            Font = new Font("Microsoft YaHei UI", 8.5F, FontStyle.Bold),
+            Cursor = Cursors.Hand
+        };
+        btn.FlatAppearance.BorderSize = 0;
+        return btn;
+    }
+
+    private void TabControl_DrawItem(object? sender, DrawItemEventArgs e)
+    {
+        var tabPage = _tabControl.TabPages[e.Index];
+        bool isSelected = (_tabControl.SelectedIndex == e.Index);
+        var tabRect = _tabControl.GetTabRect(e.Index);
+
+        using var bgBrush = new SolidBrush(isSelected ? Color.FromArgb(35, 37, 42) : Color.FromArgb(20, 21, 24));
+        e.Graphics.FillRectangle(bgBrush, tabRect);
+
+        if (isSelected)
+        {
+            using var linePen = new Pen(Color.FromArgb(0, 229, 255), 3);
+            e.Graphics.DrawLine(linePen, tabRect.Left, tabRect.Bottom - 2, tabRect.Right, tabRect.Bottom - 2);
+        }
+
+        TextRenderer.DrawText(
+            e.Graphics,
+            tabPage.Text,
+            _tabControl.Font,
+            tabRect,
+            isSelected ? Color.FromArgb(0, 229, 255) : Color.FromArgb(170, 175, 185),
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
+        );
+    }
+
+    private void UpdateUIState()
+    {
+        var robots = PetForm.Instance?.GetRobots() ?? new List<Robot>();
+        _lblOnlinePill.Text = $"🟢 在线: {robots.Count} 个";
+        _lblTokenPill.Text = $"🪙 Token: {AiService.TotalTokensUsed:N0}";
+
+        string modeStr = PetForm.Instance?.GlobalCombatMode switch
+        {
+            CombatMode.MeleeOnly => "⚔️ 模式: 纯近战",
+            CombatMode.RangedOnly => "⚔️ 模式: 纯远程",
+            _ => "⚔️ 模式: 近远交替"
+        };
+        _lblModePill.Text = modeStr;
+
         if (_tabControl.SelectedTab == _overviewPage)
         {
             SyncOverview();
@@ -106,33 +375,16 @@ public class TerminalManagerForm : Form
     private void SyncOverview()
     {
         var robots = PetForm.Instance?.GetRobots() ?? new List<Robot>();
-        
-        // 简单的差异更新：如果数量不一致或内容需要更新
-        if (_overviewPanel.Controls.Count != robots.Count)
+        var filteredRobots = string.IsNullOrWhiteSpace(_searchKeyword)
+            ? robots
+            : robots.Where(r => r.Name.ToLower().Contains(_searchKeyword) || r.StatusMessage.ToLower().Contains(_searchKeyword)).ToList();
+
+        // 重新填充卡片
+        _overviewPanel.Controls.Clear();
+        foreach (var robot in filteredRobots)
         {
-            _overviewPanel.Controls.Clear();
-            foreach (var robot in robots)
-            {
-                var card = CreateRobotCard(robot);
-                _overviewPanel.Controls.Add(card);
-            }
-        }
-        else
-        {
-            // 更新状态
-            for (int i = 0; i < robots.Count; i++)
-            {
-                var card = _overviewPanel.Controls[i] as Panel;
-                if (card != null && card.Tag is Robot r)
-                {
-                    var statusLabel = card.Controls.Find("status", true).FirstOrDefault() as Label;
-                    if (statusLabel != null)
-                    {
-                        statusLabel.Text = r.StatusMessage;
-                        statusLabel.ForeColor = r.IsAiSpeaking ? Color.Gold : Color.Gray;
-                    }
-                }
-            }
+            var card = CreateRobotCard(robot);
+            _overviewPanel.Controls.Add(card);
         }
     }
 
@@ -140,63 +392,131 @@ public class TerminalManagerForm : Form
     {
         var card = new Panel
         {
-            Size = new Size(130, 110),
-            BackColor = Color.FromArgb(45, 45, 45),
-            Margin = new Padding(5),
-            Padding = new Padding(5),
+            Size = new Size(225, 170),
+            BackColor = Color.FromArgb(32, 34, 38),
+            Margin = new Padding(8),
+            Padding = new Padding(10),
             Tag = robot,
-            Cursor = Cursors.Hand
+            Cursor = Cursors.Hand,
+            BorderStyle = BorderStyle.FixedSingle
         };
+
+        // 头部: 头像圈 + 名字 + 意识等级 Pill
+        var topLayout = new Panel { Dock = DockStyle.Top, Height = 32, BackColor = Color.Transparent };
 
         var nameLabel = new Label
         {
             Text = robot.Name,
             ForeColor = Color.White,
-            Font = new Font("Microsoft YaHei", 10, FontStyle.Bold),
-            Dock = DockStyle.Top,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Height = 30
-        };
-
-        var statusLabel = new Label
-        {
-            Name = "status",
-            Text = robot.StatusMessage,
-            ForeColor = Color.Gray,
-            Font = new Font("Consolas", 8),
-            Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleCenter
+            Font = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold),
+            Location = new Point(5, 4),
+            AutoSize = true
         };
 
         var lvLabel = new Label
         {
             Text = $"Lvl {robot.ConsciousnessLevel:F1}",
-            ForeColor = Color.Lime,
-            Font = new Font("Microsoft YaHei", 8),
-            Dock = DockStyle.Bottom,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Height = 20
+            ForeColor = Color.FromArgb(0, 230, 118),
+            Font = new Font("Microsoft YaHei UI", 8F, FontStyle.Bold),
+            Location = new Point(145, 5),
+            AutoSize = true,
+            BackColor = Color.FromArgb(20, 40, 30),
+            Padding = new Padding(4, 2, 4, 2)
         };
 
-        card.Controls.Add(statusLabel);
-        card.Controls.Add(nameLabel);
-        card.Controls.Add(lvLabel);
+        topLayout.Controls.Add(nameLabel);
+        topLayout.Controls.Add(lvLabel);
 
-        card.Click += (s, e) => OpenTerminal(robot);
-        card.DoubleClick += (s, e) => OpenTerminal(robot);
-        foreach (Control c in card.Controls) 
+        // 性格 Pill & HP/XP 进度
+        var traitLabel = new Label
         {
-            c.Click += (s, e) => OpenTerminal(robot);
-            c.DoubleClick += (s, e) => OpenTerminal(robot);
-        }
+            Text = $"性格: {robot.GetPersonalityName()} | HP: {robot.HP}/{robot.MaxHP}",
+            ForeColor = Color.FromArgb(180, 185, 195),
+            Font = new Font("Microsoft YaHei UI", 8F),
+            Dock = DockStyle.Top,
+            Height = 22
+        };
+
+        // 状态信息消息
+        var statusLabel = new Label
+        {
+            Name = "status",
+            Text = robot.IsAiSpeaking ? $"🤖 \"{robot.ChatText}\"" : (string.IsNullOrWhiteSpace(robot.StatusMessage) ? "🌱 准备就绪..." : $"💬 {robot.StatusMessage}"),
+            ForeColor = robot.IsAiSpeaking ? Color.Gold : Color.FromArgb(160, 165, 175),
+            Font = new Font("Microsoft YaHei UI", 8.5F),
+            Dock = DockStyle.Fill,
+            Padding = new Padding(0, 4, 0, 4)
+        };
+
+        // 底部快捷动作按钮栏
+        var bottomBar = new Panel { Dock = DockStyle.Bottom, Height = 28, BackColor = Color.Transparent };
+
+        var btnChat = CreateCardBtn("💬 对话", Color.FromArgb(0, 150, 136), 65);
+        btnChat.Location = new Point(0, 0);
+        btnChat.Click += (s, e) => OpenTerminal(robot);
+
+        var btnThink = CreateCardBtn("⚡ 启发", Color.FromArgb(103, 58, 183), 65);
+        btnThink.Location = new Point(70, 0);
+        btnThink.Click += (s, e) => _ = robot.SendUserMessage("发表一下你现在的思考想法");
+
+        var btnDuel = CreateCardBtn("🥊 对决", Color.FromArgb(230, 81, 0), 65);
+        btnDuel.Location = new Point(140, 0);
+        btnDuel.Click += (s, e) =>
+        {
+            var other = PetForm.Instance?.GetRobots().FirstOrDefault(r => r != robot && !r.IsDead);
+            if (other != null) robot.InteractWith(other);
+        };
+
+        bottomBar.Controls.Add(btnChat);
+        bottomBar.Controls.Add(btnThink);
+        bottomBar.Controls.Add(btnDuel);
+
+        card.Controls.Add(statusLabel);
+        card.Controls.Add(traitLabel);
+        card.Controls.Add(topLayout);
+        card.Controls.Add(bottomBar);
 
         return card;
     }
 
+    private Button CreateCardBtn(string text, Color bg, int width)
+    {
+        var btn = new Button
+        {
+            Text = text,
+            Size = new Size(width, 24),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = bg,
+            ForeColor = Color.White,
+            Font = new Font("Microsoft YaHei UI", 8F, FontStyle.Bold),
+            Cursor = Cursors.Hand
+        };
+        btn.FlatAppearance.BorderSize = 0;
+        return btn;
+    }
+
+    private void SendWorldBroadcastMessage()
+    {
+        string msg = _worldInputBox.Text.Trim();
+        if (string.IsNullOrEmpty(msg)) return;
+        _worldInputBox.Clear();
+
+        BroadcastToWorld("我 (管理员)", $"📢 {msg}", Color.Cyan);
+
+        var robots = PetForm.Instance?.GetRobots() ?? new List<Robot>();
+        foreach (var r in robots)
+        {
+            if (r.IsActive && !r.IsDead)
+            {
+                r.SocialHistory.Add(new SocialMessage("管理员", msg));
+                _ = r.SendUserMessage(msg);
+            }
+        }
+    }
+
     public void Shutdown()
     {
-        // 彻底关闭自己，不触发隐藏逻辑
-        this.FormClosing -= null; // 清除之前的隐藏逻辑
+        this.FormClosing -= null;
         this.Dispose();
     }
 
@@ -208,19 +528,49 @@ public class TerminalManagerForm : Form
             return;
         }
 
-        var logLabel = new Label
+        var itemContainer = new TableLayoutPanel
         {
-            Text = $"[{DateTime.Now:HH:mm:ss}] {sender}: {message}",
+            ColumnCount = 1,
+            RowCount = 2,
+            Width = Math.Max(300, _worldMessagePanel.ClientSize.Width - 30),
+            AutoSize = true,
+            BackColor = Color.FromArgb(28, 30, 34),
+            Padding = new Padding(10),
+            Margin = new Padding(0, 0, 0, 10)
+        };
+        itemContainer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+
+        var header = new Label
+        {
+            Text = $"[{DateTime.Now:HH:mm:ss}] {sender}",
             ForeColor = color,
-            Font = new Font("Microsoft YaHei", 9, FontStyle.Bold),
+            Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold),
             AutoSize = true,
             Dock = DockStyle.Top,
-            Padding = new Padding(0, 2, 0, 2),
-            MaximumSize = new Size(_worldMessagePanel.Width - 30, 0)
+            Margin = new Padding(0, 0, 0, 4)
         };
-        
-        _worldMessagePanel.Controls.Add(logLabel);
-        _worldMessagePanel.ScrollControlIntoView(logLabel);
+
+        var textBody = new Label
+        {
+            Text = message,
+            ForeColor = Color.WhiteSmoke,
+            Font = new Font("Microsoft YaHei UI", 9.5F),
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            MaximumSize = new Size(_worldMessagePanel.ClientSize.Width - 50, 0)
+        };
+
+        itemContainer.Controls.Add(header, 0, 0);
+        itemContainer.Controls.Add(textBody, 0, 1);
+
+        _worldMessagePanel.Controls.Add(itemContainer);
+        _worldMessagePanel.ScrollControlIntoView(itemContainer);
+
+        // 保持最多 150 条记录
+        if (_worldMessagePanel.Controls.Count > 150)
+        {
+            _worldMessagePanel.Controls.RemoveAt(0);
+        }
     }
 
     public void OpenTerminal(Robot robot)
@@ -266,42 +616,46 @@ public class ChatTab
     public ChatTab(Robot robot)
     {
         _robot = robot;
-        _tabPage = new TabPage { Text = $"  {robot.Name}  ", BackColor = Color.FromArgb(30, 30, 30) };
-        
-        // 主布局
-        var mainLayout = new TableLayoutPanel { 
-            Dock = DockStyle.Fill, 
+        _tabPage = new TabPage { Text = $"🤖 {robot.Name}", BackColor = Color.FromArgb(24, 25, 28) };
+
+        var mainLayout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
             RowCount = 3,
             ColumnCount = 1,
-            BackColor = Color.FromArgb(30, 30, 30)
+            BackColor = Color.FromArgb(24, 25, 28)
         };
         mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        
-        // 1. 成长面板
-        var growthPanel = new Panel { 
-            Dock = DockStyle.Fill, 
-            BackColor = Color.FromArgb(45, 45, 45),
-            Padding = new Padding(10)
+
+        // 1. 顶部成长与状态面板
+        var growthPanel = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Color.FromArgb(32, 34, 38),
+            Padding = new Padding(12)
         };
-        
-        _growthStatus = new Label {
+
+        _growthStatus = new Label
+        {
             Text = $"意识等级: Lvl {robot.ConsciousnessLevel:F1} | XP: {robot.Experience}/100",
-            ForeColor = Color.SpringGreen,
-            Font = new Font("Microsoft YaHei", 10, FontStyle.Bold),
+            ForeColor = Color.FromArgb(0, 230, 118),
+            Font = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold),
             Dock = DockStyle.Top,
             AutoSize = true
         };
 
-        _skillPanel = new FlowLayoutPanel {
+        _skillPanel = new FlowLayoutPanel
+        {
             Dock = DockStyle.Bottom,
-            Height = 40,
+            Height = 35,
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false,
             BackColor = Color.Transparent,
             AutoScroll = true
         };
 
-        _insightPanel = new FlowLayoutPanel {
+        _insightPanel = new FlowLayoutPanel
+        {
             Dock = DockStyle.Fill,
             AutoScroll = true,
             FlowDirection = FlowDirection.LeftToRight,
@@ -314,40 +668,105 @@ public class ChatTab
         growthPanel.Controls.Add(_skillPanel);
         growthPanel.Controls.Add(_growthStatus);
 
-        // 2. 消息面板 (改为普通的 Panel 嵌套，避免 FlowLayoutPanel 宽度计算错误)
+        // 2. 消息面板
         _messagePanel = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
             AutoScroll = true,
-            BackColor = Color.FromArgb(20, 20, 20),
+            BackColor = Color.FromArgb(18, 19, 21),
             FlowDirection = FlowDirection.TopDown,
             WrapContents = false,
-            Padding = new Padding(10)
+            Padding = new Padding(12)
         };
 
-        // 3. 输入框
+        // 3. 底部快捷对话与输入栏
+        var bottomContainer = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Color.FromArgb(30, 31, 35),
+            Padding = new Padding(8)
+        };
+
+        var quickBar = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            Height = 30,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            BackColor = Color.Transparent
+        };
+
+        var quickPrompts = new[] {
+            "👋 介绍一下你自己", "😄 讲个笑话听听", "🥊 去挑战最近的对手", "⚡ 显示你目前的技能列表"
+        };
+        foreach (var prompt in quickPrompts)
+        {
+            var btnChip = new Button
+            {
+                Text = prompt,
+                AutoSize = true,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.FromArgb(45, 47, 52),
+                ForeColor = Color.FromArgb(0, 229, 255),
+                Font = new Font("Microsoft YaHei UI", 8F),
+                Margin = new Padding(0, 0, 6, 0),
+                Cursor = Cursors.Hand
+            };
+            btnChip.FlatAppearance.BorderSize = 0;
+            btnChip.Click += (s, e) =>
+            {
+                _inputBox.Text = prompt.Substring(2).Trim();
+                SendMessage();
+            };
+            quickBar.Controls.Add(btnChip);
+        }
+
+        var inputRow = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent };
+
         _inputBox = new TextBox
         {
             Dock = DockStyle.Fill,
-            BackColor = Color.FromArgb(40, 40, 40),
+            BackColor = Color.FromArgb(45, 47, 52),
             ForeColor = Color.White,
             BorderStyle = BorderStyle.FixedSingle,
-            Font = new Font("Microsoft YaHei", 11),
-            Margin = new Padding(5)
+            Font = new Font("Microsoft YaHei UI", 10.5F),
+            PlaceholderText = $"💬 输入消息与 {robot.Name} 专属对话..."
         };
 
-        mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 100)); // Index 0: Growth
+        var btnSend = new Button
+        {
+            Text = "🚀 发送",
+            Dock = DockStyle.Right,
+            Width = 90,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(0, 229, 255),
+            ForeColor = Color.Black,
+            Font = new Font("Microsoft YaHei UI", 9.5F, FontStyle.Bold),
+            Cursor = Cursors.Hand
+        };
+        btnSend.FlatAppearance.BorderSize = 0;
+        btnSend.Click += (s, e) => SendMessage();
+
+        inputRow.Controls.Add(_inputBox);
+        inputRow.Controls.Add(btnSend);
+
+        bottomContainer.Controls.Add(inputRow);
+        bottomContainer.Controls.Add(quickBar);
+
+        mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 105)); // Index 0: Growth
         mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));  // Index 1: Messages
-        mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 45));  // Index 2: Input
+        mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));  // Index 2: Input & Presets
 
         mainLayout.Controls.Add(growthPanel, 0, 0);
         mainLayout.Controls.Add(_messagePanel, 0, 1);
-        mainLayout.Controls.Add(_inputBox, 0, 2);
+        mainLayout.Controls.Add(bottomContainer, 0, 2);
 
         _tabPage.Controls.Add(mainLayout);
 
-        _messagePanel.SizeChanged += (s, e) => {
-            foreach (Control c in _messagePanel.Controls) {
+        _messagePanel.SizeChanged += (s, e) =>
+        {
+            foreach (Control c in _messagePanel.Controls)
+            {
                 if (c is TableLayoutPanel) c.Width = _messagePanel.ClientSize.Width - 25;
             }
         };
@@ -364,11 +783,10 @@ public class ChatTab
         _robot.OnChatMessageReceived += HandleChatMessage;
         _robot.OnTerminalOutput += HandleTerminalOutput;
         _robot.OnGrowthUpdated += (r) => UpdateGrowthUI();
-        
+
         UpdateGrowthUI();
-        
-        // 加载历史（历史消息目前不带思考过程，仅显示回复）
-        foreach(var msg in _robot.ChatHistory)
+
+        foreach (var msg in _robot.ChatHistory)
         {
             HandleChatMessage(msg.role, msg.content, "");
         }
@@ -386,30 +804,31 @@ public class ChatTab
         _insightPanel.Controls.Clear();
         foreach (var insight in _robot.LearnedInsights)
         {
-            var insightChip = new Label {
+            var insightChip = new Label
+            {
                 Text = insight,
                 AutoSize = true,
-                BackColor = Color.FromArgb(60, 60, 60),
-                ForeColor = Color.WhiteSmoke,
-                Font = new Font("Microsoft YaHei", 8),
-                Padding = new Padding(5),
+                BackColor = Color.FromArgb(50, 52, 58),
+                ForeColor = Color.FromArgb(220, 225, 235),
+                Font = new Font("Microsoft YaHei UI", 8F),
+                Padding = new Padding(6, 3, 6, 3),
                 BorderStyle = BorderStyle.FixedSingle,
-                Margin = new Padding(0, 0, 5, 0)
+                Margin = new Padding(0, 0, 6, 0)
             };
             _insightPanel.Controls.Add(insightChip);
         }
 
-        // 更新技能显示
         _skillPanel.Controls.Clear();
         foreach (var skill in _robot.Skills.Values)
         {
-            var skillDisplay = new Label {
-                Text = $"{skill.Name} Lvl.{skill.Level} ({skill.Experience}/{skill.NextLevelXp})",
+            var skillDisplay = new Label
+            {
+                Text = $"⚔️ {skill.Name} Lvl.{skill.Level} ({skill.Experience}/{skill.NextLevelXp})",
                 AutoSize = true,
-                ForeColor = Color.SkyBlue,
-                Font = new Font("Microsoft YaHei", 8, FontStyle.Bold),
-                Padding = new Padding(10, 0, 15, 0),
-                Margin = new Padding(0, 5, 0, 0)
+                ForeColor = Color.FromArgb(0, 229, 255),
+                Font = new Font("Microsoft YaHei UI", 8F, FontStyle.Bold),
+                Padding = new Padding(8, 2, 12, 2),
+                Margin = new Padding(0, 4, 0, 0)
             };
             _skillPanel.Controls.Add(skillDisplay);
         }
@@ -419,38 +838,26 @@ public class ChatTab
     {
         string text = _inputBox.Text.Trim();
         if (string.IsNullOrEmpty(text)) return;
-        
         _inputBox.Clear();
 
-        // 处理特殊命令
         if (text.StartsWith("/"))
         {
             HandleInternalCommand(text);
             return;
         }
-        
+
         _robot.SendUserMessage(text).ConfigureAwait(false);
     }
 
     private void HandleInternalCommand(string cmd)
     {
-        string log = "";
-        switch (cmd.ToLower())
+        string log = cmd.ToLower() switch
         {
-            case "/log-social":
-                _robot.LogSocialInteractions = !_robot.LogSocialInteractions;
-                log = _robot.LogSocialInteractions ? "已开启社交日志" : "已隐藏社交日志";
-                break;
-            case "/status":
-                log = $"状态: {_robot.StatusMessage} | 动作: {(_robot.IsMoving ? "移动中" : "静止")}";
-                break;
-            case "/help":
-                log = "可用指令:\n/log-social - 切换社交对话显示\n/status - 查看状态\n/help - 显示此帮助";
-                break;
-            default:
-                log = "未知指令。输入 /help 查看列表。";
-                break;
-        }
+            "/log-social" => (_robot.LogSocialInteractions = !_robot.LogSocialInteractions) ? "已开启社交日志" : "已隐藏社交日志",
+            "/status" => $"状态: {_robot.StatusMessage} | 动作: {(_robot.IsMoving ? "移动中" : "静止")}",
+            "/help" => "可用指令:\n/log-social - 切换社交对话显示\n/status - 查看状态\n/help - 显示此帮助",
+            _ => "未知指令。输入 /help 查看列表。"
+        };
         HandleTerminalOutput(log);
     }
 
@@ -465,14 +872,14 @@ public class ChatTab
         var logLabel = new Label
         {
             Text = text.StartsWith("[") ? text : $"[SYS] {text}",
-            ForeColor = text.Contains("[SOCIAL]") ? Color.LightBlue : Color.Gray,
-            Font = new Font("Microsoft YaHei", 9, FontStyle.Italic),
+            ForeColor = text.Contains("[SOCIAL]") ? Color.FromArgb(128, 222, 234) : Color.Gray,
+            Font = new Font("Consolas", 8.5F, FontStyle.Italic),
             AutoSize = true,
             Dock = DockStyle.Top,
-            Padding = new Padding(10, 2, 0, 2),
+            Padding = new Padding(8, 2, 0, 2),
             Margin = new Padding(0)
         };
-        
+
         _messagePanel.Controls.Add(logLabel);
         _messagePanel.ScrollControlIntoView(logLabel);
     }
@@ -485,52 +892,49 @@ public class ChatTab
             return;
         }
 
-        // 使用 TableLayoutPanel 代替 Panel，这是 WinForms 处理纵向堆叠最稳健的方式
         var msgContainer = new TableLayoutPanel
         {
             ColumnCount = 1,
-            RowCount = 0, // 动态增加
+            RowCount = 0,
             Width = _messagePanel.ClientSize.Width - 30,
             AutoSize = true,
-            BackColor = Color.FromArgb(35, 35, 35),
-            Padding = new Padding(10),
-            Margin = new Padding(0, 0, 0, 15)
+            BackColor = role == "user" ? Color.FromArgb(20, 38, 48) : Color.FromArgb(32, 34, 38),
+            Padding = new Padding(12),
+            Margin = new Padding(0, 0, 0, 12)
         };
         msgContainer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
 
-        // 1. 名字头部
         var header = new Label
         {
-            Text = role == "user" ? " 我:" : $" {_robot.Name}:",
-            ForeColor = role == "user" ? Color.Cyan : Color.Gold,
-            Font = new Font("Microsoft YaHei", 9, FontStyle.Bold),
+            Text = role == "user" ? "👤 我 (User)" : $"🤖 {_robot.Name}:",
+            ForeColor = role == "user" ? Color.FromArgb(0, 229, 255) : Color.FromArgb(255, 215, 0),
+            Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold),
             AutoSize = true,
             Dock = DockStyle.Top,
-            Margin = new Padding(0, 0, 0, 5)
+            Margin = new Padding(0, 0, 0, 4)
         };
         msgContainer.Controls.Add(header);
 
-        // 2. 思考过程 (如果有)
         if (!string.IsNullOrEmpty(thought))
         {
             var thoughtLabel = new Label
             {
                 Text = thought,
-                ForeColor = Color.DarkGray,
-                BackColor = Color.FromArgb(25, 25, 25),
-                Font = new Font("Consolas", 9),
+                ForeColor = Color.FromArgb(160, 165, 175),
+                BackColor = Color.FromArgb(20, 21, 24),
+                Font = new Font("Consolas", 8.5F),
                 AutoSize = true,
                 Dock = DockStyle.Top,
-                Visible = false, // 默认折叠
+                Visible = false,
                 Padding = new Padding(8),
-                Margin = new Padding(10, 5, 0, 5)
+                Margin = new Padding(5, 4, 0, 4)
             };
 
             var toggleBtn = new Label
             {
-                Text = " 💭 思考过程 (点击展开)",
-                ForeColor = Color.Gray,
-                Font = new Font("Microsoft YaHei", 8, FontStyle.Italic),
+                Text = "💭 思考过程 (点击展开)",
+                ForeColor = Color.FromArgb(140, 145, 155),
+                Font = new Font("Microsoft YaHei UI", 8F, FontStyle.Italic),
                 Cursor = Cursors.Hand,
                 AutoSize = true,
                 Dock = DockStyle.Top,
@@ -540,33 +944,32 @@ public class ChatTab
             toggleBtn.Click += (s, e) =>
             {
                 thoughtLabel.Visible = !thoughtLabel.Visible;
-                toggleBtn.Text = thoughtLabel.Visible ? " 💭 思考过程 (点击折叠)" : " 💭 思考过程 (点击展开)";
-                // TableLayoutPanel 会因为 AutoSize 自动重绘
+                toggleBtn.Text = thoughtLabel.Visible ? "💭 思考过程 (点击折叠)" : "💭 思考过程 (点击展开)";
             };
 
             msgContainer.Controls.Add(toggleBtn);
             msgContainer.Controls.Add(thoughtLabel);
         }
 
-        // 3. 正文内容
         var textBody = new Label
         {
             Text = content,
             ForeColor = Color.White,
-            Font = new Font("Microsoft YaHei", 10),
+            Font = new Font("Microsoft YaHei UI", 9.5F),
             AutoSize = true,
             Dock = DockStyle.Top,
-            Padding = new Padding(5, 5, 0, 0)
+            Padding = new Padding(2, 4, 0, 0)
         };
         msgContainer.Controls.Add(textBody);
 
-        // 核心：强制让父容器下的所有 Label 在 TableLayoutPanel 里触发换行
-        msgContainer.Paint += (s, e) => {
-            if (header.Width != msgContainer.Width - 20) {
+        msgContainer.Paint += (s, e) =>
+        {
+            if (header.Width != msgContainer.Width - 20)
+            {
                 header.MaximumSize = new Size(msgContainer.Width - 20, 0);
                 textBody.MaximumSize = new Size(msgContainer.Width - 20, 0);
-                // 思考内容也需要限制
-                foreach (Control c in msgContainer.Controls) {
+                foreach (Control c in msgContainer.Controls)
+                {
                     if (c is Label l && c != header && c != textBody)
                         l.MaximumSize = new Size(msgContainer.Width - 30, 0);
                 }
@@ -574,8 +977,6 @@ public class ChatTab
         };
 
         _messagePanel.Controls.Add(msgContainer);
-        
-        // 自动滚动
         _messagePanel.ScrollControlIntoView(msgContainer);
         _messagePanel.PerformLayout();
     }
