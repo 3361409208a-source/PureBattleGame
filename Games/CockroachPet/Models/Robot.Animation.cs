@@ -165,13 +165,14 @@ public partial class Robot
     private void UpdateRandomDirection()
     {
         ChangeDirectionTimer++;
-        if (ChangeDirectionTimer > 120 && Rand.Next(100) < 5)
+        if (ChangeDirectionTimer > 90 && Rand.Next(100) < 10)
         {
             ChangeDirectionTimer = 0;
             double angle = Rand.NextDouble() * Math.PI * 2;
-            float speed = (float)Math.Sqrt(Dx * Dx + Dy * Dy);
-            Dx = (float)Math.Cos(angle) * speed;
-            Dy = (float)Math.Sin(angle) * speed;
+            float currentSpeed = (float)Math.Sqrt(Dx * Dx + Dy * Dy);
+            float baseSpeed = Math.Max(1.8f * SpeedMultiplier, currentSpeed);
+            Dx = (float)Math.Cos(angle) * baseSpeed;
+            Dy = (float)Math.Sin(angle) * baseSpeed;
         }
     }
 

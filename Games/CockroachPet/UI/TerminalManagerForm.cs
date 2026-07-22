@@ -201,6 +201,27 @@ public class TerminalManagerForm : WebUIHostForm
             }
 
             SettingsManager.Save();
+
+            // 立刻重置所有机器人的交战与锁敌状态，使新设置立刻生效
+            var robots = PetForm.Instance?.GetRobots() ?? new List<Robot>();
+            foreach (var r in robots)
+            {
+                r.ChasingTarget = null;
+                r.ChaseTimer = 0;
+                r.DuelTarget = null;
+                r.DuelTimer = 0;
+                r.PhysicalTarget = null;
+                r.PhysicalAction = "NONE";
+                r.IsFiringLaser = false;
+                r.IsMoving = true;
+                r.CurseMode = SettingsManager.Current.CurseModeByDefault;
+                if (SettingsManager.Current.ActionInteractionMode == "和平相处")
+                {
+                    r.SpecialState = "HAPPY";
+                    r.SpecialStateTimer = 30;
+                }
+            }
+
             return true;
         });
 

@@ -397,16 +397,24 @@ export const SocialHubView: React.FC = () => {
                   暂无广播消息，输入下方框开始向所有机器人广播吧！
                 </div>
               ) : (
-                worldMessages.map((msg, i) => (
-                  <div key={i} className="flex gap-2.5 text-xs">
-                    <span className="font-bold text-amber-400 whitespace-nowrap">
-                      [{settings.hideNameAndPersonality ? '机器人' : msg.sender}]
-                    </span>
-                    <span className="text-zinc-200 leading-relaxed">
-                      {msg.content.replace(/🤖\s*\[AI生成\]/g, '')}
-                    </span>
-                  </div>
-                ))
+                worldMessages.map((msg, i) => {
+                  const getDisplayName = (sender: string) => {
+                    if (sender === '管理员' || sender === '系统') return sender;
+                    if (!settings.hideNameAndPersonality) return sender;
+                    const idx = robots.findIndex(r => r.name === sender);
+                    return idx >= 0 ? `机器人 #${idx + 1}` : '机器人';
+                  };
+                  return (
+                    <div key={i} className="flex gap-2.5 text-xs">
+                      <span className="font-bold text-amber-400 whitespace-nowrap">
+                        [{getDisplayName(msg.sender)}]
+                      </span>
+                      <span className="text-zinc-200 leading-relaxed">
+                        {msg.content.replace(/🤖\s*\[AI生成\]/g, '')}
+                      </span>
+                    </div>
+                  );
+                })
               )}
               <div ref={chatEndRef} />
             </div>
