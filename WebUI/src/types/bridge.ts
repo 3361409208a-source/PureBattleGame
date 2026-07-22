@@ -52,6 +52,8 @@ export interface AppSettings {
   hideNameAndPersonality: boolean;
   curseModeByDefault: boolean;
   battleMode: string;
+  languageMode: string;
+  actionMode: string;
   apiKey: string;
   homeUrl: string;
 }

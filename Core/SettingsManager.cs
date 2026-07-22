@@ -12,6 +12,8 @@ public class AppSettings
     public bool HideNameAndPersonality { get; set; } = false;
     public bool CurseModeByDefault { get; set; } = true;
     public string BattleMode { get; set; } = "近远交替";
+    public string LanguageInteractionMode { get; set; } = "互骂吐槽";
+    public string ActionInteractionMode { get; set; } = "近远交替";
 }
 
 public static class SettingsManager

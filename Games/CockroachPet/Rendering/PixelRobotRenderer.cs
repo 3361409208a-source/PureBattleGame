@@ -669,10 +669,12 @@ public static class PixelRobotRenderer
         string text = !string.IsNullOrEmpty(robot.ChatText) ? robot.ChatText : (robot.ChatMessage ?? "");
         if (robot.ChatTimer <= 0 || string.IsNullOrEmpty(text)) return;
 
-        using var font = new Font("Microsoft YaHei UI", 10.0f, FontStyle.Bold);
+        float scale = robot.Size / 64.0f;
+        float fontSize = Math.Clamp(9.5f * scale, 6.0f, 22.0f);
+        using var font = new Font("Microsoft YaHei UI", fontSize, FontStyle.Bold);
         
         float bx = rx + robot.Size / 2;
-        float by = ry - 35;
+        float by = ry - Math.Max(20.0f, 32.0f * scale);
 
         using var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
         
@@ -680,13 +682,13 @@ public static class PixelRobotRenderer
         Color strokeColor = robot.CurseMode ? Color.FromArgb((int)(240 * alpha), 80, 0, 0) : Color.FromArgb((int)(240 * alpha), 0, 0, 0);
         using var strokeBrush = new SolidBrush(strokeColor);
 
-        float off = 1.5f;
+        float off = Math.Max(1.0f, 1.5f * scale);
         g.DrawString(text, font, strokeBrush, bx + off, by + off, format);
         g.DrawString(text, font, strokeBrush, bx - off, by + off, format);
         g.DrawString(text, font, strokeBrush, bx + off, by - off, format);
         g.DrawString(text, font, strokeBrush, bx - off, by - off, format);
 
-        // 主字体颜色：骂人模式下亮红，普通模式亮白/浅金
+        // 主字体颜色：对骂/吐槽模式下亮红，普通模式亮白/浅金
         Color textColor = robot.CurseMode ? Color.FromArgb((int)(255 * alpha), 255, 65, 65) : Color.FromArgb((int)(255 * alpha), 255, 255, 255);
         using var textBrush = new SolidBrush(textColor);
         g.DrawString(text, font, textBrush, bx, by, format);

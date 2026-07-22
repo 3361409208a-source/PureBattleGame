@@ -156,6 +156,8 @@ public class TerminalManagerForm : WebUIHostForm
             hideNameAndPersonality = SettingsManager.Current.HideNameAndPersonality,
             curseModeByDefault = SettingsManager.Current.CurseModeByDefault,
             battleMode = SettingsManager.Current.BattleMode,
+            languageMode = SettingsManager.Current.LanguageInteractionMode,
+            actionMode = SettingsManager.Current.ActionInteractionMode,
             apiKey = PersistenceManager.GetApiKey(),
             homeUrl = SettingsManager.Current.HomeUrl
         });
@@ -169,6 +171,14 @@ public class TerminalManagerForm : WebUIHostForm
                 SettingsManager.Current.CurseModeByDefault = curseProp.GetBoolean();
             if (payload.TryGetProperty("battleMode", out var battleProp))
                 SettingsManager.Current.BattleMode = battleProp.GetString() ?? "近远交替";
+            if (payload.TryGetProperty("languageMode", out var langProp))
+                SettingsManager.Current.LanguageInteractionMode = langProp.GetString() ?? "互骂吐槽";
+            if (payload.TryGetProperty("actionMode", out var actProp))
+            {
+                string act = actProp.GetString() ?? "近远交替";
+                SettingsManager.Current.ActionInteractionMode = act;
+                SettingsManager.Current.BattleMode = act;
+            }
             if (payload.TryGetProperty("apiKey", out var keyProp))
             {
                 var appSet = PersistenceManager.LoadAppSettings();
