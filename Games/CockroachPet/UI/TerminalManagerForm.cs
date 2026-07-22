@@ -40,62 +40,62 @@ public class TerminalManagerForm : Form
 
     private TerminalManagerForm()
     {
+        // 开启 WinForms 原生双缓冲，防画面与控件闪烁
+        this.SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint, true);
+        this.DoubleBuffered = true;
+
         InitializeComponent();
     }
 
     private void InitializeComponent()
     {
         this.Text = "💬 机器人社交中心 | Robot Social Hub";
-        this.Size = new Size(780, 800);
-        this.MinimumSize = new Size(700, 680);
+        this.Size = new Size(800, 800);
+        this.MinimumSize = new Size(720, 680);
         this.StartPosition = FormStartPosition.CenterScreen;
         this.BackColor = Color.FromArgb(24, 25, 28);
         this.ForeColor = Color.White;
         this.Font = new Font("Microsoft YaHei UI", 9.5F, FontStyle.Regular, GraphicsUnit.Point);
 
-        // 1. 顶部炫彩 Header 面板
+        // 1. 顶部 Header 面板 (采用 FlowLayoutPanel 靠右响应式放置 Status Badges，防裁切)
         var headerPanel = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 58,
+            Height = 52,
             BackColor = Color.FromArgb(17, 18, 20),
-            Padding = new Padding(15, 8, 15, 8)
+            Padding = new Padding(12, 10, 12, 10)
         };
 
         var titleLabel = new Label
         {
             Text = "💬 机器人社交中心",
-            Font = new Font("Microsoft YaHei UI", 12F, FontStyle.Bold),
+            Font = new Font("Microsoft YaHei UI", 11.5F, FontStyle.Bold),
             ForeColor = Color.FromArgb(0, 229, 255),
-            Location = new Point(15, 15),
-            AutoSize = true
+            Dock = DockStyle.Left,
+            AutoSize = true,
+            TextAlign = ContentAlignment.MiddleLeft
         };
 
-        // 顶部快速频道导航按钮
-        var btnNavOverview = CreateNavBtn("🤖 机器人概览", Color.FromArgb(0, 229, 255));
-        btnNavOverview.Location = new Point(200, 14);
-        btnNavOverview.Click += (s, e) => _tabControl.SelectedTab = _overviewPage;
+        var headerRightFlow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Right,
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            BackColor = Color.Transparent,
+            Padding = new Padding(0, 2, 0, 0)
+        };
 
-        var btnNavWorld = CreateNavBtn("🌍 世界广播频道", Color.FromArgb(255, 215, 0));
-        btnNavWorld.Location = new Point(325, 14);
-        btnNavWorld.Click += (s, e) => _tabControl.SelectedTab = _worldChatPage;
-
-        // 右侧状态 Badges (在线/模式/Token)
         _lblOnlinePill = CreatePillLabel("🟢 在线: 0", Color.FromArgb(0, 230, 118));
-        _lblOnlinePill.Location = new Point(470, 15);
-
         _lblModePill = CreatePillLabel("⚔️ 模式: 近远交替", Color.FromArgb(0, 229, 255));
-        _lblModePill.Location = new Point(565, 15);
-
         _lblTokenPill = CreatePillLabel("🪙 Token: 0", Color.FromArgb(255, 215, 0));
-        _lblTokenPill.Location = new Point(665, 15);
+
+        headerRightFlow.Controls.Add(_lblOnlinePill);
+        headerRightFlow.Controls.Add(_lblModePill);
+        headerRightFlow.Controls.Add(_lblTokenPill);
 
         headerPanel.Controls.Add(titleLabel);
-        headerPanel.Controls.Add(btnNavOverview);
-        headerPanel.Controls.Add(btnNavWorld);
-        headerPanel.Controls.Add(_lblOnlinePill);
-        headerPanel.Controls.Add(_lblModePill);
-        headerPanel.Controls.Add(_lblTokenPill);
+        headerPanel.Controls.Add(headerRightFlow);
         this.Controls.Add(headerPanel);
 
         // 2. 主 TabControl
@@ -115,24 +115,25 @@ public class TerminalManagerForm : Form
         _overviewPage = new TabPage { Text = "🤖 机器人概览", BackColor = Color.FromArgb(24, 25, 28) };
         var overviewLayout = new Panel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(24, 25, 28) };
 
-        // 概览页搜索与快捷工具栏
-        var overviewToolBar = new Panel
+        // 概览页 FlowLayoutPanel 响应式工具栏 (防止硬编码坐标重叠与裁切)
+        var overviewToolBar = new FlowLayoutPanel
         {
             Dock = DockStyle.Top,
-            Height = 48,
+            Height = 44,
             BackColor = Color.FromArgb(30, 31, 35),
-            Padding = new Padding(12, 8, 12, 8)
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Padding = new Padding(10, 8, 10, 8)
         };
 
         _searchBox = new TextBox
         {
-            Width = 180,
-            Location = new Point(12, 10),
+            Width = 135,
             BackColor = Color.FromArgb(45, 47, 52),
             ForeColor = Color.White,
             BorderStyle = BorderStyle.FixedSingle,
-            Font = new Font("Microsoft YaHei UI", 9.5F),
-            Text = ""
+            Font = new Font("Microsoft YaHei UI", 9F),
+            Margin = new Padding(0, 2, 8, 0)
         };
         _searchBox.PlaceholderText = "🔍 搜索名字或状态...";
         _searchBox.TextChanged += (s, e) =>
@@ -141,20 +142,20 @@ public class TerminalManagerForm : Form
             SyncOverview();
         };
 
-        var btnAddRobot = CreateActionButton("➕ 添加", Color.FromArgb(0, 200, 83), 75);
-        btnAddRobot.Location = new Point(205, 9);
+        var btnAddRobot = CreateActionButton("➕ 添加", Color.FromArgb(0, 200, 83), 60);
+        btnAddRobot.Margin = new Padding(0, 1, 6, 0);
         btnAddRobot.Click += (s, e) => PetForm.Instance?.SpawnRobotWithName();
 
-        var btnAiGen = CreateActionButton("🤖 AI 生成", Color.FromArgb(156, 39, 176), 90);
-        btnAiGen.Location = new Point(287, 9);
+        var btnAiGen = CreateActionButton("🤖 AI 生成", Color.FromArgb(156, 39, 176), 80);
+        btnAiGen.Margin = new Padding(0, 1, 6, 0);
         btnAiGen.Click += (s, e) => PetForm.Instance?.ShowAiRobotGenerator();
 
-        var btnCurseToggle = CreateActionButton("🤬 骂人开关", Color.FromArgb(244, 67, 54), 95);
-        btnCurseToggle.Location = new Point(384, 9);
+        var btnCurseToggle = CreateActionButton("🤬 骂人开关", Color.FromArgb(244, 67, 54), 85);
+        btnCurseToggle.Margin = new Padding(0, 1, 6, 0);
         btnCurseToggle.Click += (s, e) => PetForm.Instance?.ToggleCurseMode();
 
-        var btnChaos = CreateActionButton("🥊 全员对决", Color.FromArgb(255, 152, 0), 95);
-        btnChaos.Location = new Point(486, 9);
+        var btnChaos = CreateActionButton("🥊 全员对决", Color.FromArgb(255, 152, 0), 85);
+        btnChaos.Margin = new Padding(0, 1, 12, 0);
         btnChaos.Click += (s, e) =>
         {
             var robots = PetForm.Instance?.GetRobots() ?? new List<Robot>();
@@ -173,22 +174,22 @@ public class TerminalManagerForm : Form
 
         var lblPrivateTag = new Label
         {
-            Text = "👤 开启单聊:",
+            Text = "👤 单聊:",
             ForeColor = Color.FromArgb(0, 229, 255),
             Font = new Font("Microsoft YaHei UI", 8.5F, FontStyle.Bold),
-            Location = new Point(590, 13),
-            AutoSize = true
+            AutoSize = true,
+            Margin = new Padding(0, 5, 4, 0)
         };
 
         _comboPrivateChat = new ComboBox
         {
-            Width = 100,
-            Location = new Point(660, 9),
+            Width = 95,
             DropDownStyle = ComboBoxStyle.DropDownList,
             BackColor = Color.FromArgb(45, 47, 52),
             ForeColor = Color.White,
             FlatStyle = FlatStyle.Flat,
-            Font = new Font("Microsoft YaHei UI", 8.5F)
+            Font = new Font("Microsoft YaHei UI", 8.5F),
+            Margin = new Padding(0, 1, 0, 0)
         };
         _comboPrivateChat.SelectedIndexChanged += (s, e) =>
         {
@@ -213,7 +214,7 @@ public class TerminalManagerForm : Form
             Dock = DockStyle.Fill,
             AutoScroll = true,
             BackColor = Color.FromArgb(24, 25, 28),
-            Padding = new Padding(15),
+            Padding = new Padding(12),
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = true
         };
@@ -280,8 +281,7 @@ public class TerminalManagerForm : Form
         };
         _worldInputBox = new TextBox
         {
-            Width = 520,
-            Location = new Point(10, 10),
+            Dock = DockStyle.Fill,
             BackColor = Color.FromArgb(45, 47, 52),
             ForeColor = Color.White,
             BorderStyle = BorderStyle.FixedSingle,
@@ -300,8 +300,8 @@ public class TerminalManagerForm : Form
         var btnWorldSend = new Button
         {
             Text = "📢 广播喊话",
-            Size = new Size(110, 32),
-            Location = new Point(540, 9),
+            Dock = DockStyle.Right,
+            Width = 110,
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.FromArgb(0, 229, 255),
             ForeColor = Color.Black,
@@ -338,25 +338,6 @@ public class TerminalManagerForm : Form
         _titleUpdateTimer.Start();
     }
 
-    private Button CreateNavBtn(string text, Color highlightColor)
-    {
-        var btn = new Button
-        {
-            Text = text,
-            AutoSize = true,
-            Height = 28,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.FromArgb(32, 34, 38),
-            ForeColor = highlightColor,
-            Font = new Font("Microsoft YaHei UI", 8.5F, FontStyle.Bold),
-            Cursor = Cursors.Hand,
-            Padding = new Padding(6, 0, 6, 0)
-        };
-        btn.FlatAppearance.BorderSize = 1;
-        btn.FlatAppearance.BorderColor = highlightColor;
-        return btn;
-    }
-
     private Label CreatePillLabel(string text, Color borderColor)
     {
         return new Label
@@ -365,6 +346,7 @@ public class TerminalManagerForm : Form
             ForeColor = borderColor,
             Font = new Font("Microsoft YaHei UI", 8.5F, FontStyle.Bold),
             AutoSize = true,
+            Margin = new Padding(4, 0, 4, 0),
             Padding = new Padding(8, 3, 8, 3),
             BorderStyle = BorderStyle.FixedSingle,
             BackColor = Color.FromArgb(28, 30, 34)
@@ -448,12 +430,61 @@ public class TerminalManagerForm : Form
             ? robots
             : robots.Where(r => r.Name.ToLower().Contains(_searchKeyword) || r.StatusMessage.ToLower().Contains(_searchKeyword)).ToList();
 
-        // 重新填充卡片
-        _overviewPanel.Controls.Clear();
-        foreach (var robot in filteredRobots)
+        // 核心：仅在卡片数量变动或搜索条件变动时重建控件，彻底消除 Controls.Clear() 造成的每秒闪烁！
+        if (_overviewPanel.Controls.Count != filteredRobots.Count || _overviewPanel.Tag as string != _searchKeyword)
         {
-            var card = CreateRobotCard(robot);
-            _overviewPanel.Controls.Add(card);
+            _overviewPanel.SuspendLayout();
+            _overviewPanel.Controls.Clear();
+            foreach (var robot in filteredRobots)
+            {
+                var card = CreateRobotCard(robot);
+                _overviewPanel.Controls.Add(card);
+            }
+            _overviewPanel.Tag = _searchKeyword;
+            _overviewPanel.ResumeLayout(true);
+        }
+        else
+        {
+            // 数量一致时，仅原地平滑更新控件内容文本，零闪烁！
+            _overviewPanel.SuspendLayout();
+            for (int i = 0; i < filteredRobots.Count; i++)
+            {
+                var card = _overviewPanel.Controls[i] as Panel;
+                var robot = filteredRobots[i];
+                if (card != null && card.Tag == robot)
+                {
+                    UpdateRobotCardInPlace(card, robot);
+                }
+            }
+            _overviewPanel.ResumeLayout(true);
+        }
+    }
+
+    private void UpdateRobotCardInPlace(Panel card, Robot robot)
+    {
+        var statusLabel = card.Controls.Find("status", true).FirstOrDefault() as Label;
+        if (statusLabel != null)
+        {
+            string newStatus = robot.IsAiSpeaking ? $"🤖 \"{robot.ChatText}\"" : (string.IsNullOrWhiteSpace(robot.StatusMessage) ? "🌱 准备就绪..." : $"💬 {robot.StatusMessage}");
+            if (statusLabel.Text != newStatus)
+            {
+                statusLabel.Text = newStatus;
+                statusLabel.ForeColor = robot.IsAiSpeaking ? Color.Gold : Color.FromArgb(160, 165, 175);
+            }
+        }
+
+        var traitLabel = card.Controls.Find("trait", true).FirstOrDefault() as Label;
+        if (traitLabel != null)
+        {
+            string newTrait = $"性格: {robot.GetPersonalityName()} | HP: {robot.HP}/{robot.MaxHP}";
+            if (traitLabel.Text != newTrait) traitLabel.Text = newTrait;
+        }
+
+        var lvLabel = card.Controls.Find("lv", true).FirstOrDefault() as Label;
+        if (lvLabel != null)
+        {
+            string newLv = $"Lvl {robot.ConsciousnessLevel:F1}";
+            if (lvLabel.Text != newLv) lvLabel.Text = newLv;
         }
     }
 
@@ -470,7 +501,7 @@ public class TerminalManagerForm : Form
             BorderStyle = BorderStyle.FixedSingle
         };
 
-        // 头部: 头像圈 + 名字 + 意识等级 Pill
+        // 头部: 名字 + 意识等级 Pill
         var topLayout = new Panel { Dock = DockStyle.Top, Height = 32, BackColor = Color.Transparent };
 
         var nameLabel = new Label
@@ -484,6 +515,7 @@ public class TerminalManagerForm : Form
 
         var lvLabel = new Label
         {
+            Name = "lv",
             Text = $"Lvl {robot.ConsciousnessLevel:F1}",
             ForeColor = Color.FromArgb(0, 230, 118),
             Font = new Font("Microsoft YaHei UI", 8F, FontStyle.Bold),
@@ -499,6 +531,7 @@ public class TerminalManagerForm : Form
         // 性格 Pill & HP/XP 进度
         var traitLabel = new Label
         {
+            Name = "trait",
             Text = $"性格: {robot.GetPersonalityName()} | HP: {robot.HP}/{robot.MaxHP}",
             ForeColor = Color.FromArgb(180, 185, 195),
             Font = new Font("Microsoft YaHei UI", 8F),
@@ -544,6 +577,9 @@ public class TerminalManagerForm : Form
         card.Controls.Add(traitLabel);
         card.Controls.Add(topLayout);
         card.Controls.Add(bottomBar);
+
+        // 双击卡片直接开启私聊
+        card.DoubleClick += (s, e) => OpenTerminal(robot);
 
         return card;
     }
