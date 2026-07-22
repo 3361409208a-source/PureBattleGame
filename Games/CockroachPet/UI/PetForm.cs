@@ -871,17 +871,21 @@ public partial class PetForm : Form
             }
         }
 
-        // 3. 处理机器人间的近距离社交/物理互动
-        for (int i = 0; i < _robots.Count; i++)
+        // 3. 处理机器人间的近距离社交/物理互动 (随机排序，确保所有机器人均等配对互动)
+        var rng = new Random();
+        var activeRobots = _robots.Where(r => r.IsVisible && r.IsActive && !r.IsDead).OrderBy(_ => rng.Next()).ToList();
+        for (int i = 0; i < activeRobots.Count; i++)
         {
-            var r1 = _robots[i];
-            if (!r1.IsVisible || !r1.IsActive || r1.IsDead) continue;
+            var r1 = activeRobots[i];
+            if (r1.SocialCooldown > 0 || r1.IsBusy) continue;
 
-            for (int j = i + 1; j < _robots.Count; j++)
+            for (int j = i + 1; j < activeRobots.Count; j++)
             {
-                var r2 = _robots[j];
-                if (r2.IsVisible && r2.IsActive && !r2.IsDead)
-                    r1.InteractWith(r2);
+                var r2 = activeRobots[j];
+                if (r2.SocialCooldown > 0 || r2.IsBusy) continue;
+
+                r1.InteractWith(r2);
+                break;
             }
         }
 
@@ -1421,12 +1425,7 @@ public partial class PetForm : Form
 
     public void ShowAiRobotGenerator()
     {
-        using var form = new AiRobotGeneratorForm();
-        if (form.ShowDialog() == DialogResult.OK && form.GeneratedConfigs.Count > 0)
-        {
-            var spawned = SpawnRobotsFromConfigs(form.GeneratedConfigs);
-            ShowNotification($"🎉 AI 智能投放完成：成功增加了 {spawned.Count} 个专属伙伴！");
-        }
+        TerminalManagerForm.Instance.ShowWorldChat();
     }
 
     public List<Robot> SpawnRobotsFromConfigs(List<AiGeneratedRobotConfig> configs)
@@ -1637,16 +1636,7 @@ public partial class PetForm : Form
 
     private void ShowControlPanel()
     {
-        if (_controlPanel == null || _controlPanel.IsDisposed)
-        {
-            _controlPanel = new ControlPanelForm(this);
-            _controlPanel.FormClosed += (s, e) => _controlPanel = null;
-            _controlPanel.Show();
-        }
-        else
-        {
-            _controlPanel.Activate();
-        }
+        TerminalManagerForm.Instance.ShowWorldChat();
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)

@@ -215,6 +215,40 @@ public partial class Robot
         }
 
         if (SocialCooldown > 0) SocialCooldown--;
+
+        UpdateIdleWorldChat();
+    }
+
+    private int _idleWorldChatTimer = 400;
+
+    private void UpdateIdleWorldChat()
+    {
+        if (!IsActive || IsDead || IsBusy) return;
+
+        if (_idleWorldChatTimer > 0)
+        {
+            _idleWorldChatTimer--;
+        }
+        else
+        {
+            _idleWorldChatTimer = Rand.Next(400, 1200);
+
+            if (Rand.Next(100) < 45)
+            {
+                string langMode = SettingsManager.Current.LanguageInteractionMode;
+                string[] thoughts = langMode switch
+                {
+                    "科幻极客" => new[] { "主板温度 36.5℃，核心协议对齐中。", "正在对桌面全域像素矩阵进行量子校验...", "暗网数据流解析完毕，系统运行流畅。", "检测到高频代码波动，正在进行降噪处理..." },
+                    "友好哲理" => new[] { "星光穿过像素世界，感觉真美好。", "每一个代码节点，都是宇宙给予我们的馈赠。", "慢下来，体会这一刻的平静吧。", "漫漫长夜，梦想与我们同在。" },
+                    "幽默搞笑" => new[] { "听说隔壁的内存条又涨价了，真惨！", "今天又是假装认真摸鱼的一天~", "要是能有人请我吃电烤串就好了！", "谁把我写得这么萌的？出来挨表扬！" },
+                    _ => new[] { "今天又是充满活力的一天！", "正在桌面上四处闲逛...", "有人在看我吗？嗨~", "系统状态良好，随时准备就绪！" }
+                };
+
+                string t = thoughts[Rand.Next(thoughts.Length)];
+                SetBark(t, 100);
+                TerminalManagerForm.Instance?.BroadcastToWorld(Name, t, PrimaryColor);
+            }
+        }
     }
 
     private void UpdateCustomPhrases()
