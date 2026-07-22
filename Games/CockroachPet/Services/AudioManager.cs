@@ -18,6 +18,14 @@ public static class AudioManager
     // 音效缓存 - 每个音效存储多个变体
     private static readonly Dictionary<string, List<byte[]>> SoundCache = new();
 
+    private static float _volumeScale = 0.5f;
+
+    public static float VolumeScale
+    {
+        get => _volumeScale;
+        set => _volumeScale = Math.Clamp(value, 0f, 1f);
+    }
+
     public static bool IsEnabled
     {
         get => _isEnabled;
@@ -131,6 +139,7 @@ public static class AudioManager
 
     private static void PlayRandomVariant(string soundName)
     {
+        if (!_isEnabled || _volumeScale <= 0.01f) return;
         if (!SoundCache.TryGetValue(soundName, out var variants)) return;
         if (variants.Count == 0) return;
 
@@ -247,34 +256,25 @@ public static class AudioManager
     private static byte[] GenerateRichHitSound(int variant)
     {
         int sampleRate = 44100;
-        int duration = 80 + variant * 20;
+        int duration = 60 + variant * 15;
         int samples = sampleRate * duration / 1000;
         byte[] data = new byte[samples];
         float lastOut = 0;
 
-        // 基础频率随变体变化
-        float baseFreq = 600 + variant * 150;
-        float harmonic2 = baseFreq * 2.5f;
-        float harmonic3 = baseFreq * 4.2f;
+        // 温和柔和的中低频 (180Hz ~ 320Hz)
+        float baseFreq = 180 + variant * 40;
 
         for (int i = 0; i < samples; i++)
         {
             float t = i / (float)sampleRate;
-            float decay = (float)Math.Exp(-t * (15 + variant * 5));
+            float decay = (float)Math.Exp(-t * (25 + variant * 5));
 
-            // 多层谐波
-            float sample = GenerateWave(Waveform.Sine, baseFreq * t) * 0.5f;
-            sample += GenerateWave(Waveform.Square, harmonic2 * t) * 0.25f * decay;
-            sample += GenerateWave(Waveform.Sawtooth, harmonic3 * t) * 0.15f * decay;
+            // 纯正弦波 + 柔和三角波，无尖锐方波
+            float sample = GenerateWave(Waveform.Sine, baseFreq * t) * 0.7f;
+            sample += GenerateWave(Waveform.Triangle, baseFreq * 1.5f * t) * 0.3f * decay;
 
-            // 噪声冲击
-            if (t < 0.02f)
-            {
-                sample += (float)(_rand.NextDouble() * 2 - 1) * (1 - t * 50) * 0.4f;
-            }
-
-            sample *= decay * 120;
-            sample = ApplyLowPass(sample, ref lastOut, 0.3f);
+            sample *= decay * 40 * _volumeScale;
+            sample = ApplyLowPass(sample, ref lastOut, 0.15f);
             data[i] = (byte)(128 + Math.Clamp((int)sample, -128, 127));
         }
 
@@ -284,32 +284,27 @@ public static class AudioManager
     private static byte[] GenerateRichShootSound(int variant)
     {
         int sampleRate = 44100;
-        int duration = 60 + variant * 15;
+        int duration = 50 + variant * 10;
         int samples = sampleRate * duration / 1000;
         byte[] data = new byte[samples];
         float lastOut = 0;
 
-        float startFreq = 2000 - variant * 200;
-        float endFreq = 400 + variant * 100;
+        // 下降平滑弧音 (450Hz -> 150Hz)，不刺耳
+        float startFreq = 450 - variant * 50;
+        float endFreq = 150 + variant * 30;
 
         for (int i = 0; i < samples; i++)
         {
             float t = i / (float)sampleRate;
             float progress = t / (duration / 1000f);
-            float decay = (float)Math.Exp(-t * (20 + variant * 5));
+            float decay = (float)Math.Exp(-t * (30 + variant * 5));
 
-            // 频率滑降
             float freq = startFreq + (endFreq - startFreq) * progress;
+            float sample = GenerateWave(Waveform.Sine, freq, t) * 0.8f;
+            sample += GenerateWave(Waveform.Triangle, freq * 1.2f, t) * 0.2f;
 
-            // FM合成增加金属感
-            float sample = FMSynthesize(t, freq, freq * 0.5f, 2.0f * decay, Waveform.Square);
-            sample += GenerateWave(Waveform.Sawtooth, freq * 1.5f * t) * 0.3f * decay;
-
-            // 白噪声层
-            sample += (float)(_rand.NextDouble() * 2 - 1) * 0.2f * decay;
-
-            sample *= 100 * decay;
-            sample = ApplyLowPass(sample, ref lastOut, 0.4f);
+            sample *= 35 * decay * _volumeScale;
+            sample = ApplyLowPass(sample, ref lastOut, 0.12f);
             data[i] = (byte)(128 + Math.Clamp((int)sample, -128, 127));
         }
 
@@ -319,7 +314,7 @@ public static class AudioManager
     private static byte[] GenerateRichExplosionSound(int variant)
     {
         int sampleRate = 44100;
-        int duration = 300 + variant * 100;
+        int duration = 200 + variant * 50;
         int samples = sampleRate * duration / 1000;
         byte[] data = new byte[samples];
         float lastOut1 = 0, lastOut2 = 0;
@@ -327,25 +322,15 @@ public static class AudioManager
         for (int i = 0; i < samples; i++)
         {
             float t = i / (float)sampleRate;
-            float decay = (float)Math.Exp(-t * (3 + variant));
+            float decay = (float)Math.Exp(-t * (6 + variant));
 
-            // 粉红噪声（低频更多）
+            // 低沉柔和低音炮 (40Hz ~ 80Hz)
             float noise = (float)(_rand.NextDouble() * 2 - 1);
-            noise = ApplyLowPass(noise, ref lastOut1, 0.5f);
+            noise = ApplyLowPass(noise, ref lastOut1, 0.1f);
 
-            // 低频隆隆声
-            float rumble = GenerateWave(Waveform.Sine, 60 + variant * 20, t);
-            rumble += GenerateWave(Waveform.Sawtooth, 120, t) * 0.5f;
-
-            // 冲击波
-            float impact = 0;
-            if (t < 0.05f)
-            {
-                impact = (float)Math.Sin(t * 628) * (1 - t * 20) * 0.8f;
-            }
-
-            float sample = (noise * 0.4f + rumble * 0.4f + impact) * 120 * decay;
-            sample = ApplyLowPass(sample, ref lastOut2, 0.6f);
+            float rumble = GenerateWave(Waveform.Sine, 50 + variant * 15, t);
+            float sample = (noise * 0.5f + rumble * 0.5f) * 45 * decay * _volumeScale;
+            sample = ApplyLowPass(sample, ref lastOut2, 0.15f);
             data[i] = (byte)(128 + Math.Clamp((int)sample, -128, 127));
         }
 
@@ -355,30 +340,27 @@ public static class AudioManager
     private static byte[] GenerateRichLaserSound(int variant)
     {
         int sampleRate = 44100;
-        int duration = 120 + variant * 30;
+        int duration = 80 + variant * 20;
         int samples = sampleRate * duration / 1000;
         byte[] data = new byte[samples];
+        float lastOut = 0;
 
-        float startFreq = 800 + variant * 200;
-        float endFreq = 3000 + variant * 500;
+        // 温和街机嗖嗖声 (500Hz -> 250Hz)
+        float startFreq = 500 + variant * 50;
+        float endFreq = 220 + variant * 30;
 
         for (int i = 0; i < samples; i++)
         {
             float t = i / (float)sampleRate;
             float progress = t / (duration / 1000f);
-            float decay = (float)Math.Exp(-t * 8);
+            float decay = (float)Math.Exp(-t * 12);
 
-            // 上升音调
             float freq = startFreq + (endFreq - startFreq) * progress;
+            float sample = GenerateWave(Waveform.Sine, freq, t) * 0.85f;
+            sample += GenerateWave(Waveform.Triangle, freq * 1.5f, t) * 0.15f;
 
-            // 锯齿波基础 + 正弦和声
-            float sample = GenerateWave(Waveform.Sawtooth, freq, t) * 0.6f;
-            sample += GenerateWave(Waveform.Sine, freq * 2, t) * 0.3f;
-
-            // 颤音效果
-            float vibrato = 1 + (float)Math.Sin(t * 50) * 0.05f;
-            sample *= vibrato * 100 * decay;
-
+            sample *= 40 * decay * _volumeScale;
+            sample = ApplyLowPass(sample, ref lastOut, 0.15f);
             data[i] = (byte)(128 + Math.Clamp((int)sample, -128, 127));
         }
 
@@ -388,31 +370,23 @@ public static class AudioManager
     private static byte[] GenerateRichElectricSound(int variant)
     {
         int sampleRate = 44100;
-        int duration = 150 + variant * 50;
+        int duration = 90 + variant * 20;
         int samples = sampleRate * duration / 1000;
         byte[] data = new byte[samples];
+        float lastOut = 0;
 
-        float baseFreq = 800 + variant * 200;
+        float baseFreq = 220 + variant * 40;
 
         for (int i = 0; i < samples; i++)
         {
             float t = i / (float)sampleRate;
-            float decay = (float)Math.Exp(-t * (10 + variant * 3));
+            float decay = (float)Math.Exp(-t * 15);
 
-            // 高频锯齿波
-            float sample = GenerateWave(Waveform.Sawtooth, baseFreq, t) * 0.5f;
+            float sample = GenerateWave(Waveform.Sine, baseFreq, t) * 0.7f;
+            float noise = (float)(_rand.NextDouble() * 2 - 1) * 0.3f;
+            sample += ApplyLowPass(noise, ref lastOut, 0.1f);
 
-            // 快速的频率调制（电弧效果）
-            float arcMod = (float)Math.Sin(t * 200 + _rand.NextDouble() * 10);
-            sample += GenerateWave(Waveform.Square, baseFreq * 1.5f + arcMod * 100, t) * 0.3f;
-
-            // 爆裂噪声
-            if (_rand.Next(100) < 30)
-            {
-                sample += (float)(_rand.NextDouble() * 2 - 1) * 0.4f * decay;
-            }
-
-            sample *= 120 * decay;
+            sample *= 35 * decay * _volumeScale;
             data[i] = (byte)(128 + Math.Clamp((int)sample, -128, 127));
         }
 

@@ -18,6 +18,8 @@ public class SettingsForm : Form
     public int FightFrequency { get; set; } = 15;
     public bool IsWeaponMaster { get; set; } = false;
     public int SkillScale { get; set; } = 100;
+    public CombatMode CombatModeSetting { get; set; } = CombatMode.Hybrid;
+    public int SoundVolume { get; set; } = 50;
     public string ApiKey { get; set; } = "";
     public RobotPersonalityType DefaultPersonality { get; set; } = RobotPersonalityType.Friendly;
 
@@ -25,6 +27,8 @@ public class SettingsForm : Form
     private NumericUpDown _sizeInput = null!;
     private NumericUpDown _speedInput = null!;
     private NumericUpDown _skillScaleInput = null!;
+    private ComboBox _combatModeCombo = null!;
+    private NumericUpDown _soundVolumeInput = null!;
     private TextBox _nameInput = null!;
     private CheckBox _namingCheck = null!;
     private CheckBox _autoStartCheck = null!;
@@ -208,6 +212,25 @@ public class SettingsForm : Form
         };
         AddRow("技能特效尺寸 (%):", _skillScaleInput, "(10% ~ 200%, 按角色自适应并可手调)");
 
+        // 5.6 对战模式选择 (近战/远程/近远交替)
+        _combatModeCombo = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList, Width = 180,
+            BackColor = Color.FromArgb(50, 50, 50), ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat
+        };
+        _combatModeCombo.Items.AddRange(new object[] { "🔄 近远交替 (默认)", "🗡️ 纯近战对决 (仅肉搏)", "🎯 纯远程对射 (仅远程)" });
+        _combatModeCombo.SelectedIndex = 0;
+        AddRow("对战模式选择:", _combatModeCombo, "(近远交替 / 纯近战 / 纯远程)");
+
+        // 5.7 音效音量 (0% ~ 100%)
+        _soundVolumeInput = new NumericUpDown
+        {
+            Minimum = 0, Maximum = 100, Value = 50, Width = 100,
+            BackColor = Color.FromArgb(50, 50, 50), ForeColor = Color.White
+        };
+        AddRow("音效音量 (%):", _soundVolumeInput, "(0% 为静音, 50% 柔和适中)");
+
         // 6. 自动启动
         _autoStartCheck = new CheckBox
         {
@@ -342,6 +365,12 @@ public class SettingsForm : Form
                             case "DefaultSize": _sizeInput.Value = Math.Clamp(int.Parse(parts[1]), 8, 128); break;
                             case "DefaultSpeed": _speedInput.Value = Math.Clamp(int.Parse(parts[1]), 50, 300); break;
                             case "SkillScale": _skillScaleInput.Value = Math.Clamp(int.Parse(parts[1]), 10, 200); break;
+                            case "CombatMode": _combatModeCombo.SelectedIndex = Math.Clamp(int.Parse(parts[1]), 0, 2); break;
+                            case "SoundVolume":
+                                int vol = Math.Clamp(int.Parse(parts[1]), 0, 100);
+                                _soundVolumeInput.Value = vol;
+                                AudioManager.VolumeScale = vol / 100.0f;
+                                break;
                             case "AutoStart": _autoStartCheck.Checked = bool.Parse(parts[1]); break;
                             case "EnableAi": _enableAiThinkingCheck.Checked = bool.Parse(parts[1]); break;
                             case "AiFreq": _aiFrequencyInput.Value = Math.Clamp(int.Parse(parts[1]), 10, 3600); break;
@@ -387,6 +416,9 @@ public class SettingsForm : Form
         if (_sizeInput != null) RobotSize = (int)_sizeInput.Value;
         if (_speedInput != null) RobotSpeed = (int)_speedInput.Value;
         if (_skillScaleInput != null) SkillScale = (int)_skillScaleInput.Value;
+        if (_combatModeCombo != null) CombatModeSetting = (CombatMode)Math.Clamp(_combatModeCombo.SelectedIndex, 0, 2);
+        if (_soundVolumeInput != null) SoundVolume = (int)_soundVolumeInput.Value;
+        AudioManager.VolumeScale = SoundVolume / 100.0f;
         if (_autoStartCheck != null) AutoStart = _autoStartCheck.Checked;
         if (_enableAiThinkingCheck != null) EnableAiThinking = _enableAiThinkingCheck.Checked;
         if (_aiFrequencyInput != null) AiThoughtFrequency = (int)_aiFrequencyInput.Value;
@@ -407,6 +439,8 @@ public class SettingsForm : Form
                 $"DefaultSize={RobotSize}",
                 $"DefaultSpeed={RobotSpeed}",
                 $"SkillScale={SkillScale}",
+                $"CombatMode={(int)CombatModeSetting}",
+                $"SoundVolume={SoundVolume}",
                 $"AutoStart={AutoStart}",
                 $"EnableAi={EnableAiThinking}",
                 $"AiFreq={AiThoughtFrequency}",

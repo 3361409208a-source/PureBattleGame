@@ -221,6 +221,7 @@ public partial class Robot
     private void LaunchRemoteAttack(Robot other)
     {
         if (other == null || !other.IsActive || other.IsDead || IsDead) return;
+        if (PetForm.Instance?.GlobalCombatMode == CombatMode.MeleeOnly) return;
 
         string targetName = other.Name;
         string[] attackBarks = CurseMode
@@ -480,6 +481,7 @@ public partial class Robot
 
     private void StartDuel(Robot other)
     {
+        if (PetForm.Instance?.GlobalCombatMode == CombatMode.RangedOnly) return;
         if (DuelTarget != null || other.DuelTarget != null) return;
 
         DuelTarget = other;

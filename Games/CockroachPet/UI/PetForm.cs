@@ -10,9 +10,17 @@ using PureBattleGame.Games.CockroachPet.UI;
 
 namespace PureBattleGame.Games.CockroachPet;
 
+public enum CombatMode
+{
+    Hybrid = 0,     // 🔄 近远交替 (默认)
+    MeleeOnly = 1,  // 🗡️ 纯近战对决 (仅近身肉搏)
+    RangedOnly = 2  // 🎯 纯远程对射 (仅远程光波与弹道)
+}
+
 public partial class PetForm : Form
 {
     public static PetForm? Instance { get; private set; }
+    public CombatMode GlobalCombatMode { get; set; } = CombatMode.Hybrid;
 
     // Windows API for global hotkeys
     [DllImport("user32.dll")]
@@ -637,7 +645,13 @@ public partial class PetForm : Form
         {
             _robots.Clear();
         });
-        menu.Items.Add(controlMenu);
+        // ⚔️ 对战模式
+        var combatModeMenu = new ToolStripMenuItem("⚔️ 对战模式");
+        var itemHybrid = new ToolStripMenuItem("🔄 近远交替 (默认)", null, (s, e) => SetCombatMode(CombatMode.Hybrid));
+        var itemMelee = new ToolStripMenuItem("🗡️ 纯近战对决", null, (s, e) => SetCombatMode(CombatMode.MeleeOnly));
+        var itemRanged = new ToolStripMenuItem("🎯 纯远程对射", null, (s, e) => SetCombatMode(CombatMode.RangedOnly));
+        combatModeMenu.DropDownItems.AddRange(new ToolStripItem[] { itemHybrid, itemMelee, itemRanged });
+        menu.Items.Add(combatModeMenu);
 
         // 骂人模式开关
         var isCurseActive = GlobalCurseMode || (_robots.Count > 0 && _robots.Any(r => r.CurseMode));
@@ -658,6 +672,16 @@ public partial class PetForm : Form
             ShowNotification("骂人模式随机切换完成！");
         });
         menu.Items.Add(curseMenu);
+
+        menu.Opening += (s, e) =>
+        {
+            bool curActive = GlobalCurseMode || (_robots.Count > 0 && _robots.Any(r => r.CurseMode));
+            curseMenu.Text = curActive ? "🤬 骂人模式 (已开启)" : "🤐 骂人模式 (已关闭)";
+
+            itemHybrid.Checked = (GlobalCombatMode == CombatMode.Hybrid);
+            itemMelee.Checked = (GlobalCombatMode == CombatMode.MeleeOnly);
+            itemRanged.Checked = (GlobalCombatMode == CombatMode.RangedOnly);
+        };
 
         // 速度控制
         var speedMenu = new ToolStripMenuItem("全局速度");
@@ -1521,6 +1545,19 @@ public partial class PetForm : Form
         }
     }
 
+    public void SetCombatMode(CombatMode mode)
+    {
+        GlobalCombatMode = mode;
+        string modeName = mode switch
+        {
+            CombatMode.MeleeOnly => "🗡️ 纯近战对决 (仅近身肉搏拼刀，禁用远程光波)",
+            CombatMode.RangedOnly => "🎯 纯远程对射 (仅保持距离射击，禁用近身旋风碰撞)",
+            _ => "🔄 近远交替 (远程对射 + 近身格斗)"
+        };
+        ShowNotification($"对战模式已切换: {modeName}");
+        TerminalManagerForm.Instance?.BroadcastToWorld("系统提示", $"⚔️ 对战模式已切换为：{modeName}", Color.DeepSkyBlue);
+    }
+
     public void ShowSettings()
     {
         if (_settingsForm == null || _settingsForm.IsDisposed)
@@ -1535,6 +1572,8 @@ public partial class PetForm : Form
             _settingsForm.FightFrequency = FightFrequency;
             _settingsForm.IsWeaponMaster = IsWeaponMaster;
             _settingsForm.SkillScale = GlobalSkillScale;
+            _settingsForm.CombatModeSetting = GlobalCombatMode;
+            _settingsForm.SoundVolume = (int)(AudioManager.VolumeScale * 100);
             _settingsForm.DefaultPersonality = DefaultPersonality;
             _settingsForm.FormClosed += (sender, args) =>
             {
@@ -1549,6 +1588,8 @@ public partial class PetForm : Form
                     FightFrequency = _settingsForm.FightFrequency;
                     IsWeaponMaster = _settingsForm.IsWeaponMaster;
                     GlobalSkillScale = _settingsForm.SkillScale;
+                    GlobalCombatMode = _settingsForm.CombatModeSetting;
+                    AudioManager.VolumeScale = _settingsForm.SoundVolume / 100.0f;
                     DefaultPersonality = _settingsForm.DefaultPersonality;
 
 
