@@ -602,7 +602,7 @@ public partial class PetForm : Form
 
         // 控制面板 & 社交中心
         menu.Items.Add("🎛️ 打开控制面板", null, (s, e) => ShowControlPanel());
-        menu.Items.Add("💬 世界聊天频道", null, (s, e) => TerminalManagerForm.Instance.Show());
+        menu.Items.Add("💬 世界聊天频道", null, (s, e) => TerminalManagerForm.Instance.ShowWorldChat());
 
         menu.Items.Add(new ToolStripSeparator());
 

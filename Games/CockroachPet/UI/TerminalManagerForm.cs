@@ -70,17 +70,28 @@ public class TerminalManagerForm : Form
             AutoSize = true
         };
 
+        // 顶部快速频道导航按钮
+        var btnNavOverview = CreateNavBtn("🤖 机器人概览", Color.FromArgb(0, 229, 255));
+        btnNavOverview.Location = new Point(200, 14);
+        btnNavOverview.Click += (s, e) => _tabControl.SelectedTab = _overviewPage;
+
+        var btnNavWorld = CreateNavBtn("🌍 世界广播频道", Color.FromArgb(255, 215, 0));
+        btnNavWorld.Location = new Point(325, 14);
+        btnNavWorld.Click += (s, e) => _tabControl.SelectedTab = _worldChatPage;
+
         // 右侧状态 Badges (在线/模式/Token)
         _lblOnlinePill = CreatePillLabel("🟢 在线: 0", Color.FromArgb(0, 230, 118));
-        _lblOnlinePill.Location = new Point(360, 15);
+        _lblOnlinePill.Location = new Point(470, 15);
 
         _lblModePill = CreatePillLabel("⚔️ 模式: 近远交替", Color.FromArgb(0, 229, 255));
-        _lblModePill.Location = new Point(475, 15);
+        _lblModePill.Location = new Point(565, 15);
 
         _lblTokenPill = CreatePillLabel("🪙 Token: 0", Color.FromArgb(255, 215, 0));
-        _lblTokenPill.Location = new Point(625, 15);
+        _lblTokenPill.Location = new Point(665, 15);
 
         headerPanel.Controls.Add(titleLabel);
+        headerPanel.Controls.Add(btnNavOverview);
+        headerPanel.Controls.Add(btnNavWorld);
         headerPanel.Controls.Add(_lblOnlinePill);
         headerPanel.Controls.Add(_lblModePill);
         headerPanel.Controls.Add(_lblTokenPill);
@@ -91,9 +102,9 @@ public class TerminalManagerForm : Form
         {
             Dock = DockStyle.Fill,
             DrawMode = TabDrawMode.OwnerDrawFixed,
-            ItemSize = new Size(150, 34),
-            SizeMode = TabSizeMode.Fixed,
-            Padding = new Point(12, 6),
+            ItemSize = new Size(0, 34),
+            SizeMode = TabSizeMode.Normal,
+            Padding = new Point(16, 6),
             BackColor = Color.FromArgb(24, 25, 28),
             Font = new Font("Microsoft YaHei UI", 9.5F, FontStyle.Bold)
         };
@@ -295,6 +306,25 @@ public class TerminalManagerForm : Form
         _titleUpdateTimer = new System.Windows.Forms.Timer { Interval = 1000 };
         _titleUpdateTimer.Tick += (s, e) => UpdateUIState();
         _titleUpdateTimer.Start();
+    }
+
+    private Button CreateNavBtn(string text, Color highlightColor)
+    {
+        var btn = new Button
+        {
+            Text = text,
+            AutoSize = true,
+            Height = 28,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(32, 34, 38),
+            ForeColor = highlightColor,
+            Font = new Font("Microsoft YaHei UI", 8.5F, FontStyle.Bold),
+            Cursor = Cursors.Hand,
+            Padding = new Padding(6, 0, 6, 0)
+        };
+        btn.FlatAppearance.BorderSize = 1;
+        btn.FlatAppearance.BorderColor = highlightColor;
+        return btn;
     }
 
     private Label CreatePillLabel(string text, Color borderColor)
@@ -571,6 +601,13 @@ public class TerminalManagerForm : Form
         {
             _worldMessagePanel.Controls.RemoveAt(0);
         }
+    }
+
+    public void ShowWorldChat()
+    {
+        _tabControl.SelectedTab = _worldChatPage;
+        this.Show();
+        this.Activate();
     }
 
     public void OpenTerminal(Robot robot)
