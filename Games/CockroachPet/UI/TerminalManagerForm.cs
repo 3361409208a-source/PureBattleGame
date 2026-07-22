@@ -262,6 +262,59 @@ public class TerminalManagerForm : WebUIHostForm
             }
             return true;
         });
+
+        // 12. AI 智能生成机器人 (全流程步骤进度推送)
+        bridge.RegisterHandler("generateAiRobots", async payload =>
+        {
+            if (!payload.TryGetProperty("prompt", out var promptProp))
+                return new { success = false, message = "未提供生成指令" };
+
+            string prompt = promptProp.GetString() ?? "";
+            if (string.IsNullOrWhiteSpace(prompt))
+                return new { success = false, message = "指令不能为空" };
+
+            Bridge?.SendEvent("aiGenerateProgress", new { percent = 20, step = 1, message = "⚡ 正在连接 SiliconFlow 大模型 API 服务通道..." });
+            await System.Threading.Tasks.Task.Delay(200);
+
+            Bridge?.SendEvent("aiGenerateProgress", new { percent = 45, step = 2, message = "🧠 LLM 大模型解析中：拆解角色名称、性格特质与口头禅..." });
+            
+            List<AiGeneratedRobotConfig> configs;
+            try
+            {
+                configs = await AiService.GenerateRobotsFromPromptAsync(prompt);
+            }
+            catch (Exception ex)
+            {
+                Bridge?.SendEvent("aiGenerateProgress", new { percent = 100, step = 4, error = true, message = $"❌ 生成失败: {ex.Message}" });
+                return new { success = false, message = ex.Message };
+            }
+
+            if (configs == null || configs.Count == 0)
+            {
+                Bridge?.SendEvent("aiGenerateProgress", new { percent = 100, step = 4, error = true, message = "❌ AI 未生成有效的机器人配置" });
+                return new { success = false, message = "AI 未生成有效配置" };
+            }
+
+            Bridge?.SendEvent("aiGenerateProgress", new { percent = 75, step = 3, message = $"🎨 像素外貌合成：生成 {configs.Count} 个专属色值、技能与装备判定..." });
+            await System.Threading.Tasks.Task.Delay(300);
+
+            this.Invoke(() => PetForm.Instance?.SpawnRobotsFromConfigs(configs));
+
+            Bridge?.SendEvent("aiGenerateProgress", new { percent = 100, step = 4, completed = true, message = $"🎉 成功生成并投放 {configs.Count} 个专属机器人！" });
+
+            return new
+            {
+                success = true,
+                count = configs.Count,
+                configs = configs.Select(c => new {
+                    name = c.Name,
+                    personality = c.Personality,
+                    guidelines = c.Guidelines,
+                    color = c.Color,
+                    isWeaponMaster = c.IsWeaponMaster
+                }).ToList()
+            };
+        });
     }
 
     private void EnsureSubscribedToRobots()

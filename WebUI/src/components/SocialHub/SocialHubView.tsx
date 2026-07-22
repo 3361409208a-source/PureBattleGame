@@ -5,6 +5,7 @@ import {
   Table, Plus, Pause, Play, Trash2, Eye, EyeOff, Key, Save
 } from 'lucide-react';
 import { bridge } from '../../utils/bridge';
+import { AiGeneratorModal } from './AiGeneratorModal';
 import type { RobotInfo, SocialMessage, ChatMessage, SystemStats, AppSettings } from '../../types/bridge';
 
 export const SocialHubView: React.FC = () => {
@@ -36,9 +37,10 @@ export const SocialHubView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [saveStatus, setSaveStatus] = useState('');
 
-  // 单人私聊状态
+  // 单人私聊与 AI 弹窗状态
   const [privateChats, setPrivateChats] = useState<Record<string, ChatMessage[]>>({});
   const [privateInput, setPrivateInput] = useState('');
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -514,11 +516,11 @@ export const SocialHubView: React.FC = () => {
               </button>
 
               <button
-                onClick={() => bridge.invoke('aiSpawnRobot')}
+                onClick={() => setIsAiModalOpen(true)}
                 className="flex items-center gap-1 px-3 py-1.5 bg-emerald-950 hover:bg-emerald-900 border border-emerald-600 text-emerald-400 font-bold rounded-lg text-xs transition"
               >
                 <Bot className="w-3.5 h-3.5" />
-                AI智能生成
+                🤖 AI智能生成
               </button>
 
               <button
@@ -731,6 +733,13 @@ export const SocialHubView: React.FC = () => {
           </div>
         )}
       </main>
+
+      {/* AI 智能生成机器人弹窗 (包含全流程步骤进度展示) */}
+      <AiGeneratorModal
+        isOpen={isAiModalOpen}
+        onClose={() => setIsAiModalOpen(false)}
+        onSuccess={fetchData}
+      />
     </div>
   );
 };
