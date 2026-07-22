@@ -40,8 +40,8 @@ public class TerminalManagerForm : Form
 
     private TerminalManagerForm()
     {
-        // 开启 WinForms 原生双缓冲，防画面与控件闪烁
-        this.SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint, true);
+        // 只开启不破坏背景绘制的双缓冲，去掉 UserPaint 防止窗口背景变透明
+        this.SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
         this.DoubleBuffered = true;
 
         InitializeComponent();
