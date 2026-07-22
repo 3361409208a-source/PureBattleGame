@@ -604,6 +604,20 @@ public partial class PetForm : Form
         menu.Items.Add("🎛️ 打开控制面板", null, (s, e) => ShowControlPanel());
         menu.Items.Add("💬 世界聊天频道", null, (s, e) => TerminalManagerForm.Instance.ShowWorldChat());
 
+        // 单人 1v1 私聊子菜单
+        var privateChatMenu = new ToolStripMenuItem("👤 单人 1v1 私聊");
+        foreach (var r in _robots)
+        {
+            var rRef = r;
+            var item = new ToolStripMenuItem($"🤖 {rRef.Name} (Lvl {rRef.ConsciousnessLevel:F1})", null, (s, e) => TerminalManagerForm.Instance.OpenTerminal(rRef));
+            privateChatMenu.DropDownItems.Add(item);
+        }
+        if (_robots.Count == 0)
+        {
+            privateChatMenu.DropDownItems.Add("（无在线机器人）");
+        }
+        menu.Items.Add(privateChatMenu);
+
         menu.Items.Add(new ToolStripSeparator());
 
         // 摸鱼模式菜单

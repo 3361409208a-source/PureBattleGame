@@ -21,6 +21,7 @@ public class TerminalManagerForm : Form
     private Label _lblOnlinePill = null!;
     private Label _lblModePill = null!;
     private Label _lblTokenPill = null!;
+    private ComboBox _comboPrivateChat = null!;
     private static TerminalManagerForm? _instance;
     private System.Windows.Forms.Timer _titleUpdateTimer = null!;
     private string _searchKeyword = "";
@@ -170,11 +171,40 @@ public class TerminalManagerForm : Form
             }
         };
 
+        var lblPrivateTag = new Label
+        {
+            Text = "👤 开启单聊:",
+            ForeColor = Color.FromArgb(0, 229, 255),
+            Font = new Font("Microsoft YaHei UI", 8.5F, FontStyle.Bold),
+            Location = new Point(590, 13),
+            AutoSize = true
+        };
+
+        _comboPrivateChat = new ComboBox
+        {
+            Width = 100,
+            Location = new Point(660, 9),
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            BackColor = Color.FromArgb(45, 47, 52),
+            ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Microsoft YaHei UI", 8.5F)
+        };
+        _comboPrivateChat.SelectedIndexChanged += (s, e) =>
+        {
+            if (_comboPrivateChat.SelectedItem is RobotItem item && item.RobotObj != null)
+            {
+                OpenTerminal(item.RobotObj);
+            }
+        };
+
         overviewToolBar.Controls.Add(_searchBox);
         overviewToolBar.Controls.Add(btnAddRobot);
         overviewToolBar.Controls.Add(btnAiGen);
         overviewToolBar.Controls.Add(btnCurseToggle);
         overviewToolBar.Controls.Add(btnChaos);
+        overviewToolBar.Controls.Add(lblPrivateTag);
+        overviewToolBar.Controls.Add(_comboPrivateChat);
         overviewLayout.Controls.Add(overviewToolBar);
 
         // 卡片网格 FlowLayoutPanel
@@ -395,6 +425,15 @@ public class TerminalManagerForm : Form
             _ => "⚔️ 模式: 近远交替"
         };
         _lblModePill.Text = modeStr;
+
+        if (_comboPrivateChat != null && _comboPrivateChat.Items.Count != robots.Count)
+        {
+            _comboPrivateChat.Items.Clear();
+            foreach (var r in robots)
+            {
+                _comboPrivateChat.Items.Add(new RobotItem(r));
+            }
+        }
 
         if (_tabControl.SelectedTab == _overviewPage)
         {
@@ -1017,4 +1056,11 @@ public class ChatTab
         _messagePanel.ScrollControlIntoView(msgContainer);
         _messagePanel.PerformLayout();
     }
+}
+
+public class RobotItem
+{
+    public Robot RobotObj { get; set; }
+    public RobotItem(Robot r) { RobotObj = r; }
+    public override string ToString() => $"🤖 {RobotObj.Name}";
 }
