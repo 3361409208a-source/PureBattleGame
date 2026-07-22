@@ -687,10 +687,11 @@ public static class PixelRobotRenderer
 
     private static void DrawChatBubble(Graphics g, Robot robot, float rx, float ry, float alpha = 1.0f)
     {
-        if (robot.ChatTimer <= 0 || string.IsNullOrEmpty(robot.ChatMessage)) return;
+        string text = !string.IsNullOrEmpty(robot.ChatText) ? robot.ChatText : (robot.ChatMessage ?? "");
+        if (robot.ChatTimer <= 0 || string.IsNullOrEmpty(text)) return;
 
-        using var font = new Font("Microsoft YaHei", 9);
-        var size = g.MeasureString(robot.ChatMessage, font);
+        using var font = new Font("Microsoft YaHei", 9.5f, robot.CurseMode ? FontStyle.Bold : FontStyle.Regular);
+        var size = g.MeasureString(text, font);
 
         float bx = rx + robot.Size / 2;
         float by = ry - 50;
@@ -701,11 +702,19 @@ public static class PixelRobotRenderer
         using var shadowBrush = new SolidBrush(Color.FromArgb((int)(100 * alpha), 0, 0, 0));
         g.FillRectangle(shadowBrush, bubbleRect.X + 3, bubbleRect.Y + 3, bubbleRect.Width, bubbleRect.Height);
 
-        using var bubbleBrush = new SolidBrush(Color.FromArgb((int)(230 * alpha), 240, 240, 240));
+        Color bgColor = robot.CurseMode ? Color.FromArgb((int)(245 * alpha), 255, 235, 235) : Color.FromArgb((int)(230 * alpha), 240, 240, 240);
+        using var bubbleBrush = new SolidBrush(bgColor);
         g.FillRectangle(bubbleBrush, bubbleRect);
 
-        using var textBrush = new SolidBrush(Color.FromArgb((int)(255 * alpha), Color.Black));
-        g.DrawString(robot.ChatMessage, font, textBrush, bx, by, new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center });
+        if (robot.CurseMode)
+        {
+            using var borderPen = new Pen(Color.FromArgb((int)(220 * alpha), Color.Crimson), 1.5f);
+            g.DrawRectangle(borderPen, bubbleRect.X, bubbleRect.Y, bubbleRect.Width, bubbleRect.Height);
+        }
+
+        Color textColor = robot.CurseMode ? Color.DarkRed : Color.Black;
+        using var textBrush = new SolidBrush(Color.FromArgb((int)(255 * alpha), textColor));
+        g.DrawString(text, font, textBrush, bx, by, new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center });
     }
 
     private static void DrawEmojiBubble(Graphics g, Robot robot, float rx, float ry, float alpha = 1.0f)

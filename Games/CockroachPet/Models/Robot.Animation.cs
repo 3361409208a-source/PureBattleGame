@@ -145,10 +145,9 @@ public partial class Robot
 
     public void SetBark(string text, int duration = 90)
     {
-        if (IsAiSpeaking) return;
-
         _fullChatText = text;
         ChatText = text;
+        ChatMessage = text;
         ChatTimer = duration;
 
         try

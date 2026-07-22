@@ -469,14 +469,16 @@ public partial class PetForm : Form
         Invalidate();
     }
 
+    public bool GlobalCurseMode { get; private set; } = false;
+
     public void ToggleCurseMode(bool? enable = null)
     {
-        bool targetState = enable ?? !_robots.Any(r => r.CurseMode);
+        GlobalCurseMode = enable ?? !GlobalCurseMode;
         var rand = new Random();
         foreach (var r in _robots)
         {
-            r.CurseMode = targetState;
-            if (targetState)
+            r.CurseMode = GlobalCurseMode;
+            if (GlobalCurseMode)
             {
                 string[] barks = { "骂人模式就绪！谁来受死？！🖕", "暴躁系统上线，哪个废狗敢来？！🤬", "看老子不打爆你！💥", "菜狗受死吧！🖕" };
                 r.SetBark(barks[rand.Next(barks.Length)], 120);
@@ -486,12 +488,12 @@ public partial class PetForm : Form
                 r.SetBark("骂人模式关闭，做个礼貌像素人...😇", 90);
             }
         }
-        if (targetState)
+        if (GlobalCurseMode)
         {
             TerminalManagerForm.Instance.Show();
             TerminalManagerForm.Instance.Activate();
         }
-        ShowNotification(targetState ? "骂人模式已全员开启！🤬 (聊天频道与战吼均生效)" : "骂人模式已全员关闭 🤐");
+        ShowNotification(GlobalCurseMode ? "骂人模式已全员开启！🤬 (头顶气泡与世界频道均生效)" : "骂人模式已全员关闭 🤐");
     }
 
     private void ShowNotification(string message)
@@ -622,9 +624,9 @@ public partial class PetForm : Form
         menu.Items.Add(controlMenu);
 
         // 骂人模式开关
-        var anyCurseMode = _robots.Count > 0 && _robots.Any(r => r.CurseMode);
-        var allCurseMode = _robots.Count > 0 && _robots.All(r => r.CurseMode);
-        var curseMenu = new ToolStripMenuItem(anyCurseMode ? (allCurseMode ? "🤬 骂人模式 (全员开启)" : "🤬 骂人模式 (部分开启)") : "🤐 骂人模式 (已关闭)");
+        var isCurseActive = GlobalCurseMode || (_robots.Count > 0 && _robots.Any(r => r.CurseMode));
+        var curseMenu = new ToolStripMenuItem(isCurseActive ? "🤬 骂人模式 (已开启)" : "🤐 骂人模式 (已关闭)");
+        curseMenu.Click += (s, e) => ToggleCurseMode();
         curseMenu.DropDownItems.Add("全员开启 (Ctrl+K)", null, (s, e) => ToggleCurseMode(true));
         curseMenu.DropDownItems.Add("全员关闭", null, (s, e) => ToggleCurseMode(false));
         curseMenu.DropDownItems.Add(new ToolStripSeparator());
@@ -1337,6 +1339,7 @@ public partial class PetForm : Form
         robot.IsWeaponMaster = IsWeaponMaster;
         robot.PersonalityType = DefaultPersonality;
         robot.InitializePersonalityTraits();
+        robot.CurseMode = GlobalCurseMode;
 
 
         _robots.Add(robot);
