@@ -327,39 +327,35 @@ public class AiService
         catch { return "..."; }
     }
 
-    public static async Task<AiSpawnRequest> ParseSpawnCommandAsync(string userPrompt)
+    public static async Task<List<AiGeneratedRobotConfig>> GenerateRobotsFromPromptAsync(string prompt)
     {
-        if (string.IsNullOrWhiteSpace(userPrompt)) return new AiSpawnRequest();
+        if (string.IsNullOrWhiteSpace(prompt)) return new List<AiGeneratedRobotConfig>();
 
-        if (IsApiKeyConfigured)
+        var apiKey = GetApiKey();
+        if (!string.IsNullOrWhiteSpace(apiKey))
         {
             try
             {
-                var apiKey = GetApiKey();
-                var systemPrompt = @"你是一个控制像素格斗游戏角色生成的AI助手。根据用户的自然语言指示，解析出需要生成的角色或怪物。
-必须严格且仅返回如下格式的 JSON 字符串：
-{
-  ""ClearExisting"": false,
-  ""Robots"": [
-    { ""Name"": ""角色名称"", ""Personality"": ""Rebel"", ""IsWeaponMaster"": true, ""Count"": 1 }
-  ],
-  ""Monsters"": [
-    { ""Name"": ""怪物名称"", ""Count"": 1 }
-  ]
-}
-Personality 可选值：Friendly, Rebel, Energetic, Calm, Tsundere, Mysterious, Master。
-如果用户没有指定具体数量，默认为1。如果用户说'十个奥特曼成员'，应当在 Robots 中列出10个具有具体名字的奥特曼角色（例如：赛罗奥特曼、迪迦奥特曼、戴拿奥特曼、盖亚奥特曼、阿古茹奥特曼、高斯奥特曼、杰斯提斯奥特曼、奈克瑟斯奥特曼、麦克斯奥特曼、梦比优斯奥特曼）。
-如果用户提到清空/清除敌人或角色，ClearExisting 设为 true。";
+                var systemMessage = "你是一个像素桌面宠物机器人的AI生成专家。" +
+                    "用户会给出自然语言文本指令（如“加入赛罗”、“加入十个奥特曼成员”、“生成三个三国武将”等）。" +
+                    "请理解用户的指令，拆解出具体要生成的机器人列表，并严格按 JSON 数组格式返回。" +
+                    "不要包含任何解释文本或 Markdown 标记。" +
+                    "JSON 数组中每个对象包含以下属性：" +
+                    "- \"name\": 机器人名称 (简短清晰)" +
+                    "- \"personality\": 个性，必须在 ['友好', '害羞', '叛逆', '幽默', '严肃', '好奇', '懒惰', '精力'] 中选择一个" +
+                    "- \"guidelines\": 角色性格口头禅/战吼设定（25字内）" +
+                    "- \"color\": 角色代表色的 Hex 颜色值 (如 #E63946, #457B9D, #FFD700)" +
+                    "- \"isWeaponMaster\": 布尔值 (true/false)，是否为强力武器战士";
 
                 var requestBody = new
                 {
                     model = Model,
-                    messages = new[]
+                    messages = new object[]
                     {
-                        new { role = "system", content = systemPrompt },
-                        new { role = "user", content = userPrompt }
+                        new { role = "system", content = systemMessage },
+                        new { role = "user", content = prompt }
                     },
-                    max_tokens = 512,
+                    max_tokens = 1024,
                     temperature = 0.7
                 };
 
@@ -376,109 +372,160 @@ Personality 可选值：Friendly, Rebel, Energetic, Calm, Tsundere, Mysterious, 
                     var responseJson = await response.Content.ReadAsStringAsync();
                     using var doc = JsonDocument.Parse(responseJson);
                     UpdateTokenUsage(doc);
-                    var rawResult = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString();
+                    var rawContent = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "";
 
-                    if (!string.IsNullOrEmpty(rawResult))
+                    if (rawContent.Contains("```"))
                     {
-                        int start = rawResult.IndexOf("{");
-                        int end = rawResult.LastIndexOf("}");
-                        if (start != -1 && end != -1)
+                        int start = rawContent.IndexOf("[");
+                        int end = rawContent.LastIndexOf("]");
+                        if (start != -1 && end != -1 && end > start)
                         {
-                            string jsonString = rawResult.Substring(start, end - start + 1);
-                            var parsed = JsonSerializer.Deserialize<AiSpawnRequest>(jsonString, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                            if (parsed != null && (parsed.Robots.Count > 0 || parsed.Monsters.Count > 0 || parsed.ClearExisting))
-                            {
-                                return parsed;
-                            }
+                            rawContent = rawContent.Substring(start, end - start + 1);
                         }
+                    }
+
+                    var list = JsonSerializer.Deserialize<List<AiGeneratedRobotConfig>>(rawContent, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    if (list != null && list.Count > 0)
+                    {
+                        return list;
                     }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[AiService] GenerateRobotsFromPrompt error: {ex.Message}");
+            }
         }
 
-        return ParseSpawnCommandOffline(userPrompt);
+        // 离线/解析失败时的智能回退机制
+        return GenerateRobotsFallback(prompt);
     }
 
-    private static AiSpawnRequest ParseSpawnCommandOffline(string userPrompt)
+    public static List<AiGeneratedRobotConfig> GenerateRobotsFallback(string prompt)
     {
-        var request = new AiSpawnRequest();
+        var list = new List<AiGeneratedRobotConfig>();
+        string input = prompt.Trim().ToLower();
 
-        if (userPrompt.Contains("清空") || userPrompt.Contains("清除") || userPrompt.Contains("清理"))
-        {
-            request.ClearExisting = true;
-        }
-
+        // 提取数量 (支持 10个, 5个, 三个, 1个等)
         int count = 1;
-        var numMatch = System.Text.RegularExpressions.Regex.Match(userPrompt, @"(\d+|一|二|两|三|四|五|六|七|八|九|十)");
-        if (numMatch.Success)
+        var matchCount = System.Text.RegularExpressions.Regex.Match(input, @"(\d+|一|二|两|三|四|五|六|七|八|九|十)\s*个");
+        if (matchCount.Success)
         {
-            string numStr = numMatch.Value;
+            string numStr = matchCount.Groups[1].Value;
             count = numStr switch
             {
-                "一" => 1, "二" => 2, "两" => 2, "三" => 3, "四" => 4, "五" => 5,
-                "六" => 6, "七" => 7, "八" => 8, "九" => 9, "十" => 10,
-                _ => int.TryParse(numStr, out int val) ? val : 1
+                "一" => 1, "二" => 2, "两" => 2, "三" => 3, "四" => 4,
+                "五" => 5, "六" => 6, "七" => 7, "八" => 8, "九" => 9, "十" => 10,
+                _ => int.TryParse(numStr, out int n) ? Math.Min(20, Math.Max(1, n)) : 1
             };
         }
 
-        string cleanPrompt = userPrompt.Replace("加入", "").Replace("生成", "").Replace("召唤", "").Replace("添加", "").Trim();
+        // 预设丰富名录库
+        var ultramanRoster = new (string name, string personality, string guidelines, string color, bool weapon)[]
+        {
+            ("赛罗奥特曼", "叛逆", "赛文奥特曼之子，战吼：还差两万年呢！", "#E63946", true),
+            ("迪迦奥特曼", "友好", "超古代守护者，战吼：相信光的力量！", "#457B9D", true),
+            ("赛文奥特曼", "严肃", "恒星观测员340号，头镖切裂黑暗！", "#D90429", true),
+            ("泰罗奥特曼", "精力", "奥特警备队总教官，奥特炸弹爆发！", "#F77F00", true),
+            ("雷欧奥特曼", "叛逆", "狮子座L77星云王者，宇宙拳法！", "#D62828", false),
+            ("欧布奥特曼", "幽默", "浪客红凯，借用大家的光芒！", "#00B4D8", true),
+            ("捷德奥特曼", "好奇", "贝利亚之子，命运由我来改变！", "#7209B7", true),
+            ("泽塔奥特曼", "精力", "赛罗的弟子，喊出我的名字吧！", "#4895EF", true),
+            ("梦比优斯", "友好", "无限羁绊，同伴的誓言刻在心中！", "#F15BB5", false),
+            ("盖亚奥特曼", "严肃", "大地之光，重装落地爆发巨浪！", "#E63946", true)
+        };
 
-        if (cleanPrompt.Contains("奥特曼"))
+        var threeKingdomsRoster = new (string name, string personality, string guidelines, string color, bool weapon)[]
         {
-            string[] ultramanList = { "赛罗奥特曼", "迪迦奥特曼", "戴拿奥特曼", "盖亚奥特曼", "阿古茹奥特曼", "高斯奥特曼", "杰斯提斯奥特曼", "奈克瑟斯奥特曼", "麦克斯奥特曼", "梦比优斯奥特曼", "赛文奥特曼", "雷欧奥特曼" };
-            for (int i = 0; i < count; i++)
+            ("关羽", "严肃", "美髯公，青龙偃月刀一出斩敌！", "#2A9D8F", true),
+            ("张飞", "叛逆", "燕人张翼德，咆哮断长坂桥！", "#264653", true),
+            ("赵云", "精力", "常山赵子龙，七进七出浑身是胆！", "#E9C46A", true),
+            ("马超", "叛逆", "锦马超，西凉铁骑横扫千军！", "#F4A261", true),
+            ("黄忠", "严肃", "百步穿杨老将军，神弓烈火！", "#E76F51", true),
+            ("吕布", "叛逆", "人中吕布马中赤兔，无双乱舞！", "#D62828", true),
+            ("诸葛亮", "幽默", "卧龙先生，借东风火烧赤壁！", "#0077B6", false)
+        };
+
+        var avengersRoster = new (string name, string personality, string guidelines, string color, bool weapon)[]
+        {
+            ("钢铁侠", "幽默", "I am Iron Man, 贾维斯开启激光全射！", "#D62828", true),
+            ("美国队长", "严肃", "我可以这样打一整天！振金盾牌！", "#0077B6", false),
+            ("雷神索尔", "精力", "阿斯加德之王，召唤暴风战斧！", "#FFB703", true),
+            ("绿巨人", "叛逆", "HULK SMASH! 砸碎面前一切！", "#2A9D8F", false),
+            ("蜘蛛侠", "幽默", "能力越大责任越大，蛛丝射击！", "#E63946", false)
+        };
+
+        // 识别主题关键词
+        if (input.Contains("奥特曼") || input.Contains("赛罗") || input.Contains("迪迦") || input.Contains("光之国"))
+        {
+            if (input.Contains("赛罗") && count == 1)
             {
-                request.Robots.Add(new AiSpawnItem
-                {
-                    Name = ultramanList[i % ultramanList.Length],
-                    Personality = "Rebel",
-                    IsWeaponMaster = true,
-                    Count = 1
-                });
+                var r = ultramanRoster[0];
+                list.Add(new AiGeneratedRobotConfig { Name = r.name, Personality = r.personality, Guidelines = r.guidelines, Color = r.color, IsWeaponMaster = r.weapon });
+                return list;
             }
-        }
-        else if (cleanPrompt.Contains("怪兽") || cleanPrompt.Contains("怪物"))
-        {
-            request.Monsters.Add(new AiSpawnMonsterItem
+            int take = Math.Min(count, ultramanRoster.Length);
+            for (int i = 0; i < take; i++)
             {
-                Name = string.IsNullOrWhiteSpace(cleanPrompt) ? "哥尔赞" : cleanPrompt,
-                Count = count
-            });
+                var r = ultramanRoster[i];
+                list.Add(new AiGeneratedRobotConfig { Name = r.name, Personality = r.personality, Guidelines = r.guidelines, Color = r.color, IsWeaponMaster = r.weapon });
+            }
+            return list;
         }
-        else
+
+        if (input.Contains("三国") || input.Contains("武将") || input.Contains("关羽") || input.Contains("张飞") || input.Contains("赵云"))
         {
-            string name = string.IsNullOrWhiteSpace(cleanPrompt) ? "赛罗" : cleanPrompt;
-            request.Robots.Add(new AiSpawnItem
+            int take = Math.Min(count, threeKingdomsRoster.Length);
+            for (int i = 0; i < take; i++)
+            {
+                var r = threeKingdomsRoster[i];
+                list.Add(new AiGeneratedRobotConfig { Name = r.name, Personality = r.personality, Guidelines = r.guidelines, Color = r.color, IsWeaponMaster = r.weapon });
+            }
+            return list;
+        }
+
+        if (input.Contains("复仇者") || input.Contains("漫威") || input.Contains("钢铁侠") || input.Contains("美队"))
+        {
+            int take = Math.Min(count, avengersRoster.Length);
+            for (int i = 0; i < take; i++)
+            {
+                var r = avengersRoster[i];
+                list.Add(new AiGeneratedRobotConfig { Name = r.name, Personality = r.personality, Guidelines = r.guidelines, Color = r.color, IsWeaponMaster = r.weapon });
+            }
+            return list;
+        }
+
+        // 通用兜底拆解
+        string baseName = prompt.Replace("加入", "").Replace("生成", "").Replace("创建", "").Replace("个", "").Trim();
+        if (string.IsNullOrEmpty(baseName)) baseName = "像素战士";
+        baseName = System.Text.RegularExpressions.Regex.Replace(baseName, @"\d+", "").Trim();
+        if (string.IsNullOrEmpty(baseName)) baseName = "像素战士";
+
+        string[] personalities = { "友好", "叛逆", "幽默", "严肃", "精力", "好奇" };
+        string[] colors = { "#FF4D4D", "#4DABFF", "#6BFF6B", "#FFC84D", "#C86BFF", "#FF96C8" };
+
+        for (int i = 0; i < count; i++)
+        {
+            string name = count == 1 ? baseName : $"{baseName}-{i + 1}";
+            list.Add(new AiGeneratedRobotConfig
             {
                 Name = name,
-                Personality = "Rebel",
-                IsWeaponMaster = true,
-                Count = count
+                Personality = personalities[i % personalities.Length],
+                Guidelines = $"来自指令生成：{prompt}",
+                Color = colors[i % colors.Length],
+                IsWeaponMaster = (i % 2 == 0)
             });
         }
 
-        return request;
+        return list;
     }
 }
 
-public class AiSpawnRequest
-{
-    public bool ClearExisting { get; set; } = false;
-    public List<AiSpawnItem> Robots { get; set; } = new List<AiSpawnItem>();
-    public List<AiSpawnMonsterItem> Monsters { get; set; } = new List<AiSpawnMonsterItem>();
-}
-
-public class AiSpawnItem
+public class AiGeneratedRobotConfig
 {
     public string Name { get; set; } = "机器人";
-    public string Personality { get; set; } = "Rebel";
-    public bool IsWeaponMaster { get; set; } = true;
-    public int Count { get; set; } = 1;
-}
-
-public class AiSpawnMonsterItem
-{
-    public string Name { get; set; } = "怪兽";
-    public int Count { get; set; } = 1;
+    public string Personality { get; set; } = "友好";
+    public string Guidelines { get; set; } = "";
+    public string Color { get; set; } = "#FF4D4D";
+    public bool IsWeaponMaster { get; set; } = false;
 }

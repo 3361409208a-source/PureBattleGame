@@ -99,6 +99,9 @@ public class ControlPanelForm : Form
         var btnSpawn = CreateButton("投放机器人", Color.Lime);
         btnSpawn.Click += (s, e) => _mainForm.SpawnRobotWithName();
 
+        var btnAiSpawn = CreateButton("🤖 AI智能生成", Color.FromArgb(80, 225, 255));
+        btnAiSpawn.Click += (s, e) => _mainForm.ShowAiRobotGenerator();
+
         var btnQuickSpawn = CreateButton("快速投放", Color.Cyan);
         btnQuickSpawn.Click += (s, e) =>
         {
@@ -136,6 +139,7 @@ public class ControlPanelForm : Form
         btnEnvCheck.Click += (s, e) => ShowEnvironmentCheck();
 
         buttonPanel.Controls.Add(btnSpawn);
+        buttonPanel.Controls.Add(btnAiSpawn);
         buttonPanel.Controls.Add(btnQuickSpawn);
         buttonPanel.Controls.Add(btnPauseAll);
         buttonPanel.Controls.Add(btnResumeAll);
