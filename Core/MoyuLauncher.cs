@@ -114,6 +114,7 @@ public partial class MoyuLauncher : Form
         });
 
         masterLayout.Controls.Add(new Label { Size = new Size(420, 25), Text = "右键托盘图标可彻底退出", Font = new Font("Segoe UI", 7), ForeColor = Color.FromArgb(60, 60, 65), TextAlign = ContentAlignment.MiddleCenter });
+        InitializeSettingsPanel();
     }
 
     protected override void OnHandleCreated(EventArgs e)
@@ -149,6 +150,7 @@ public partial class MoyuLauncher : Form
 
     private void InitializeSettingsPanel()
     {
+        if (_settingsPanel != null) return;
         _settingsPanel = new Panel { Size = new Size(this.Width, 310), Location = new Point(0, this.Height), BackColor = Color.FromArgb(34, 34, 40), BorderStyle = BorderStyle.FixedSingle };
         this.Controls.Add(_settingsPanel);
         _settingsPanel.BringToFront();
@@ -165,9 +167,17 @@ public partial class MoyuLauncher : Form
 
     private void ToggleSettings()
     {
+        if (_settingsPanel == null)
+        {
+            InitializeSettingsPanel();
+        }
+
+        if (_settingsPanel == null) return;
+
         bool isShowing = _settingsPanel.Top < this.Height;
         var timer = new System.Windows.Forms.Timer { Interval = 1 };
         timer.Tick += (s, e) => {
+            if (_settingsPanel == null) { timer.Stop(); timer.Dispose(); return; }
             if (isShowing) { 
                 _settingsPanel.Top += 15; 
                 if (_settingsPanel.Top >= this.Height) { _settingsPanel.Top = this.Height; timer.Stop(); timer.Dispose(); } 
