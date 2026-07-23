@@ -196,11 +196,45 @@ public partial class MoyuLauncher : WebUIHostForm
             }
 
             if (payload.TryGetProperty("robotSize", out var sizeProp))
-                SettingsManager.Current.RobotSize = sizeProp.GetInt32();
+            {
+                int newSize = Math.Clamp(sizeProp.GetInt32(), 16, 128);
+                SettingsManager.Current.RobotSize = newSize;
+                if (PetForm.Instance != null && !PetForm.Instance.IsDisposed)
+                {
+                    PetForm.Instance.DefaultRobotSize = newSize;
+                    var activeRobots = PetForm.Instance.GetRobots();
+                    foreach (var r in activeRobots)
+                    {
+                        r.Size = newSize;
+                        r.OriginalSize = newSize;
+                    }
+                }
+            }
+
             if (payload.TryGetProperty("robotSpeed", out var speedProp))
-                SettingsManager.Current.RobotSpeed = speedProp.GetInt32();
+            {
+                int newSpeed = Math.Clamp(speedProp.GetInt32(), 50, 300);
+                SettingsManager.Current.RobotSpeed = newSpeed;
+                if (PetForm.Instance != null && !PetForm.Instance.IsDisposed)
+                {
+                    float mult = newSpeed / 100.0f;
+                    var activeRobots = PetForm.Instance.GetRobots();
+                    foreach (var r in activeRobots)
+                    {
+                        r.SpeedMultiplier = mult;
+                    }
+                }
+            }
+
             if (payload.TryGetProperty("skillScale", out var scaleProp))
-                SettingsManager.Current.SkillScale = scaleProp.GetInt32();
+            {
+                int newScale = Math.Clamp(scaleProp.GetInt32(), 10, 300);
+                SettingsManager.Current.SkillScale = newScale;
+                if (PetForm.Instance != null && !PetForm.Instance.IsDisposed)
+                {
+                    PetForm.Instance.GlobalSkillScale = newScale;
+                }
+            }
             if (payload.TryGetProperty("soundVolume", out var volProp))
             {
                 int vol = volProp.GetInt32();

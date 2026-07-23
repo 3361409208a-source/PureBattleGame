@@ -1176,12 +1176,12 @@ public partial class PetForm : Form
                     break;
 
                 case "SPIT":
-                    float spitR = Math.Max(1.5f, 6 * pScale);
-                    using (var spitBrush = new SolidBrush(Color.FromArgb(160, Color.Chartreuse)))
+                    float baseSpitR = Math.Max(3f, 8f * pScale);
+                    using (var spitBrush = new SolidBrush(Color.FromArgb(180, Color.Chartreuse)))
                     {
-                        e.Graphics.FillEllipse(spitBrush, p.X - spitR, p.Y - spitR, spitR * 2, spitR * 2);
-                        float sub1 = Math.Max(1f, 5 * pScale);
-                        float sub2 = Math.Max(1f, 4 * pScale);
+                        e.Graphics.FillEllipse(spitBrush, p.X - baseSpitR, p.Y - baseSpitR, baseSpitR * 2, baseSpitR * 2);
+                        float sub1 = Math.Max(2f, baseSpitR * 0.7f);
+                        float sub2 = Math.Max(1.5f, baseSpitR * 0.5f);
                         e.Graphics.FillEllipse(spitBrush, p.X - p.Dx * 1.5f + 4 * pScale, p.Y - p.Dy * 1.5f, sub1, sub1);
                         e.Graphics.FillEllipse(spitBrush, p.X - p.Dx * 0.8f - 3 * pScale, p.Y - p.Dy * 0.8f + 2 * pScale, sub2, sub2);
                     }
