@@ -299,8 +299,10 @@ public partial class Robot
         if (IsGodMode || Core.SettingsManager.Current.IsGodMode)
         {
             HP = MaxHP;
-            LastDamageText = "MISS";
-            DamageTextTimer = 45;
+            if (!string.IsNullOrEmpty(attackerName))
+            {
+                TerminalManagerForm.Instance?.BroadcastToWorld("战斗系统", $"🛡️ {attackerName} 的攻击被 {Name} 免疫了 (God Mode)", System.Drawing.Color.LightSkyBlue);
+            }
             DamageFeedbackTimer = 15;
             return;
         }
