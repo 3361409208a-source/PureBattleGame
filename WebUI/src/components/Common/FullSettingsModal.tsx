@@ -217,7 +217,7 @@ export const FullSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 <div className="flex items-center justify-between">
                   <label className="font-semibold text-zinc-200 flex items-center gap-1.5">
                     <Key className="w-3.5 h-3.5 text-amber-400" />
-                    Gemini 大模型 API Key
+                    SiliconFlow 大模型 API Key
                   </label>
                   {form.apiKey ? (
                     <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-mono">
@@ -234,7 +234,7 @@ export const FullSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
                   value={form.apiKey}
                   onChange={e => setForm({ ...form, apiKey: e.target.value })}
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-100 font-mono focus:border-emerald-500 focus:outline-none"
-                  placeholder="请输入 Gemini API Key..."
+                  placeholder="请输入 SiliconFlow API Key..."
                 />
               </div>
             </div>
@@ -452,37 +452,72 @@ export const FullSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
               {[
                 {
                   title: '✨ 基础能量光束 (Base Energy)',
-                  items: ['LASER', 'SHOCK', 'BURST', 'WAVE', 'BEAM', 'PULSE', 'NOVA', 'BLASTER']
+                  items: [
+                    { id: 'LASER', label: '基础激光' },
+                    { id: 'SHOCK', label: '电击束' },
+                    { id: 'BURST', label: '脉冲连发' },
+                    { id: 'WAVE', label: '声波巨浪' },
+                    { id: 'BEAM', label: '毁灭光束' },
+                    { id: 'PULSE', label: '环形脉冲' },
+                    { id: 'NOVA', label: '新星爆破' },
+                    { id: 'BLASTER', label: '重型爆能' }
+                  ]
                 },
                 {
                   title: '👑 武器大师兵器 (Weapon Master)',
-                  items: ['BULLET', 'ROCKET', 'PLASMA', 'CANNON', 'LIGHTNING', 'SPIT', 'INK', 'BOOMERANG', 'SHURIKEN', 'GRENADE', 'FIREBALL', 'ICE_SHARD']
+                  items: [
+                    { id: 'BULLET', label: '实体子弹' },
+                    { id: 'ROCKET', label: '跟踪导弹' },
+                    { id: 'PLASMA', label: '等离子球' },
+                    { id: 'CANNON', label: '加农炮弹' },
+                    { id: 'LIGHTNING', label: '闪电链' },
+                    { id: 'SPIT', label: '毒液吐息' },
+                    { id: 'INK', label: '致盲墨汁' },
+                    { id: 'BOOMERANG', label: '回旋镖' },
+                    { id: 'SHURIKEN', label: '手里剑' },
+                    { id: 'GRENADE', label: '高爆手雷' },
+                    { id: 'FIREBALL', label: '烈焰火球' },
+                    { id: 'ICE_SHARD', label: '冰霜尖刺' }
+                  ]
                 },
                 {
                   title: '🤼 物理近战招式 (Physical Melee)',
-                  items: ['PUSH', 'PULL', 'GRAB', 'THROW', 'DUEL', 'SLAM', 'KICK', 'SUPLEX', 'HEADBUTT', 'TORNADO']
+                  items: [
+                    { id: 'PUSH', label: '普通推搡' },
+                    { id: 'PULL', label: '引力拉扯' },
+                    { id: 'GRAB', label: '暴力擒拿' },
+                    { id: 'THROW', label: '隔空投掷' },
+                    { id: 'DUEL', label: '贴身决斗' },
+                    { id: 'SLAM', label: '泰山压顶' },
+                    { id: 'KICK', label: '像素飞踢' },
+                    { id: 'SUPLEX', label: '过肩背摔' },
+                    { id: 'HEADBUTT', label: '无情头槌' },
+                    { id: 'TORNADO', label: '旋风斩' }
+                  ]
                 }
               ].map((category, idx) => (
                 <div key={idx} className="bg-zinc-900/60 p-4 border border-zinc-800/80 rounded-xl">
                   <div className="font-semibold text-zinc-200 mb-3 pb-2 border-b border-zinc-800/50">{category.title}</div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {category.items.map(weapon => (
-                      <label key={weapon} className="flex items-center gap-2 cursor-pointer group">
+                      <label key={weapon.id} className="flex items-center gap-2 cursor-pointer group">
                         <input
                           type="checkbox"
-                          checked={form.enabledWeapons?.includes(weapon) ?? true}
+                          checked={form.enabledWeapons?.includes(weapon.id) ?? true}
                           onChange={e => {
                             const checked = e.target.checked;
                             const current = form.enabledWeapons || [];
                             if (checked) {
-                              if (!current.includes(weapon)) setForm({ ...form, enabledWeapons: [...current, weapon] });
+                              if (!current.includes(weapon.id)) setForm({ ...form, enabledWeapons: [...current, weapon.id] });
                             } else {
-                              setForm({ ...form, enabledWeapons: current.filter(w => w !== weapon) });
+                              setForm({ ...form, enabledWeapons: current.filter(w => w !== weapon.id) });
                             }
                           }}
                           className="w-4 h-4 accent-emerald-500 rounded border-zinc-700 bg-zinc-900"
                         />
-                        <span className="text-sm text-zinc-400 group-hover:text-zinc-200 transition">{weapon}</span>
+                        <span className="text-sm text-zinc-400 group-hover:text-zinc-200 transition">
+                          {weapon.label} <span className="text-[10px] opacity-50 font-mono">({weapon.id})</span>
+                        </span>
                       </label>
                     ))}
                   </div>
