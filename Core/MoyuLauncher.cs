@@ -69,8 +69,12 @@ public partial class MoyuLauncher : WebUIHostForm
         }
 
         var menu = new ContextMenuStrip();
-        menu.BackColor = Color.FromArgb(24, 24, 30);
-        menu.ForeColor = Color.White;
+        menu.ShowImageMargin = false;
+        menu.ShowCheckMargin = false;
+        menu.BackColor = Color.FromArgb(20, 20, 26);
+        menu.ForeColor = Color.FromArgb(240, 240, 245);
+        menu.Font = new Font("Segoe UI", 9.5f, FontStyle.Regular);
+        menu.Renderer = new DarkMenuRenderer();
 
         menu.Items.Add("🎮 显示摸鱼主控台 (Launcher)", null, (s, e) => ShowLauncherWindow());
         menu.Items.Add("💬 机器人社交中心 & 控制台", null, (s, e) => TerminalManagerForm.Instance.ShowWorldChat());
@@ -478,4 +482,29 @@ public partial class MoyuLauncher : WebUIHostForm
         }
         base.OnFormClosing(e);
     }
+}
+
+public class DarkMenuRenderer : ToolStripProfessionalRenderer
+{
+    public DarkMenuRenderer() : base(new DarkColorTable()) { }
+
+    protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
+    {
+        using (Pen pen = new Pen(Color.FromArgb(50, 50, 60)))
+        {
+            int y = e.Item.ContentRectangle.Height / 2;
+            e.Graphics.DrawLine(pen, 8, y, e.Item.ContentRectangle.Width - 8, y);
+        }
+    }
+}
+
+public class DarkColorTable : ProfessionalColorTable
+{
+    public override Color MenuItemSelected => Color.FromArgb(38, 42, 54);
+    public override Color MenuItemBorder => Color.FromArgb(16, 185, 129);
+    public override Color MenuBorder => Color.FromArgb(45, 45, 55);
+    public override Color ToolStripDropDownBackground => Color.FromArgb(20, 20, 26);
+    public override Color ImageMarginGradientBegin => Color.FromArgb(20, 20, 26);
+    public override Color ImageMarginGradientMiddle => Color.FromArgb(20, 20, 26);
+    public override Color ImageMarginGradientEnd => Color.FromArgb(20, 20, 26);
 }

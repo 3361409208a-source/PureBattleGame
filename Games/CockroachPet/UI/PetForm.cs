@@ -565,6 +565,11 @@ public partial class PetForm : Form
     private ContextMenuStrip CreateContextMenu()
     {
         var menu = new ContextMenuStrip();
+        menu.ShowImageMargin = false;
+        menu.ShowCheckMargin = false;
+        menu.BackColor = Color.FromArgb(20, 20, 26);
+        menu.ForeColor = Color.FromArgb(240, 240, 245);
+        menu.Renderer = new PureBattleGame.Core.DarkMenuRenderer();
 
         // 机器人列表
         if (_robots.Count > 0)
