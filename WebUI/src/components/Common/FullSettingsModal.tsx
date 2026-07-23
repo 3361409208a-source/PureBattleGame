@@ -398,6 +398,11 @@ export const FullSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 />
               </div>
 
+            </div>
+          )}
+
+          {activeTab === 'weapons' && (
+            <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
               {/* 武器大师开关 */}
               <div className="bg-zinc-900/60 p-4 border border-zinc-800/80 rounded-xl flex items-center justify-between">
                 <div>
@@ -442,11 +447,8 @@ export const FullSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
                   className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
                 />
               </div>
-            </div>
-          )}
 
-          {activeTab === 'weapons' && (
-            <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+
               {[
                 {
                   title: '✨ 基础能量光束 (Base Energy)',

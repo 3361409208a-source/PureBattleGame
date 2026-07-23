@@ -3,9 +3,9 @@
   "HomeUrl": "https://www.xiaoheiv.top",
   "AutoHideInTaskbar": true,
   "HideNameAndPersonality": true,
-  "CurseModeByDefault": true,
+  "CurseModeByDefault": false,
   "BattleMode": "\u5168\u7A0B\u8FDC\u7A0B\u5BF9\u5C04",
-  "LanguageInteractionMode": "\u4E92\u9A82\u5410\u69FD",
+  "LanguageInteractionMode": "\u9759\u97F3\u9ED8\u5951",
   "ActionInteractionMode": "\u5168\u7A0B\u8FDC\u7A0B\u5BF9\u5C04",
   "AutoStart": false,
   "RobotSize": 16,
@@ -15,7 +15,7 @@
   "FightFrequency": 15,
   "EnableAiThinking": true,
   "AiThoughtFrequency": 60,
-  "IsWeaponMaster": false,
+  "IsWeaponMaster": true,
   "RobotMaxHp": 1000,
   "IsGodMode": false
 }
