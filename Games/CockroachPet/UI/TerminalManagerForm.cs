@@ -181,6 +181,8 @@ public class TerminalManagerForm : WebUIHostForm
             enableAiThinking = SettingsManager.Current.EnableAiThinking,
             aiThoughtFrequency = SettingsManager.Current.AiThoughtFrequency,
             isWeaponMaster = SettingsManager.Current.IsWeaponMaster,
+            robotMaxHp = SettingsManager.Current.RobotMaxHp,
+            isGodMode = SettingsManager.Current.IsGodMode,
             apiKey = PersistenceManager.GetApiKey()
         });
 
@@ -232,6 +234,30 @@ public class TerminalManagerForm : WebUIHostForm
                 SettingsManager.Current.AiThoughtFrequency = aiFreqProp.GetInt32();
             if (payload.TryGetProperty("isWeaponMaster", out var masterProp))
                 SettingsManager.Current.IsWeaponMaster = masterProp.GetBoolean();
+
+            if (payload.TryGetProperty("robotMaxHp", out var hpProp))
+            {
+                int maxHp = Math.Max(100, hpProp.GetInt32());
+                SettingsManager.Current.RobotMaxHp = maxHp;
+                var activeRobots = PetForm.Instance?.GetRobots() ?? new List<Robot>();
+                foreach (var r in activeRobots)
+                {
+                    r.MaxHP = maxHp;
+                    if (r.HP > maxHp) r.HP = maxHp;
+                }
+            }
+
+            if (payload.TryGetProperty("isGodMode", out var godProp))
+            {
+                bool god = godProp.GetBoolean();
+                SettingsManager.Current.IsGodMode = god;
+                var activeRobots = PetForm.Instance?.GetRobots() ?? new List<Robot>();
+                foreach (var r in activeRobots)
+                {
+                    r.IsGodMode = god;
+                    if (god) { r.HP = r.MaxHP; r.IsDead = false; }
+                }
+            }
 
             if (payload.TryGetProperty("apiKey", out var keyProp))
             {

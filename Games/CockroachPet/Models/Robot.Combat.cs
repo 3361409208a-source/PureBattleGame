@@ -280,9 +280,20 @@ public partial class Robot
         }
     }
 
+    public bool IsGodMode { get; set; } = false;
+
     public void ApplyAttackEffect(int damage = 5, string attackerName = "")
     {
         if (IsDead) return;
+        if (IsGodMode || Core.SettingsManager.Current.IsGodMode)
+        {
+            HP = MaxHP;
+            LastDamageText = "MISS";
+            DamageTextTimer = 45;
+            DamageFeedbackTimer = 15;
+            return;
+        }
+
         HP = Math.Max(0, HP - damage);
 
         if (HP <= 0)

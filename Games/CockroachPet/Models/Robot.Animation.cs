@@ -146,6 +146,8 @@ public partial class Robot
     public void SetBark(string text, int duration = 90, bool broadcastToWorld = true)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
+        string langMode = Core.SettingsManager.Current.LanguageInteractionMode;
+        if (langMode == "关闭 / 静音" || langMode == "关闭语言交互" || langMode == "静音模式") return;
 
         _fullChatText = text;
         ChatText = text;

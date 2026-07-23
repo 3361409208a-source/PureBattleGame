@@ -23,6 +23,8 @@ public class AppSettings
     public bool EnableAiThinking { get; set; } = false;
     public int AiThoughtFrequency { get; set; } = 60;
     public bool IsWeaponMaster { get; set; } = false;
+    public int RobotMaxHp { get; set; } = 1000;
+    public bool IsGodMode { get; set; } = false;
 }
 
 public static class SettingsManager

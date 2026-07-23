@@ -291,12 +291,12 @@ export const SocialHubView: React.FC = () => {
               </div>
             </div>
 
-            {/* 卡片网格 */}
-            <div className="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pr-1">
+            {/* 卡片网格 (使用 items-start content-start 紧凑自适应包裹高度，防止无意义垂直拉伸) */}
+            <div className="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pr-1 items-start content-start">
               {filteredRobots.map(robot => (
                 <div
                   key={robot.id}
-                  className="bg-zinc-900 border border-zinc-800 hover:border-emerald-600/50 rounded-xl p-3 flex flex-col justify-between transition-all hover:shadow-lg group"
+                  className="bg-zinc-900 border border-zinc-800 hover:border-emerald-600/50 rounded-xl p-3 flex flex-col transition-all hover:shadow-lg group h-auto"
                 >
                   <div>
                     {/* 卡片头部 */}

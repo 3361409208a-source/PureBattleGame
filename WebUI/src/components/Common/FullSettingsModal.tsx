@@ -21,6 +21,8 @@ interface FullSettingsData {
   enableAiThinking: boolean;
   aiThoughtFrequency: number;
   isWeaponMaster: boolean;
+  robotMaxHp: number;
+  isGodMode: boolean;
   apiKey: string;
 }
 
@@ -51,6 +53,8 @@ export const FullSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
     enableAiThinking: false,
     aiThoughtFrequency: 60,
     isWeaponMaster: false,
+    robotMaxHp: 1000,
+    isGodMode: false,
     apiKey: '',
   });
 
@@ -261,6 +265,7 @@ export const FullSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
                   onChange={e => setForm({ ...form, languageMode: e.target.value })}
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-100 focus:border-emerald-500 focus:outline-none cursor-pointer"
                 >
+                  <option value="关闭 / 静音">🚫 关闭语言交互 (静音纯动作对抗)</option>
                   <option value="互骂吐槽">🗣️ 互骂吐槽 (互相攻讦金句)</option>
                   <option value="赞美吹捧">🌸 赞美吹捧 (极力夸奖吹捧)</option>
                   <option value="哲理探讨">🌌 哲理探讨 (探寻宇宙与生活哲学)</option>
@@ -390,6 +395,37 @@ export const FullSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
                   type="checkbox"
                   checked={form.isWeaponMaster}
                   onChange={e => setForm({ ...form, isWeaponMaster: e.target.checked })}
+                  className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
+                />
+              </div>
+
+              {/* 机器人血量上限设置 */}
+              <div className="bg-zinc-900/60 p-4 border border-zinc-800/80 rounded-xl space-y-2">
+                <div className="flex justify-between items-center text-zinc-200">
+                  <span className="font-semibold">机器人基础血量上限 (Max HP)</span>
+                  <span className="font-mono text-emerald-400 font-bold">{form.robotMaxHp || 1000} HP</span>
+                </div>
+                <input
+                  type="number"
+                  min="100"
+                  max="50000"
+                  step="100"
+                  value={form.robotMaxHp || 1000}
+                  onChange={e => setForm({ ...form, robotMaxHp: parseInt(e.target.value) || 1000 })}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-100 font-mono"
+                />
+              </div>
+
+              {/* 无敌模式 */}
+              <div className="bg-zinc-900/60 p-4 border border-zinc-800/80 rounded-xl flex items-center justify-between">
+                <div>
+                  <div className="font-semibold text-zinc-200">🛡️ 全局无敌免伤模式 (God Mode)</div>
+                  <div className="text-zinc-400 text-[11px] mt-0.5">开启后所有机器人免除扣血与阵亡，护盾恒定满血</div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={form.isGodMode || false}
+                  onChange={e => setForm({ ...form, isGodMode: e.target.checked })}
                   className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
                 />
               </div>

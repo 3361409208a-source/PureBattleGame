@@ -64,5 +64,7 @@ export interface AppSettings {
   enableAiThinking?: boolean;
   aiThoughtFrequency?: number;
   isWeaponMaster?: boolean;
+  robotMaxHp?: number;
+  isGodMode?: boolean;
   apiKey: string;
 }
