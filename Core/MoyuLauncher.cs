@@ -60,17 +60,28 @@ public partial class MoyuLauncher : WebUIHostForm
 
     protected override void OnBridgeReady(WebUIBridge bridge)
     {
-        bridge.RegisterSyncHandler("getLauncherStats", payload => new
+        bridge.RegisterSyncHandler("getSettings", payload => new
         {
             opacity = SettingsManager.Current.DefaultOpacity,
             homeUrl = SettingsManager.Current.HomeUrl,
-            robotCount = PetForm.Instance?.GetRobots().Count ?? 0,
-            isPetActive = _petInstance != null && _petInstance.Visible,
-            isGameActive = _gameInstance != null && _gameInstance.Visible,
-            isBrowserActive = BrowserForm.Instance != null && BrowserForm.Instance.Visible
+            autoStart = SettingsManager.Current.AutoStart,
+            hideNameAndPersonality = SettingsManager.Current.HideNameAndPersonality,
+            curseModeByDefault = SettingsManager.Current.CurseModeByDefault,
+            battleMode = SettingsManager.Current.BattleMode,
+            languageMode = SettingsManager.Current.LanguageInteractionMode,
+            actionMode = SettingsManager.Current.ActionInteractionMode,
+            robotSize = SettingsManager.Current.RobotSize,
+            robotSpeed = SettingsManager.Current.RobotSpeed,
+            skillScale = SettingsManager.Current.SkillScale,
+            soundVolume = SettingsManager.Current.SoundVolume,
+            fightFrequency = SettingsManager.Current.FightFrequency,
+            enableAiThinking = SettingsManager.Current.EnableAiThinking,
+            aiThoughtFrequency = SettingsManager.Current.AiThoughtFrequency,
+            isWeaponMaster = SettingsManager.Current.IsWeaponMaster,
+            apiKey = PersistenceManager.GetApiKey()
         });
 
-        bridge.RegisterSyncHandler("setLauncherOpacity", payload =>
+        bridge.RegisterSyncHandler("saveSettings", payload =>
         {
             if (payload.TryGetProperty("opacity", out var opProp))
             {
@@ -81,21 +92,64 @@ public partial class MoyuLauncher : WebUIHostForm
                 if (_gameInstance != null) _gameInstance.Opacity = op;
                 if (_petInstance != null) _petInstance.Opacity = op;
             }
+            if (payload.TryGetProperty("homeUrl", out var urlProp))
+                SettingsManager.Current.HomeUrl = urlProp.GetString() ?? "https://www.xiaoheiv.top";
+            if (payload.TryGetProperty("autoStart", out var autoProp))
+                SettingsManager.Current.AutoStart = autoProp.GetBoolean();
+
+            if (payload.TryGetProperty("hideNameAndPersonality", out var hideProp))
+                SettingsManager.Current.HideNameAndPersonality = hideProp.GetBoolean();
+            if (payload.TryGetProperty("curseModeByDefault", out var curseProp))
+                SettingsManager.Current.CurseModeByDefault = curseProp.GetBoolean();
+            if (payload.TryGetProperty("languageMode", out var langProp))
+                SettingsManager.Current.LanguageInteractionMode = langProp.GetString() ?? "互骂吐槽";
+            if (payload.TryGetProperty("actionMode", out var actProp))
+            {
+                string act = actProp.GetString() ?? "近远交替";
+                SettingsManager.Current.ActionInteractionMode = act;
+                SettingsManager.Current.BattleMode = act;
+            }
+
+            if (payload.TryGetProperty("robotSize", out var sizeProp))
+                SettingsManager.Current.RobotSize = sizeProp.GetInt32();
+            if (payload.TryGetProperty("robotSpeed", out var speedProp))
+                SettingsManager.Current.RobotSpeed = speedProp.GetInt32();
+            if (payload.TryGetProperty("skillScale", out var scaleProp))
+                SettingsManager.Current.SkillScale = scaleProp.GetInt32();
+            if (payload.TryGetProperty("soundVolume", out var volProp))
+            {
+                int vol = volProp.GetInt32();
+                SettingsManager.Current.SoundVolume = vol;
+                PureBattleGame.Games.CockroachPet.AudioManager.VolumeScale = vol / 100.0f;
+            }
+            if (payload.TryGetProperty("fightFrequency", out var fightProp))
+                SettingsManager.Current.FightFrequency = fightProp.GetInt32();
+            if (payload.TryGetProperty("enableAiThinking", out var aiProp))
+                SettingsManager.Current.EnableAiThinking = aiProp.GetBoolean();
+            if (payload.TryGetProperty("aiThoughtFrequency", out var aiFreqProp))
+                SettingsManager.Current.AiThoughtFrequency = aiFreqProp.GetInt32();
+            if (payload.TryGetProperty("isWeaponMaster", out var masterProp))
+                SettingsManager.Current.IsWeaponMaster = masterProp.GetBoolean();
+
+            if (payload.TryGetProperty("apiKey", out var keyProp))
+            {
+                var appSet = PersistenceManager.LoadAppSettings();
+                appSet.ApiKey = keyProp.GetString() ?? "";
+                PersistenceManager.SaveAppSettings(appSet);
+            }
+
+            SettingsManager.Save();
             return true;
         });
 
-        bridge.RegisterSyncHandler("saveLauncherSettings", payload =>
+        bridge.RegisterSyncHandler("getLauncherStats", payload => new
         {
-            if (payload.TryGetProperty("homeUrl", out var urlProp))
-                SettingsManager.Current.HomeUrl = urlProp.GetString() ?? "https://www.xiaoheiv.top";
-            if (payload.TryGetProperty("opacity", out var opProp))
-            {
-                double op = Math.Clamp(opProp.GetDouble(), 0.1, 1.0);
-                SettingsManager.Current.DefaultOpacity = op;
-                this.Opacity = op;
-            }
-            SettingsManager.Save();
-            return true;
+            opacity = SettingsManager.Current.DefaultOpacity,
+            homeUrl = SettingsManager.Current.HomeUrl,
+            robotCount = PetForm.Instance?.GetRobots().Count ?? 0,
+            isPetActive = _petInstance != null && _petInstance.Visible,
+            isGameActive = _gameInstance != null && _gameInstance.Visible,
+            isBrowserActive = BrowserForm.Instance != null && BrowserForm.Instance.Visible
         });
 
         bridge.RegisterSyncHandler("launchGameNav", payload =>

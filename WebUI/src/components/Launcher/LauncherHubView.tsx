@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import {
   Gamepad2, Globe, ShieldAlert, Bot, MessageSquare, Settings, X, Minus, Sparkles,
-  Zap, ChevronRight, Sliders, ShieldCheck
+  Zap, ChevronRight, ShieldCheck
 } from 'lucide-react';
 import { bridge } from '../../utils/bridge';
+import { FullSettingsModal } from '../Common/FullSettingsModal';
 
 interface LauncherStats {
   opacity: number;
@@ -25,15 +26,11 @@ export const LauncherHubView: React.FC = () => {
   });
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [opacityVal, setOpacityVal] = useState(10);
-  const [homeUrlInput, setHomeUrlInput] = useState('https://www.xiaoheiv.top');
 
   useEffect(() => {
     fetchStats();
     const unsub = bridge.on('launcherStatsUpdated', (data: LauncherStats) => {
       setStats(data);
-      setOpacityVal(Math.round(data.opacity * 10));
-      setHomeUrlInput(data.homeUrl);
     });
     return () => unsub();
   }, []);
@@ -43,24 +40,8 @@ export const LauncherHubView: React.FC = () => {
       const res = await bridge.invoke<LauncherStats>('getLauncherStats');
       if (res) {
         setStats(res);
-        setOpacityVal(Math.round(res.opacity * 10));
-        setHomeUrlInput(res.homeUrl || 'https://www.xiaoheiv.top');
       }
     } catch { }
-  };
-
-  const handleOpacityChange = (val: number) => {
-    setOpacityVal(val);
-    const op = val / 10.0;
-    bridge.invoke('setLauncherOpacity', { opacity: op });
-  };
-
-  const handleSaveSettings = async () => {
-    await bridge.invoke('saveLauncherSettings', {
-      homeUrl: homeUrlInput,
-      opacity: opacityVal / 10.0,
-    });
-    setIsSettingsOpen(false);
   };
 
   const handleDrag = () => {
@@ -89,9 +70,9 @@ export const LauncherHubView: React.FC = () => {
         {/* 顶部按钮控制区 */}
         <div className="flex items-center gap-1.5" onMouseDown={e => e.stopPropagation()}>
           <button
-            onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+            onClick={() => setIsSettingsOpen(true)}
             className="p-1.5 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800/80 rounded-lg transition"
-            title="系统配置"
+            title="系统全功能控制台 & 设置中心"
           >
             <Settings className="w-4 h-4" />
           </button>
@@ -239,60 +220,6 @@ export const LauncherHubView: React.FC = () => {
         </div>
       </div>
 
-      {/* 系统配置 Drawer / Modal */}
-      {isSettingsOpen && (
-        <div className="p-4 bg-zinc-950 border-t border-zinc-800 animate-in slide-in-from-bottom duration-200 space-y-3">
-          <div className="flex items-center justify-between text-xs font-bold text-emerald-400 pb-1 border-b border-zinc-800">
-            <span className="flex items-center gap-1.5">
-              <Sliders className="w-4 h-4" />
-              主控系统偏好设置
-            </span>
-            <button
-              onClick={() => setIsSettingsOpen(false)}
-              className="text-zinc-400 hover:text-zinc-100"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          <div className="space-y-2.5 text-xs">
-            {/* 窗口不透明度 */}
-            <div>
-              <div className="flex justify-between text-zinc-300 mb-1">
-                <span>窗口透明度：</span>
-                <span className="font-mono text-emerald-400">{opacityVal * 10}%</span>
-              </div>
-              <input
-                type="range"
-                min="1"
-                max="10"
-                value={opacityVal}
-                onChange={e => handleOpacityChange(parseInt(e.target.value))}
-                className="w-full accent-emerald-500 bg-zinc-800 rounded-lg cursor-pointer"
-              />
-            </div>
-
-            {/* 默认首页 */}
-            <div>
-              <label className="block text-zinc-300 mb-1">浏览器默认首页 URL：</label>
-              <input
-                type="text"
-                value={homeUrlInput}
-                onChange={e => setHomeUrlInput(e.target.value)}
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50 font-mono"
-              />
-            </div>
-
-            <button
-              onClick={handleSaveSettings}
-              className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold rounded-lg transition"
-            >
-              应用并保存配置
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* 底部状态提示栏 */}
       <div className="px-4 py-2.5 bg-zinc-950 border-t border-zinc-800/80 flex items-center justify-between text-[11px] text-zinc-400 font-mono">
         <span className="flex items-center gap-1.5 text-amber-400">
@@ -304,6 +231,12 @@ export const LauncherHubView: React.FC = () => {
           Vite React WebUI
         </span>
       </div>
+
+      {/* 全功能统一设置控制台 Modal */}
+      <FullSettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+      />
     </div>
   );
 };

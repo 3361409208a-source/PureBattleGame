@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Bot, MessageSquare, Globe, Zap, Shield, Search, 
   Send, Flame, Cpu, RefreshCw, Sparkles, Terminal, SlidersHorizontal,
-  Table, Plus, Pause, Play, Trash2, Eye, EyeOff, Key, Save
+  Table, Plus, Pause, Play, Trash2, Eye, EyeOff, Save, Monitor
 } from 'lucide-react';
 import { bridge } from '../../utils/bridge';
 import { AiGeneratorModal } from './AiGeneratorModal';
@@ -566,94 +566,242 @@ export const SocialHubView: React.FC = () => {
           </div>
         )}
 
-        {/* 4. ⚙️ 系统设置 Tab */}
+        {/* 4. ⚙️ 系统全功能设置 Tab */}
         {activeTab === 'settings' && (
-          <form onSubmit={handleSaveSettings} className="flex flex-col h-full bg-zinc-900 border border-zinc-800 rounded-xl p-4 overflow-y-auto space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
-              <h2 className="text-sm font-bold text-amber-400 flex items-center gap-1.5">
-                <SlidersHorizontal className="w-4 h-4" />
-                系统与互动偏好设置
-              </h2>
+          <form onSubmit={handleSaveSettings} className="flex flex-col h-full bg-zinc-900 border border-zinc-800 rounded-xl p-5 overflow-y-auto space-y-5 custom-scrollbar">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+              <div>
+                <h2 className="text-sm font-bold text-amber-400 flex items-center gap-1.5">
+                  <SlidersHorizontal className="w-4 h-4" />
+                  系统与机器人全功能综合设置中心
+                </h2>
+                <p className="text-[11px] text-zinc-400 mt-0.5 font-mono">Comprehensive System & Robot Control Panel</p>
+              </div>
               {saveStatus && <span className="text-xs text-emerald-400 font-bold animate-bounce">{saveStatus}</span>}
             </div>
 
-            {/* 语言与动作互动模式 */}
-            <div className="space-y-3 bg-zinc-950 p-3.5 rounded-xl border border-zinc-800">
+            {/* 1. 🖥️ 系统与应用大项 */}
+            <div className="space-y-3 bg-zinc-950 p-4 rounded-xl border border-zinc-800">
               <h3 className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
-                <MessageSquare className="w-3.5 h-3.5" />
-                🗣️ 语言与动作互动模式设置
+                <Monitor className="w-3.5 h-3.5" />
+                🖥️ 系统与应用程序偏好
               </h3>
 
-              {/* 语言互动模式下拉框 */}
-              <div className="p-3 bg-zinc-900 rounded-lg border border-zinc-800">
-                <label className="block text-xs font-bold text-zinc-200 mb-1">🗣️ 语言互动模式 (Language Interaction Mode)</label>
-                <select
-                  value={settings.languageMode || '互骂吐槽'}
-                  onChange={e => setSettings({ ...settings, languageMode: e.target.value })}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-emerald-500/50"
-                >
-                  <option value="互骂吐槽">互骂吐槽 (激烈对骂与搞笑讽刺模式)</option>
-                  <option value="友好哲理">友好哲理 (温暖励志与人生思考模式)</option>
-                  <option value="幽默搞笑">幽默搞笑 (无厘头讲笑话模式)</option>
-                  <option value="科幻极客">科幻极客 (AI/赛博朋克极客术语模式)</option>
-                </select>
-              </div>
-
-              {/* 动作互动模式下拉框 */}
-              <div className="p-3 bg-zinc-900 rounded-lg border border-zinc-800">
-                <label className="block text-xs font-bold text-zinc-200 mb-1">⚔️ 动作互动模式 (Action Interaction Mode)</label>
-                <select
-                  value={settings.actionMode || settings.battleMode}
-                  onChange={e => setSettings({ ...settings, actionMode: e.target.value, battleMode: e.target.value })}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-emerald-500/50"
-                >
-                  <option value="近身格斗">近身格斗 (贴身推搡格斗)</option>
-                  <option value="远程狙击">远程狙击 (发射激光与远程对射)</option>
-                  <option value="近远交替">近远交替 (根据场上存活人数自动切换)</option>
-                  <option value="和平相处">和平相处 (不发生冲突推搡，保持跟随)</option>
-                </select>
-              </div>
-
-              {/* 隐藏名称与性格 */}
-              <label className="flex items-center justify-between p-3 bg-zinc-900 rounded-lg border border-zinc-800 hover:border-emerald-600/40 cursor-pointer">
-                <div>
-                  <div className="text-xs font-bold text-zinc-200">隐藏名称与性格</div>
-                  <div className="text-[11px] text-zinc-400">打勾后屏幕上的宠物头顶和界面卡片将隐藏机器人真实名称与性格标签</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="p-3 bg-zinc-900 rounded-lg border border-zinc-800 space-y-1">
+                  <div className="flex justify-between text-xs text-zinc-200">
+                    <span className="font-bold">窗口不透明度</span>
+                    <span className="font-mono text-emerald-400 font-bold">{Math.round((settings.opacity || 0.95) * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="1.0"
+                    step="0.05"
+                    value={settings.opacity || 0.95}
+                    onChange={e => setSettings({ ...settings, opacity: parseFloat(e.target.value) })}
+                    className="w-full accent-emerald-500 bg-zinc-800 rounded-lg cursor-pointer"
+                  />
                 </div>
-                <input
-                  type="checkbox"
-                  checked={settings.hideNameAndPersonality}
-                  onChange={e => setSettings({ ...settings, hideNameAndPersonality: e.target.checked })}
-                  className="w-4 h-4 accent-emerald-500 rounded"
-                />
-              </label>
-            </div>
 
-            {/* 大模型 API Key 设置 */}
-            <div className="space-y-3 bg-zinc-950 p-3.5 rounded-xl border border-zinc-800">
-              <h3 className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
-                <Key className="w-3.5 h-3.5" />
-                大模型服务设置 (SiliconFlow API)
-              </h3>
-              <div>
-                <label className="block text-[11px] font-semibold text-zinc-400 mb-1">SiliconFlow API Key</label>
-                <input
-                  type="password"
-                  placeholder="sk-..."
-                  value={settings.apiKey}
-                  onChange={e => setSettings({ ...settings, apiKey: e.target.value })}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-zinc-200 font-mono focus:outline-none focus:border-amber-500/50"
-                />
+                <div className="p-3 bg-zinc-900 rounded-lg border border-zinc-800 space-y-1">
+                  <label className="block text-xs font-bold text-zinc-200">浏览器默认首页 URL</label>
+                  <input
+                    type="text"
+                    value={settings.homeUrl || 'https://www.xiaoheiv.top'}
+                    onChange={e => setSettings({ ...settings, homeUrl: e.target.value })}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-zinc-200 font-mono focus:outline-none focus:border-emerald-500/50"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <label className="flex items-center justify-between p-3 bg-zinc-900 rounded-lg border border-zinc-800 cursor-pointer">
+                  <div>
+                    <div className="text-xs font-bold text-zinc-200">开机自动启动</div>
+                    <div className="text-[10px] text-zinc-400">Windows 开机自动进入摸鱼主控</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={!!settings.autoStart}
+                    onChange={e => setSettings({ ...settings, autoStart: e.target.checked })}
+                    className="w-4 h-4 accent-emerald-500 rounded"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between p-3 bg-zinc-900 rounded-lg border border-zinc-800 cursor-pointer">
+                  <div>
+                    <div className="text-xs font-bold text-zinc-200">隐藏名称与性格</div>
+                    <div className="text-[10px] text-zinc-400">隐藏机器人头顶与卡片展示名</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={!!settings.hideNameAndPersonality}
+                    onChange={e => setSettings({ ...settings, hideNameAndPersonality: e.target.checked })}
+                    className="w-4 h-4 accent-emerald-500 rounded"
+                  />
+                </label>
               </div>
             </div>
 
-            <div className="pt-1">
+            {/* 2. 🗣️ 语言与动作互动模式大项 */}
+            <div className="space-y-3 bg-zinc-950 p-4 rounded-xl border border-zinc-800">
+              <h3 className="text-xs font-bold text-cyan-400 flex items-center gap-1.5">
+                <MessageSquare className="w-3.5 h-3.5" />
+                🗣️ 语言与动作 AI 互动模式
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="p-3 bg-zinc-900 rounded-lg border border-zinc-800">
+                  <label className="block text-xs font-bold text-zinc-200 mb-1">🗣️ 语言互动模式</label>
+                  <select
+                    value={settings.languageMode || '互骂吐槽'}
+                    onChange={e => setSettings({ ...settings, languageMode: e.target.value })}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-cyan-500/50"
+                  >
+                    <option value="互骂吐槽">🗣️ 互骂吐槽 (搞笑对骂模式)</option>
+                    <option value="赞美吹捧">🌸 赞美吹捧 (夸奖吹捧模式)</option>
+                    <option value="哲理探讨">🌌 哲理探讨 (宇宙哲学思考)</option>
+                    <option value="幽默冷笑话">🤡 幽默冷笑话 (讲无厘头冷笑话)</option>
+                    <option value="静音默契">🤫 静音默契 (安静互动不喊话)</option>
+                  </select>
+                </div>
+
+                <div className="p-3 bg-zinc-900 rounded-lg border border-zinc-800">
+                  <label className="block text-xs font-bold text-zinc-200 mb-1">⚔️ 动作互动模式</label>
+                  <select
+                    value={settings.actionMode || settings.battleMode}
+                    onChange={e => setSettings({ ...settings, actionMode: e.target.value, battleMode: e.target.value })}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-cyan-500/50"
+                  >
+                    <option value="近远交替">⚔️ 近远交替 (远程技能与肉搏结合)</option>
+                    <option value="全程近战拉扯">🤺 全程近战拉扯 (贴身追逐肉搏)</option>
+                    <option value="全程远程对射">💥 全程远程对射 (保持距离对射)</option>
+                    <option value="和平相处">🕊️ 和平相处 (友好走动，不下死手)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <label className="flex items-center justify-between p-3 bg-zinc-900 rounded-lg border border-zinc-800 cursor-pointer">
+                  <div>
+                    <div className="text-xs font-bold text-zinc-200">默认开启对骂模式</div>
+                    <div className="text-[10px] text-zinc-400">遇敌交战时默认喷吐幽默金句</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={settings.curseModeByDefault !== false}
+                    onChange={e => setSettings({ ...settings, curseModeByDefault: e.target.checked })}
+                    className="w-4 h-4 accent-cyan-500 rounded"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between p-3 bg-zinc-900 rounded-lg border border-zinc-800 cursor-pointer">
+                  <div>
+                    <div className="text-xs font-bold text-zinc-200">开启 AI 动态台词思考</div>
+                    <div className="text-[10px] text-zinc-400">闲置时自动吐露灵感台词</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={!!settings.enableAiThinking}
+                    onChange={e => setSettings({ ...settings, enableAiThinking: e.target.checked })}
+                    className="w-4 h-4 accent-cyan-500 rounded"
+                  />
+                </label>
+              </div>
+            </div>
+
+            {/* 3. ⚙️ 属性与物理控制大项 */}
+            <div className="space-y-3 bg-zinc-950 p-4 rounded-xl border border-zinc-800">
+              <h3 className="text-xs font-bold text-purple-400 flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5" />
+                ⚙️ 属性与物理控制
+              </h3>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="p-3 bg-zinc-900 rounded-lg border border-zinc-800 space-y-1">
+                  <span className="text-[11px] font-bold text-zinc-300">默认尺寸 (px)</span>
+                  <input
+                    type="number"
+                    min="16"
+                    max="128"
+                    value={settings.robotSize || 64}
+                    onChange={e => setSettings({ ...settings, robotSize: parseInt(e.target.value) || 64 })}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-100 font-mono"
+                  />
+                </div>
+
+                <div className="p-3 bg-zinc-900 rounded-lg border border-zinc-800 space-y-1">
+                  <span className="text-[11px] font-bold text-zinc-300">移动速度 (%)</span>
+                  <input
+                    type="number"
+                    min="50"
+                    max="300"
+                    value={settings.robotSpeed || 100}
+                    onChange={e => setSettings({ ...settings, robotSpeed: parseInt(e.target.value) || 100 })}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-100 font-mono"
+                  />
+                </div>
+
+                <div className="p-3 bg-zinc-900 rounded-lg border border-zinc-800 space-y-1">
+                  <span className="text-[11px] font-bold text-zinc-300">音效音量 (%)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={settings.soundVolume ?? 50}
+                    onChange={e => setSettings({ ...settings, soundVolume: parseInt(e.target.value) || 0 })}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-100 font-mono"
+                  />
+                </div>
+
+                <div className="p-3 bg-zinc-900 rounded-lg border border-zinc-800 space-y-1">
+                  <span className="text-[11px] font-bold text-zinc-300">技能特效 (%)</span>
+                  <input
+                    type="number"
+                    min="10"
+                    max="200"
+                    value={settings.skillScale || 100}
+                    onChange={e => setSettings({ ...settings, skillScale: parseInt(e.target.value) || 100 })}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-100 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <label className="flex items-center justify-between p-3 bg-zinc-900 rounded-lg border border-zinc-800 cursor-pointer">
+                  <div>
+                    <div className="text-xs font-bold text-zinc-200">武器大师模式</div>
+                    <div className="text-[10px] text-zinc-400">随机为机器人分配神级随机武器</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={!!settings.isWeaponMaster}
+                    onChange={e => setSettings({ ...settings, isWeaponMaster: e.target.checked })}
+                    className="w-4 h-4 accent-purple-500 rounded"
+                  />
+                </label>
+
+                <div className="p-3 bg-zinc-900 rounded-lg border border-zinc-800 space-y-1">
+                  <span className="text-xs font-bold text-zinc-200">Gemini / AI Key</span>
+                  <input
+                    type="password"
+                    placeholder="sk-..."
+                    value={settings.apiKey || ''}
+                    onChange={e => setSettings({ ...settings, apiKey: e.target.value })}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1 text-xs text-zinc-100 font-mono focus:outline-none focus:border-purple-500/50"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-2">
               <button
                 type="submit"
-                className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-lg transition"
+                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/20 transition"
               >
                 <Save className="w-4 h-4" />
-                保存所有配置并生效
+                保存并对全局生效
               </button>
             </div>
           </form>

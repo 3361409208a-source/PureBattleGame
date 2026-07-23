@@ -49,11 +49,20 @@ export interface SystemStats {
 
 export interface AppSettings {
   opacity: number;
+  homeUrl: string;
+  autoStart?: boolean;
   hideNameAndPersonality: boolean;
   curseModeByDefault: boolean;
   battleMode: string;
   languageMode: string;
   actionMode: string;
+  robotSize?: number;
+  robotSpeed?: number;
+  skillScale?: number;
+  soundVolume?: number;
+  fightFrequency?: number;
+  enableAiThinking?: boolean;
+  aiThoughtFrequency?: number;
+  isWeaponMaster?: boolean;
   apiKey: string;
-  homeUrl: string;
 }

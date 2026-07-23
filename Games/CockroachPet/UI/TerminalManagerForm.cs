@@ -163,28 +163,47 @@ public class TerminalManagerForm : WebUIHostForm
             return true;
         });
 
-        // 9. 获取系统设置
+        // 9. 获取系统设置 (全量属性)
         bridge.RegisterSyncHandler("getSettings", payload => new
         {
             opacity = SettingsManager.Current.DefaultOpacity,
+            homeUrl = SettingsManager.Current.HomeUrl,
+            autoStart = SettingsManager.Current.AutoStart,
             hideNameAndPersonality = SettingsManager.Current.HideNameAndPersonality,
             curseModeByDefault = SettingsManager.Current.CurseModeByDefault,
             battleMode = SettingsManager.Current.BattleMode,
             languageMode = SettingsManager.Current.LanguageInteractionMode,
             actionMode = SettingsManager.Current.ActionInteractionMode,
-            apiKey = PersistenceManager.GetApiKey(),
-            homeUrl = SettingsManager.Current.HomeUrl
+            robotSize = SettingsManager.Current.RobotSize,
+            robotSpeed = SettingsManager.Current.RobotSpeed,
+            skillScale = SettingsManager.Current.SkillScale,
+            soundVolume = SettingsManager.Current.SoundVolume,
+            fightFrequency = SettingsManager.Current.FightFrequency,
+            enableAiThinking = SettingsManager.Current.EnableAiThinking,
+            aiThoughtFrequency = SettingsManager.Current.AiThoughtFrequency,
+            isWeaponMaster = SettingsManager.Current.IsWeaponMaster,
+            apiKey = PersistenceManager.GetApiKey()
         });
 
-        // 10. 保存系统设置
+        // 10. 保存系统设置 (全量属性)
         bridge.RegisterSyncHandler("saveSettings", payload =>
         {
+            if (payload.TryGetProperty("opacity", out var opProp))
+            {
+                double op = Math.Clamp(opProp.GetDouble(), 0.1, 1.0);
+                SettingsManager.Current.DefaultOpacity = op;
+                if (PetForm.Instance != null && !PetForm.Instance.IsDisposed)
+                    PetForm.Instance.Invoke(() => PetForm.Instance.Opacity = op);
+            }
+            if (payload.TryGetProperty("homeUrl", out var urlProp))
+                SettingsManager.Current.HomeUrl = urlProp.GetString() ?? "https://www.xiaoheiv.top";
+            if (payload.TryGetProperty("autoStart", out var autoProp))
+                SettingsManager.Current.AutoStart = autoProp.GetBoolean();
+
             if (payload.TryGetProperty("hideNameAndPersonality", out var hideProp))
                 SettingsManager.Current.HideNameAndPersonality = hideProp.GetBoolean();
             if (payload.TryGetProperty("curseModeByDefault", out var curseProp))
                 SettingsManager.Current.CurseModeByDefault = curseProp.GetBoolean();
-            if (payload.TryGetProperty("battleMode", out var battleProp))
-                SettingsManager.Current.BattleMode = battleProp.GetString() ?? "近远交替";
             if (payload.TryGetProperty("languageMode", out var langProp))
                 SettingsManager.Current.LanguageInteractionMode = langProp.GetString() ?? "互骂吐槽";
             if (payload.TryGetProperty("actionMode", out var actProp))
@@ -193,6 +212,28 @@ public class TerminalManagerForm : WebUIHostForm
                 SettingsManager.Current.ActionInteractionMode = act;
                 SettingsManager.Current.BattleMode = act;
             }
+
+            if (payload.TryGetProperty("robotSize", out var sizeProp))
+                SettingsManager.Current.RobotSize = sizeProp.GetInt32();
+            if (payload.TryGetProperty("robotSpeed", out var speedProp))
+                SettingsManager.Current.RobotSpeed = speedProp.GetInt32();
+            if (payload.TryGetProperty("skillScale", out var scaleProp))
+                SettingsManager.Current.SkillScale = scaleProp.GetInt32();
+            if (payload.TryGetProperty("soundVolume", out var volProp))
+            {
+                int vol = volProp.GetInt32();
+                SettingsManager.Current.SoundVolume = vol;
+                AudioManager.VolumeScale = vol / 100.0f;
+            }
+            if (payload.TryGetProperty("fightFrequency", out var fightProp))
+                SettingsManager.Current.FightFrequency = fightProp.GetInt32();
+            if (payload.TryGetProperty("enableAiThinking", out var aiProp))
+                SettingsManager.Current.EnableAiThinking = aiProp.GetBoolean();
+            if (payload.TryGetProperty("aiThoughtFrequency", out var aiFreqProp))
+                SettingsManager.Current.AiThoughtFrequency = aiFreqProp.GetInt32();
+            if (payload.TryGetProperty("isWeaponMaster", out var masterProp))
+                SettingsManager.Current.IsWeaponMaster = masterProp.GetBoolean();
+
             if (payload.TryGetProperty("apiKey", out var keyProp))
             {
                 var appSet = PersistenceManager.LoadAppSettings();
@@ -215,10 +256,16 @@ public class TerminalManagerForm : WebUIHostForm
                 r.IsFiringLaser = false;
                 r.IsMoving = true;
                 r.CurseMode = SettingsManager.Current.CurseModeByDefault;
+                r.Size = SettingsManager.Current.RobotSize;
+                r.SpeedMultiplier = SettingsManager.Current.RobotSpeed / 100.0f;
                 if (SettingsManager.Current.ActionInteractionMode == "和平相处")
                 {
                     r.SpecialState = "HAPPY";
                     r.SpecialStateTimer = 30;
+                }
+                else
+                {
+                    r.SpecialState = "";
                 }
             }
 
