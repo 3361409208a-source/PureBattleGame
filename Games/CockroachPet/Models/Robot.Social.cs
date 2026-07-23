@@ -273,6 +273,9 @@ public partial class Robot
     {
         if (_isThinking) return;
 
+        // 广播管理员发送的消息至世界频道
+        TerminalManagerForm.Instance?.BroadcastToWorld("管理员", message, System.Drawing.Color.Yellow);
+
         OnChatMessageReceived?.Invoke("user", message, "");
         ChatHistory.Add(new ChatMessage("user", message));
         if (ChatHistory.Count > 10) ChatHistory.RemoveAt(0);
@@ -304,10 +307,7 @@ public partial class Robot
         if (ChatHistory.Count > 10) ChatHistory.RemoveAt(0);
 
         IsAiSpeaking = true;
-        _fullChatText = response;
-        ChatText = "";
-        _streamCounter = 0;
-        ChatTimer = 180 + response.Length * 5;
+        SetBark(response, 180 + response.Length * 5, broadcastToWorld: true);
         OnChatMessageReceived?.Invoke("assistant", response, thought);
 
         bool isMemoryCommand = message.Contains("记住") || message.Contains("叫我") || message.Contains("身份") || message.Contains("我的名字");

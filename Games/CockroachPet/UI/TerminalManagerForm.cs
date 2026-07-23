@@ -81,7 +81,6 @@ public class TerminalManagerForm : WebUIHostForm
                             if (!string.IsNullOrWhiteSpace(reply))
                             {
                                 responder.SetBark(reply, 120);
-                                BroadcastToWorld(responder.Name, reply, responder.PrimaryColor);
                             }
                         });
                     }
