@@ -35,27 +35,110 @@ public partial class MoyuLauncher : WebUIHostForm
         InitializeTray();
     }
 
+    private Icon _trayIconGraphic = null!;
+
     private void InitializeTray()
     {
-        _trayIcon = new NotifyIcon();
-        _trayIcon.Text = "PURE BATTLE HUB";
+        if (_trayIcon != null) return;
 
-        using (Bitmap bmp = new Bitmap(16, 16))
-        using (Graphics g = Graphics.FromImage(bmp))
+        _trayIcon = new NotifyIcon();
+        _trayIcon.Text = "PURE BATTLE HUB | 摸鱼游戏主控中心";
+
+        // 使用高品质 Bitmap 绘制图标并克隆 Icon 实例，防止被 GC 释放后在系统托盘消失
+        using (Bitmap bmp = new Bitmap(32, 32))
         {
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            g.FillEllipse(Brushes.DodgerBlue, 1, 1, 14, 14);
-            _trayIcon.Icon = Icon.FromHandle(bmp.GetHicon());
+            using (Graphics g = Graphics.FromImage(bmp))
+            {
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                using (var brush = new SolidBrush(Color.FromArgb(16, 185, 129)))
+                {
+                    g.FillEllipse(brush, 2, 2, 28, 28);
+                }
+                using (var pen = new Pen(Color.White, 2))
+                {
+                    g.DrawEllipse(pen, 2, 2, 28, 28);
+                    using (var font = new Font("Segoe UI", 13, FontStyle.Bold))
+                    {
+                        g.DrawString("P", font, Brushes.White, new PointF(7, 3));
+                    }
+                }
+            }
+            IntPtr hIcon = bmp.GetHicon();
+            _trayIconGraphic = (Icon)Icon.FromHandle(hIcon).Clone();
+            _trayIcon.Icon = _trayIconGraphic;
         }
 
         var menu = new ContextMenuStrip();
-        menu.Items.Add("显示主界面", null, (s, e) => { this.Show(); this.WindowState = FormWindowState.Normal; this.BringToFront(); });
+        menu.BackColor = Color.FromArgb(24, 24, 30);
+        menu.ForeColor = Color.White;
+
+        menu.Items.Add("🎮 显示摸鱼主控台 (Launcher)", null, (s, e) => ShowLauncherWindow());
+        menu.Items.Add("💬 机器人社交中心 & 控制台", null, (s, e) => TerminalManagerForm.Instance.ShowWorldChat());
+        menu.Items.Add("🌐 极速浏览器", null, (s, e) => {
+            BrowserForm.Instance.Opacity = SettingsManager.Current.DefaultOpacity;
+            BrowserForm.Instance.Show();
+            BrowserForm.Instance.BringToFront();
+        });
+        menu.Items.Add("🏆 星核防线挂机塔防", null, (s, e) => {
+            if (_gameInstance == null || _gameInstance.IsDisposed) _gameInstance = new BattleForm();
+            _gameInstance.Opacity = SettingsManager.Current.DefaultOpacity;
+            _gameInstance.Show();
+            _gameInstance.BringToFront();
+        });
+        menu.Items.Add("🐜 像素电子宠终端", null, (s, e) => {
+            if (_petInstance == null || _petInstance.IsDisposed) _petInstance = new PetForm();
+            _petInstance.Opacity = SettingsManager.Current.DefaultOpacity;
+            _petInstance.Show();
+            _petInstance.BringToFront();
+        });
         menu.Items.Add("-");
-        menu.Items.Add("彻底退出", null, (s, e) => Application.Exit());
+        menu.Items.Add("⚡ 摸鱼防挂显示/隐藏 (Alt+Space)", null, (s, e) => ToggleBossVisibility());
+        menu.Items.Add("-");
+        menu.Items.Add("❌ 彻底退出程序", null, (s, e) => ExitApplication());
 
         _trayIcon.ContextMenuStrip = menu;
         _trayIcon.Visible = true;
-        _trayIcon.DoubleClick += (s, e) => { this.Show(); this.WindowState = FormWindowState.Normal; this.BringToFront(); };
+
+        // 左键单击或双击托盘图标切换主界面显示与最小化
+        _trayIcon.MouseClick += (s, e) => {
+            if (e.Button == MouseButtons.Left)
+            {
+                ToggleLauncherWindow();
+            }
+        };
+    }
+
+    private void ToggleLauncherWindow()
+    {
+        if (this.Visible && this.Opacity > 0.1 && this.WindowState != FormWindowState.Minimized)
+        {
+            this.WindowState = FormWindowState.Minimized;
+            this.Hide();
+        }
+        else
+        {
+            ShowLauncherWindow();
+        }
+    }
+
+    private void ShowLauncherWindow()
+    {
+        this.Show();
+        this.WindowState = FormWindowState.Normal;
+        this.Opacity = SettingsManager.Current.DefaultOpacity;
+        this.ShowInTaskbar = true;
+        this.BringToFront();
+        this.Activate();
+    }
+
+    private void ExitApplication()
+    {
+        if (_trayIcon != null)
+        {
+            _trayIcon.Visible = false;
+            _trayIcon.Dispose();
+        }
+        Application.Exit();
     }
 
     protected override void OnBridgeReady(WebUIBridge bridge)
@@ -320,9 +403,19 @@ public partial class MoyuLauncher : WebUIHostForm
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
+        if (e.CloseReason == CloseReason.UserClosing)
+        {
+            e.Cancel = true;
+            this.WindowState = FormWindowState.Minimized;
+            this.Hide();
+            return;
+        }
         UnregisterHotKey(this.Handle, HOTKEY_ID);
-        _trayIcon.Visible = false;
-        _trayIcon.Dispose();
+        if (_trayIcon != null)
+        {
+            _trayIcon.Visible = false;
+            _trayIcon.Dispose();
+        }
         base.OnFormClosing(e);
     }
 }
