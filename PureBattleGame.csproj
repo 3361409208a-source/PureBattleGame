@@ -15,6 +15,10 @@
     <Content Include="Games\StarCoreDefense\*.mp3">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- React 18 WebUI 前端产物 -->
+    <Content Include="WebUI\dist\**">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>

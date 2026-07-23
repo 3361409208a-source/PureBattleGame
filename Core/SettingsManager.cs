@@ -25,6 +25,11 @@ public class AppSettings
     public bool IsWeaponMaster { get; set; } = false;
     public int RobotMaxHp { get; set; } = 1000;
     public bool IsGodMode { get; set; } = false;
+    public System.Collections.Generic.List<string> EnabledWeapons { get; set; } = new System.Collections.Generic.List<string> {
+        "LASER", "SHOCK", "BURST", "WAVE", "BEAM", "PULSE", "NOVA", "BLASTER",
+        "BULLET", "ROCKET", "PLASMA", "CANNON", "LIGHTNING", "SPIT", "INK", "BOOMERANG", "SHURIKEN", "GRENADE", "FIREBALL", "ICE_SHARD",
+        "PUSH", "PULL", "GRAB", "THROW", "DUEL", "SLAM", "KICK", "SUPLEX", "HEADBUTT", "TORNADO"
+    };
 }
 
 public static class SettingsManager

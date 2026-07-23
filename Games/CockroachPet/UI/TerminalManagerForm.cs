@@ -293,6 +293,16 @@ public class TerminalManagerForm : WebUIHostForm
                 }
             }
 
+            if (payload.TryGetProperty("enabledWeapons", out var weaponsProp) && weaponsProp.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                var list = new System.Collections.Generic.List<string>();
+                foreach (var el in weaponsProp.EnumerateArray())
+                {
+                    if (el.GetString() is string s) list.Add(s);
+                }
+                SettingsManager.Current.EnabledWeapons = list;
+            }
+
             if (payload.TryGetProperty("apiKey", out var keyProp))
             {
                 var appSet = PersistenceManager.LoadAppSettings();

@@ -67,4 +67,5 @@ export interface AppSettings {
   robotMaxHp?: number;
   isGodMode?: boolean;
   apiKey: string;
+  enabledWeapons?: string[];
 }

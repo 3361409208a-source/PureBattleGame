@@ -62,6 +62,110 @@ public partial class Robot
 
         if (BlindTimer == 1) StatusMessage = "IDLE";
     }
+    public void PerformRandomMeleeAction(Robot other)
+    {
+        if (other == null || !other.IsActive || other.IsDead || IsDead) return;
+
+        var allMelee = new[] { "PUSH", "PULL", "GRAB", "THROW", "DUEL", "SLAM", "KICK", "SUPLEX", "HEADBUTT", "TORNADO" };
+        var allowedMelee = allMelee.Where(w => Core.SettingsManager.Current.EnabledWeapons.Contains(w)).ToArray();
+        if (allowedMelee.Length == 0) allowedMelee = new[] { "PUSH" };
+
+        string selected = allowedMelee[Rand.Next(allowedMelee.Length)];
+
+        switch (selected)
+        {
+            case "PUSH": PerformPush(other); break;
+            case "PULL": PerformPull(other); break;
+            case "GRAB": PerformGrab(other); break;
+            case "THROW": PerformGrab(other); break; // THROW is triggered after GRAB
+            case "DUEL": StartDuel(other); break;
+            case "SLAM": PerformSlam(other); break;
+            case "KICK": PerformKick(other); break;
+            case "SUPLEX": PerformSuplex(other); break;
+            case "HEADBUTT": PerformHeadbutt(other); break;
+            case "TORNADO": PerformTornado(other); break;
+            default: PerformPush(other); break;
+        }
+    }
+
+    private void PerformSlam(Robot other)
+    {
+        SetBark("泰山压顶！", 60);
+        PhysicalTarget = other;
+        PhysicalAction = "SLAM";
+        PhysicalTimer = 40;
+        
+        other.SpecialState = "SHAKING";
+        other.SpecialStateTimer = 40;
+        other.StunTimer = 40;
+        other.ApplyAttackEffect(20, Name);
+    }
+
+    private void PerformKick(Robot other)
+    {
+        SetBark("吃我一记飞踢！", 40);
+        PhysicalTarget = other;
+        PhysicalAction = "KICK";
+        PhysicalTimer = 20;
+
+        float ox = other.X - X;
+        float oy = other.Y - Y;
+        float odist = (float)Math.Max(1, Math.Sqrt(ox * ox + oy * oy));
+        other.Dx = (ox / odist) * 25 * other.SpeedMultiplier;
+        other.Dy = (oy / odist) * 25 * other.SpeedMultiplier;
+        other.ApplyAttackEffect(15, Name);
+    }
+
+    private void PerformSuplex(Robot other)
+    {
+        SetBark("过肩摔！", 60);
+        PhysicalTarget = other;
+        PhysicalAction = "SUPLEX";
+        PhysicalTimer = 60;
+        other.PullingMe = this;
+        other.IsBeingThrown = true;
+        other.ApplyAttackEffect(30, Name);
+    }
+
+    private void PerformHeadbutt(Robot other)
+    {
+        SetBark("铁头功！", 30);
+        PhysicalTarget = other;
+        PhysicalAction = "HEADBUTT";
+        PhysicalTimer = 20;
+
+        float ox = other.X - X;
+        float oy = other.Y - Y;
+        float odist = (float)Math.Max(1, Math.Sqrt(ox * ox + oy * oy));
+        Dx = (ox / odist) * 10;
+        Dy = (oy / odist) * 10;
+        
+        other.StunTimer = 60;
+        other.SpecialState = "SHAKING";
+        other.SpecialStateTimer = 60;
+        other.ApplyAttackEffect(10, Name);
+    }
+
+    private void PerformTornado(Robot other)
+    {
+        SetBark("无敌旋风斩！", 60);
+        PhysicalTarget = other;
+        PhysicalAction = "TORNADO";
+        PhysicalTimer = 60;
+
+        var closeRobots = PetForm.Instance.GetRobots().Where(r => r != this && r.IsActive && !r.IsDead &&
+            Math.Abs(r.X - X) < 150 && Math.Abs(r.Y - Y) < 150).ToList();
+
+        foreach (var target in closeRobots)
+        {
+            float ox = target.X - X;
+            float oy = target.Y - Y;
+            float odist = (float)Math.Max(1, Math.Sqrt(ox * ox + oy * oy));
+            target.Dx = (ox / odist) * 20 * target.SpeedMultiplier;
+            target.Dy = (oy / odist) * 20 * target.SpeedMultiplier;
+            target.ApplyAttackEffect(10, Name);
+        }
+    }
 
     private void PerformPush(Robot other)
     {

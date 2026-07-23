@@ -1205,6 +1205,73 @@ public partial class PetForm : Form
                     }
                     break;
 
+                case "PULSE":
+                    float pulseR = Math.Max(3f, (6f + (float)Math.Sin(p.LifeTime * 0.3) * 3f) * pScale);
+                    using (var pulseBrush = new SolidBrush(Color.FromArgb(200, Color.DeepSkyBlue)))
+                    using (var pulsePen = new Pen(Color.White, Math.Max(1f, 2 * pScale)))
+                    {
+                        e.Graphics.FillEllipse(pulseBrush, p.X - pulseR, p.Y - pulseR, pulseR * 2, pulseR * 2);
+                        e.Graphics.DrawEllipse(pulsePen, p.X - pulseR, p.Y - pulseR, pulseR * 2, pulseR * 2);
+                    }
+                    break;
+
+                case "BLASTER":
+                    using (var blasterPen = new Pen(p.ProjectileColor, Math.Max(2f, 4 * pScale)))
+                    {
+                        e.Graphics.DrawLine(blasterPen, p.X, p.Y, p.X - p.Dx * 2, p.Y - p.Dy * 2);
+                    }
+                    break;
+
+                case "BOOMERANG":
+                    e.Graphics.TranslateTransform(p.X, p.Y);
+                    e.Graphics.RotateTransform(p.LifeTime * 20);
+                    using (var bPen = new Pen(Color.Silver, Math.Max(2f, 3 * pScale)))
+                    {
+                        float bl = Math.Max(5f, 15 * pScale);
+                        e.Graphics.DrawLine(bPen, -bl, 0, bl, 0);
+                        e.Graphics.DrawLine(bPen, 0, -bl, 0, bl);
+                        e.Graphics.FillEllipse(Brushes.White, -bl/4, -bl/4, bl/2, bl/2);
+                    }
+                    e.Graphics.ResetTransform();
+                    break;
+
+                case "SHURIKEN":
+                    e.Graphics.TranslateTransform(p.X, p.Y);
+                    e.Graphics.RotateTransform(p.LifeTime * 30);
+                    using (var sBrush = new SolidBrush(Color.Gray))
+                    {
+                        float sl = Math.Max(3f, 10 * pScale);
+                        PointF[] star = { new PointF(0, -sl), new PointF(sl/3, -sl/3), new PointF(sl, 0), new PointF(sl/3, sl/3), new PointF(0, sl), new PointF(-sl/3, sl/3), new PointF(-sl, 0), new PointF(-sl/3, -sl/3) };
+                        e.Graphics.FillPolygon(sBrush, star);
+                    }
+                    e.Graphics.ResetTransform();
+                    break;
+
+                case "GRENADE":
+                    float gr = Math.Max(3f, 6 * pScale);
+                    e.Graphics.FillEllipse(new SolidBrush(Color.DarkGreen), p.X - gr, p.Y - gr, gr * 2, gr * 2);
+                    if (p.LifeTime % 10 < 5) e.Graphics.FillEllipse(Brushes.Red, p.X - gr/2, p.Y - gr/2, gr, gr);
+                    break;
+
+                case "FIREBALL":
+                    float fr = Math.Max(4f, 12 * pScale);
+                    e.Graphics.FillEllipse(new SolidBrush(Color.FromArgb(150, Color.OrangeRed)), p.X - fr, p.Y - fr, fr * 2, fr * 2);
+                    e.Graphics.FillEllipse(Brushes.Yellow, p.X - fr/2, p.Y - fr/2, fr, fr);
+                    break;
+
+                case "ICE_SHARD":
+                    e.Graphics.TranslateTransform(p.X, p.Y);
+                    e.Graphics.RotateTransform((float)(Math.Atan2(p.Dy, p.Dx) * 180 / Math.PI) + 90);
+                    using (var iceBrush = new SolidBrush(Color.LightCyan))
+                    {
+                        float w = Math.Max(2f, 6 * pScale);
+                        float h = Math.Max(6f, 18 * pScale);
+                        PointF[] shard = { new PointF(0, -h), new PointF(w, h/2), new PointF(0, h), new PointF(-w, h/2) };
+                        e.Graphics.FillPolygon(iceBrush, shard);
+                    }
+                    e.Graphics.ResetTransform();
+                    break;
+
                 case "ROCKET":
                     using (var rocketPath = new System.Drawing.Drawing2D.GraphicsPath())
                     {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  X, Sliders, Monitor, Bot, Zap, Volume2, Key, Check, AlertCircle, RefreshCw
+  X, Sliders, Monitor, Bot, Zap, Volume2, Key, Check, AlertCircle, RefreshCw, Shield
 } from 'lucide-react';
 import { bridge } from '../../utils/bridge';
 
@@ -23,6 +23,7 @@ interface FullSettingsData {
   isWeaponMaster: boolean;
   robotMaxHp: number;
   isGodMode: boolean;
+  enabledWeapons: string[];
   apiKey: string;
 }
 
@@ -32,7 +33,7 @@ interface Props {
 }
 
 export const FullSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
-  const [activeTab, setActiveTab] = useState<'system' | 'social' | 'physics'>('system');
+  const [activeTab, setActiveTab] = useState<'system' | 'social' | 'physics' | 'weapons'>('system');
   const [loading, setLoading] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
@@ -55,6 +56,7 @@ export const FullSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
     isWeaponMaster: false,
     robotMaxHp: 1000,
     isGodMode: false,
+    enabledWeapons: [],
     apiKey: '',
   });
 
@@ -147,6 +149,17 @@ export const FullSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
           >
             <Zap className="w-4 h-4" />
             属性与物理控制
+          </button>
+          <button
+            onClick={() => setActiveTab('weapons')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl border-b-2 transition ${
+              activeTab === 'weapons'
+                ? 'border-emerald-500 text-emerald-400 bg-zinc-900 font-bold'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <Shield className="w-4 h-4" />
+            武器管理系统
           </button>
         </div>
 
@@ -429,6 +442,50 @@ export const FullSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
                   className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
                 />
               </div>
+            </div>
+          )}
+
+          {activeTab === 'weapons' && (
+            <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+              {[
+                {
+                  title: '✨ 基础能量光束 (Base Energy)',
+                  items: ['LASER', 'SHOCK', 'BURST', 'WAVE', 'BEAM', 'PULSE', 'NOVA', 'BLASTER']
+                },
+                {
+                  title: '👑 武器大师兵器 (Weapon Master)',
+                  items: ['BULLET', 'ROCKET', 'PLASMA', 'CANNON', 'LIGHTNING', 'SPIT', 'INK', 'BOOMERANG', 'SHURIKEN', 'GRENADE', 'FIREBALL', 'ICE_SHARD']
+                },
+                {
+                  title: '🤼 物理近战招式 (Physical Melee)',
+                  items: ['PUSH', 'PULL', 'GRAB', 'THROW', 'DUEL', 'SLAM', 'KICK', 'SUPLEX', 'HEADBUTT', 'TORNADO']
+                }
+              ].map((category, idx) => (
+                <div key={idx} className="bg-zinc-900/60 p-4 border border-zinc-800/80 rounded-xl">
+                  <div className="font-semibold text-zinc-200 mb-3 pb-2 border-b border-zinc-800/50">{category.title}</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {category.items.map(weapon => (
+                      <label key={weapon} className="flex items-center gap-2 cursor-pointer group">
+                        <input
+                          type="checkbox"
+                          checked={form.enabledWeapons?.includes(weapon) ?? true}
+                          onChange={e => {
+                            const checked = e.target.checked;
+                            const current = form.enabledWeapons || [];
+                            if (checked) {
+                              if (!current.includes(weapon)) setForm({ ...form, enabledWeapons: [...current, weapon] });
+                            } else {
+                              setForm({ ...form, enabledWeapons: current.filter(w => w !== weapon) });
+                            }
+                          }}
+                          className="w-4 h-4 accent-emerald-500 rounded border-zinc-700 bg-zinc-900"
+                        />
+                        <span className="text-sm text-zinc-400 group-hover:text-zinc-200 transition">{weapon}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>

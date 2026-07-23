@@ -205,6 +205,40 @@ public static class PixelRobotRenderer
                     }
                     break;
 
+                case "WAVE": // 声波巨浪 - 扇形弧光
+                    using (var wavePen = new Pen(Color.FromArgb(180, attackColor), Math.Max(2f, 8 * skillScale)))
+                    {
+                        float angle = (float)Math.Atan2(robot.LaserTargetY - worldCenterY, robot.LaserTargetX - worldCenterX);
+                        float dist = (float)Math.Sqrt(Math.Pow(robot.LaserTargetX - worldCenterX, 2) + Math.Pow(robot.LaserTargetY - worldCenterY, 2));
+                        float sweep = 60f; 
+                        float startAngle = (angle * 180f / (float)Math.PI) - sweep / 2f;
+                        for(int rWave=1; rWave<=3; rWave++) {
+                            float currentRadius = (dist / 3f) * rWave;
+                            g.DrawArc(wavePen, worldCenterX - currentRadius, worldCenterY - currentRadius, currentRadius * 2, currentRadius * 2, startAngle, sweep);
+                        }
+                    }
+                    break;
+
+                case "BEAM": // 毁灭光束 - 超粗能量柱
+                    using (var beamGlow = new Pen(Color.FromArgb(100, attackColor), Math.Max(5f, 30 * skillScale)))
+                    using (var beamCore = new Pen(Color.White, Math.Max(2f, 15 * skillScale)))
+                    {
+                        g.DrawLine(beamGlow, worldCenterX, worldCenterY, robot.LaserTargetX, robot.LaserTargetY);
+                        g.DrawLine(beamCore, worldCenterX, worldCenterY, robot.LaserTargetX, robot.LaserTargetY);
+                    }
+                    break;
+
+                case "NOVA": // 新星爆破
+                    using (var novaBrush = new SolidBrush(Color.FromArgb(120, attackColor)))
+                    using (var novaPen = new Pen(Color.White, Math.Max(1f, 3 * skillScale)))
+                    {
+                        float distNova = (float)Math.Sqrt(Math.Pow(robot.LaserTargetX - worldCenterX, 2) + Math.Pow(robot.LaserTargetY - worldCenterY, 2));
+                        float novaR = Math.Max(10f, distNova * 0.8f);
+                        g.FillEllipse(novaBrush, worldCenterX - novaR, worldCenterY - novaR, novaR * 2, novaR * 2);
+                        g.DrawEllipse(novaPen, worldCenterX - novaR, worldCenterY - novaR, novaR * 2, novaR * 2);
+                    }
+                    break;
+
                 default: // LASER - 单线条平滑激光
                     using (var glowPen = new Pen(Color.FromArgb(150, robot.PrimaryColor), Math.Max(1.5f, 12 * skillScale))) 
                     using (var corePen = new Pen(Color.White, Math.Max(1f, 4 * skillScale)))

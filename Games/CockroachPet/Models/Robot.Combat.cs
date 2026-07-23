@@ -217,7 +217,7 @@ public partial class Robot
                 else
                 {
                     if (ShootCooldown == 0) LaunchRemoteAttack(ChasingTarget);
-                    PerformPush(ChasingTarget);
+                    PerformRandomMeleeAction(ChasingTarget);
                 }
                 ChaseTimer = 0;
                 ChasingTarget = null;
@@ -243,8 +243,11 @@ public partial class Robot
 
         if (IsWeaponMaster)
         {
-            string[] ammoTypes = { "BULLET", "ROCKET", "PLASMA", "CANNON", "LIGHTNING", "SPIT", "INK" };
-            string selectedType = ammoTypes[Rand.Next(ammoTypes.Length)];
+            var masterWeapons = new[] { "BULLET", "ROCKET", "PLASMA", "CANNON", "LIGHTNING", "SPIT", "INK", "BOOMERANG", "SHURIKEN", "GRENADE", "FIREBALL", "ICE_SHARD" };
+            var allowedWeapons = masterWeapons.Where(w => Core.SettingsManager.Current.EnabledWeapons.Contains(w)).ToArray();
+            if (allowedWeapons.Length == 0) allowedWeapons = new[] { "BULLET" }; // Fallback
+
+            string selectedType = allowedWeapons[Rand.Next(allowedWeapons.Length)];
 
             string weaponBark = selectedType switch {
                 "CANNON" => CurseMode ? $"{targetName}，尝尝老子的超级重炮！💣" : $"{targetName}，超级重炮...发射！💣",
@@ -252,6 +255,11 @@ public partial class Robot
                 "SPIT" => CurseMode ? $"{targetName}！垃圾！呸！吐你脸上！🤢" : $"{targetName}！吃我暗器！🤢",
                 "INK" => CurseMode ? $"{targetName}！睁大你的狗眼看看！🕭️" : $"{targetName}！墨迹干扰！🕭️",
                 "ROCKET" => CurseMode ? $"{targetName}，飞天去吧，傻逼！🚀" : $"{targetName}，追踪火箭！🚀",
+                "BOOMERANG" => CurseMode ? $"{targetName}，回旋镖刮死你！🪃" : $"{targetName}，看我的回旋镖！🪃",
+                "SHURIKEN" => CurseMode ? $"{targetName}，扎成刺猬吧！🥷" : $"{targetName}，手里剑影分身！🥷",
+                "GRENADE" => CurseMode ? $"{targetName}，尝尝手雷的滋味！💣" : $"{targetName}，高爆手雷！💣",
+                "FIREBALL" => CurseMode ? $"{targetName}，烧成灰烬吧！🔥" : $"{targetName}，烈焰火球！🔥",
+                "ICE_SHARD" => CurseMode ? $"{targetName}，冻成冰雕吧！❄️" : $"{targetName}，冰霜尖刺！❄️",
                 _ => CurseMode ? $"{targetName}，看我不揍扁你！🖕" : $"{targetName}，接受像素打击吧！"
             };
             SetBark(weaponBark, 80);
@@ -267,8 +275,11 @@ public partial class Robot
         }
         else
         {
-            string[] types = { "LASER", "SHOCK", "BURST" };
-            CurrentAttackType = types[Rand.Next(types.Length)];
+            var baseWeapons = new[] { "LASER", "SHOCK", "BURST", "WAVE", "BEAM", "PULSE", "NOVA", "BLASTER" };
+            var allowedWeapons = baseWeapons.Where(w => Core.SettingsManager.Current.EnabledWeapons.Contains(w)).ToArray();
+            if (allowedWeapons.Length == 0) allowedWeapons = new[] { "LASER" }; // Fallback
+            
+            CurrentAttackType = allowedWeapons[Rand.Next(allowedWeapons.Length)];
             TargetRobot = other;
             IsFiringLaser = true;
             LaserTargetX = other.X + (float)other.Size / 2;

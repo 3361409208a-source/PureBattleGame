@@ -55,16 +55,33 @@ public class Projectile
             "LIGHTNING" => 35.0f,
             "SPIT" => 15.0f,
             "INK" => 14.0f,
+            "PULSE" => 18.0f,
+            "BLASTER" => 30.0f,
+            "BOOMERANG" => 16.0f,
+            "SHURIKEN" => 22.0f,
+            "GRENADE" => 10.0f,
+            "FIREBALL" => 25.0f,
+            "ICE_SHARD" => 28.0f,
             _ => 25.0f
         };
     }
 
     public void Update()
     {
-        // 锁定追踪逻辑 (目标死亡或子弹生命垂危时停止追踪)
-        // 注意：不同投射物类型的 Lifetime 不同，使用比例判断更合适
         float lifePercent = LifeTime / (float)GetInitialLifeTime(Type);
-        if (TrackingTarget != null && TrackingTarget.IsActive && !TrackingTarget.IsDead && lifePercent > 0.2f)
+        
+        // Boomerang 弧线返回
+        if (Type == "BOOMERANG" && lifePercent < 0.5f && Owner != null)
+        {
+            float backDx = (Owner.X + Owner.Size/2) - X;
+            float backDy = (Owner.Y + Owner.Size/2) - Y;
+            float dist = Math.Max(1, (float)Math.Sqrt(backDx * backDx + backDy * backDy));
+            float returnSpeed = GetBaseSpeed(Type) * 1.5f; // 返回时加速
+            Dx = Dx * 0.9f + (backDx / dist) * returnSpeed * 0.1f;
+            Dy = Dy * 0.9f + (backDy / dist) * returnSpeed * 0.1f;
+        }
+        // 普通追踪锁定逻辑
+        else if (TrackingTarget != null && TrackingTarget.IsActive && !TrackingTarget.IsDead && lifePercent > 0.2f)
         {
             float tx = TrackingTarget.X + TrackingTarget.Size / 2;
             float ty = TrackingTarget.Y + TrackingTarget.Size / 2;
@@ -75,12 +92,14 @@ public class Projectile
             float targetDx = (curDx / dist) * GetBaseSpeed(Type);
             float targetDy = (curDy / dist) * GetBaseSpeed(Type);
 
-            // 平滑修正轨迹 - 追踪能力取决于投射物类型
             float lerp = Type switch {
-                "ROCKET" => 0.12f,    // 火箭追踪能力中等
-                "PLASMA" => 0.20f,    // 等离子追踪能力强
-                "LIGHTNING" => 0.25f, // 闪电追踪能力最强
-                "BULLET" => 0.05f,    // 子弹追踪能力弱
+                "ROCKET" => 0.12f,
+                "PLASMA" => 0.20f,
+                "LIGHTNING" => 0.25f,
+                "BULLET" => 0.05f,
+                "PULSE" => 0.30f,
+                "FIREBALL" => 0.08f,
+                "ICE_SHARD" => 0.05f,
                 _ => 0.08f
             };
             Dx = Dx * (1 - lerp) + targetDx * lerp;
@@ -88,17 +107,18 @@ public class Projectile
         }
         else
         {
-            TrackingTarget = null; // 失去锁定
+            TrackingTarget = null;
         }
 
         X += Dx;
         Y += Dy;
 
-        // 炮弹模拟重力下坠
+        // 抛物线/重力下坠
         if (Type == "CANNON") Dy += 0.15f;
+        if (Type == "GRENADE") Dy += 0.25f;
 
         // 唾液/墨水 随机波动
-        if (Type == "SPIT" || Type == "INK")
+        if (Type == "SPIT" || Type == "INK" || Type == "PULSE")
         {
             X += (float)(new Random().NextDouble() - 0.5) * 2;
             Y += (float)(new Random().NextDouble() - 0.5) * 2;
@@ -112,7 +132,10 @@ public class Projectile
     {
         return type switch {
             "LIGHTNING" => 30,
+            "BLASTER" => 40,
             "CANNON" => 180,
+            "GRENADE" => 120,
+            "BOOMERANG" => 160,
             _ => 150
         };
     }
