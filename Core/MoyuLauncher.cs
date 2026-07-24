@@ -33,6 +33,15 @@ public partial class MoyuLauncher : WebUIHostForm
         this.Opacity = SettingsManager.Current.DefaultOpacity;
 
         InitializeTray();
+
+        this.Load += (s, e) =>
+        {
+            if (_petInstance == null || _petInstance.IsDisposed)
+            {
+                _petInstance = new PetForm();
+                _petInstance.Show();
+            }
+        };
     }
 
     private Icon _trayIconGraphic = null!;

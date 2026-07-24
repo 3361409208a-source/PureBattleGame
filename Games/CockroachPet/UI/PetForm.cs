@@ -293,10 +293,206 @@ public partial class PetForm : Form
     [System.Runtime.InteropServices.DllImport("winmm.dll", EntryPoint = "timeEndPeriod", SetLastError = true)]
     private static extern uint timeEndPeriod(uint uMilliseconds);
 
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, Pack = 1)]
+    private struct BLENDFUNCTION
+    {
+        public byte BlendOp;
+        public byte BlendFlags;
+        public byte SourceConstantAlpha;
+        public byte AlphaFormat;
+    }
+
+    private const byte AC_SRC_OVER = 0x00;
+    private const byte AC_SRC_ALPHA = 0x01;
+    private const int ULW_ALPHA = 0x02;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", ExactSpelling = true, SetLastError = true)]
+    private static extern bool UpdateLayeredWindow(IntPtr hwnd, IntPtr hdcDst, ref Point pptDst, ref Size psize, IntPtr hdcSrc, ref Point pptSrc, int crKey, ref BLENDFUNCTION pblend, int dwFlags);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", ExactSpelling = true, SetLastError = true)]
+    private static extern IntPtr GetDC(IntPtr hWnd);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", ExactSpelling = true, SetLastError = true)]
+    private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+
+    [System.Runtime.InteropServices.DllImport("gdi32.dll", ExactSpelling = true, SetLastError = true)]
+    private static extern IntPtr CreateCompatibleDC(IntPtr hDC);
+
+    [System.Runtime.InteropServices.DllImport("gdi32.dll", ExactSpelling = true, SetLastError = true)]
+    private static extern bool DeleteDC(IntPtr hdc);
+
+    [System.Runtime.InteropServices.DllImport("gdi32.dll", ExactSpelling = true, SetLastError = true)]
+    private static extern IntPtr SelectObject(IntPtr hDC, IntPtr hObject);
+
+    [System.Runtime.InteropServices.DllImport("gdi32.dll", ExactSpelling = true, SetLastError = true)]
+    private static extern bool DeleteObject(IntPtr hObject);
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct BITMAPINFOHEADER
+    {
+        public uint biSize;
+        public int biWidth;
+        public int biHeight;
+        public ushort biPlanes;
+        public ushort biBitCount;
+        public uint biCompression;
+        public uint biSizeImage;
+        public int biXPelsPerMeter;
+        public int biYPelsPerMeter;
+        public uint biClrUsed;
+        public uint biClrImportant;
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct BITMAPINFO
+    {
+        public BITMAPINFOHEADER bmiHeader;
+        public uint bmiColors;
+    }
+
+    [System.Runtime.InteropServices.DllImport("gdi32.dll", ExactSpelling = true, SetLastError = true)]
+    private static extern IntPtr CreateDIBSection(IntPtr hdc, ref BITMAPINFO pbmi, uint iUsage, out IntPtr ppvBits, IntPtr hSection, uint dwOffset);
+
+    private IntPtr _dibSectionBitmap = IntPtr.Zero;
+    private IntPtr _dibOldBitmap = IntPtr.Zero;
+    private IntPtr _dibMemDc = IntPtr.Zero;
+    private IntPtr _dibBits = IntPtr.Zero;
+    private Graphics? _dibGraphics;
+    private int _dibWidth = 0;
+    private int _dibHeight = 0;
+
+    private void CleanupDibSection()
+    {
+        if (_dibGraphics != null) { _dibGraphics.Dispose(); _dibGraphics = null; }
+        if (_dibMemDc != IntPtr.Zero)
+        {
+            if (_dibOldBitmap != IntPtr.Zero) SelectObject(_dibMemDc, _dibOldBitmap);
+            DeleteDC(_dibMemDc);
+            _dibMemDc = IntPtr.Zero;
+        }
+        if (_dibSectionBitmap != IntPtr.Zero)
+        {
+            DeleteObject(_dibSectionBitmap);
+            _dibSectionBitmap = IntPtr.Zero;
+        }
+    }
+
+    private void RenderFrameWithLayeredWindow()
+    {
+        int w = this.Width;
+        int h = this.Height;
+        if (w <= 0 || h <= 0) return;
+
+        if (_dibMemDc == IntPtr.Zero || _dibWidth != w || _dibHeight != h)
+        {
+            CleanupDibSection();
+
+            IntPtr screenDc = GetDC(IntPtr.Zero);
+            _dibMemDc = CreateCompatibleDC(screenDc);
+
+            BITMAPINFO bmi = new BITMAPINFO();
+            bmi.bmiHeader.biSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf<BITMAPINFOHEADER>();
+            bmi.bmiHeader.biWidth = w;
+            bmi.bmiHeader.biHeight = -h; // Top-down
+            bmi.bmiHeader.biPlanes = 1;
+            bmi.bmiHeader.biBitCount = 32;
+            bmi.bmiHeader.biCompression = 0; // BI_RGB
+
+            _dibSectionBitmap = CreateDIBSection(_dibMemDc, ref bmi, 0, out _dibBits, IntPtr.Zero, 0);
+            _dibOldBitmap = SelectObject(_dibMemDc, _dibSectionBitmap);
+            _dibGraphics = Graphics.FromHdc(_dibMemDc);
+            _dibWidth = w;
+            _dibHeight = h;
+
+            ReleaseDC(IntPtr.Zero, screenDc);
+        }
+
+        _dibGraphics!.Clear(Color.Transparent);
+
+        if (_bossMode)
+        {
+            PixelRobotRenderer.DrawBossModeIndicator(_dibGraphics, w, h, _bossModeTheme);
+        }
+        else
+        {
+            if (_isRecordingCustomBg)
+            {
+                _dibGraphics.Clear(_recordingBgColor);
+            }
+            RenderToBitmap(_dibGraphics);
+            DrawPerformanceHUD(_dibGraphics);
+        }
+
+        IntPtr dstDc = GetDC(IntPtr.Zero);
+        Point dstPoint = this.Location;
+        Size size = new Size(w, h);
+        Point srcPoint = Point.Empty;
+        BLENDFUNCTION blend = new BLENDFUNCTION
+        {
+            BlendOp = AC_SRC_OVER,
+            BlendFlags = 0,
+            SourceConstantAlpha = 255,
+            AlphaFormat = AC_SRC_ALPHA
+        };
+
+        UpdateLayeredWindow(this.Handle, dstDc, ref dstPoint, ref size, _dibMemDc, ref srcPoint, 0, ref blend, ULW_ALPHA);
+        ReleaseDC(IntPtr.Zero, dstDc);
+    }
+
+    private System.Threading.Thread? _renderLoopThread;
+    private volatile bool _renderLoopRunning = false;
+    private volatile bool _isExecutingFrame = false;
+
+    private void StartHighPrecisionRenderLoop()
+    {
+        _renderLoopRunning = true;
+        _renderLoopThread = new System.Threading.Thread(() =>
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            long targetTicksPerFrame = System.Diagnostics.Stopwatch.Frequency / 60; // 60 FPS
+            long nextFrameTicks = sw.ElapsedTicks;
+
+            while (_renderLoopRunning && !this.IsDisposed)
+            {
+                if (this.IsHandleCreated && !this.IsDisposed)
+                {
+                    try
+                    {
+                        MoveTimer_Tick(null, EventArgs.Empty);
+                    }
+                    catch { }
+                }
+
+                nextFrameTicks += targetTicksPerFrame;
+                long sleepTicks = nextFrameTicks - sw.ElapsedTicks;
+                if (sleepTicks > 0)
+                {
+                    int sleepMs = (int)(sleepTicks * 1000 / System.Diagnostics.Stopwatch.Frequency);
+                    if (sleepMs > 0) System.Threading.Thread.Sleep(sleepMs);
+                }
+                else
+                {
+                    System.Threading.Thread.Yield();
+                }
+            }
+        })
+        {
+            IsBackground = true,
+            Priority = System.Threading.ThreadPriority.AboveNormal
+        };
+        _renderLoopThread.Start();
+    }
+
     private void InitializeWindow()
     {
         int screenWidth = Screen.PrimaryScreen!.Bounds.Width;
         int screenHeight = Screen.PrimaryScreen.Bounds.Height;
+
+        try
+        {
+            System.IO.File.AppendAllText(@"E:\PureBattleGame\performance_diagnostic.log", $"[{DateTime.Now:HH:mm:ss}] [系统启动] 性能诊断实时日志服务已成功激活\n");
+        }
+        catch { }
 
         // 锁定 Windows 系统内核定时器精度为 1ms，消除 WM_TIMER 的 30-47ms 随机撕裂抖动
         timeBeginPeriod(1);
@@ -327,11 +523,8 @@ public partial class PetForm : Form
         // 设置窗口图标
         this.Icon = CreateRobotIcon();
 
-        // 定时器: 升级为 60 FPS (16ms) 丝滑流畅物理与帧重绘
-        _moveTimer = new System.Windows.Forms.Timer();
-        _moveTimer.Interval = 16;
-        _moveTimer.Tick += MoveTimer_Tick;
-        _moveTimer.Start();
+        // 高精度 60 FPS (16.6ms) 硬件级独立物理与渲染循环
+        StartHighPrecisionRenderLoop();
 
         // 事件绑定
         this.Paint += PetForm_Paint;
@@ -902,9 +1095,25 @@ public partial class PetForm : Form
             _frameCount = 0;
             _lastFpsTimestamp = currentMs;
 
+            int activeRobots = 0;
+            for (int i = 0; i < _robots.Count; i++)
+            {
+                if (_robots[i].IsActive && !_robots[i].IsDead) activeRobots++;
+            }
+            long ramMb = System.GC.GetTotalMemory(false) / (1024 * 1024);
+            string statsLog = $"[{DateTime.Now:HH:mm:ss}] FPS: {_fps:F1} ({_frameTimeMs:F1}ms/帧) | 机器人: {activeRobots}/{_robots.Count} | 弹幕: {_projectiles.Count} | 怪物: {_monsters.Count} | RAM: {ramMb}MB | GC0: {GC.CollectionCount(0)}\n";
+            
+            try
+            {
+                string logPath = @"E:\PureBattleGame\performance_diagnostic.log";
+                using var fs = new System.IO.FileStream(logPath, System.IO.FileMode.Append, System.IO.FileAccess.Write, System.IO.FileShare.ReadWrite);
+                using var sw = new System.IO.StreamWriter(fs, System.Text.Encoding.UTF8);
+                sw.Write(statsLog);
+            }
+            catch { }
+
             if (_fps < 45f)
             {
-                long ramMb = System.GC.GetTotalMemory(false) / (1024 * 1024);
                 LogPerfEvent($"[性能告警] 帧率下降: {_fps:F1} FPS | 耗时: {_frameTimeMs:F1}ms | 弹幕: {_projectiles.Count} | RAM: {ramMb}MB");
             }
         }
@@ -1020,7 +1229,7 @@ public partial class PetForm : Form
         // 5. 更新怪物
         UpdateMonsters(screenWidth, screenHeight);
 
-        this.Invalidate();
+        RenderFrameWithLayeredWindow();
     }
 
     private void HandleGameRules(int sw, int sh)
