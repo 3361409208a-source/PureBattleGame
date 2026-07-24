@@ -8,6 +8,18 @@ public static class PixelRobotRenderer
 {
     private const int PIXEL_SIZE = 4;
 
+    private static readonly Font NameFont = new Font("Consolas", 8, FontStyle.Bold);
+    private static readonly Font SmallFont = new Font("Microsoft YaHei", 7);
+    private static readonly Font EmojiFont10 = new Font("Segoe UI Emoji", 10);
+    private static readonly Font EmojiFont12 = new Font("Segoe UI Emoji", 12);
+    private static readonly Font EmojiFont14 = new Font("Segoe UI Emoji", 14);
+    private static readonly Font AlertFont = new Font("Consolas", 9, FontStyle.Bold);
+    private static readonly Font DamageFont = new Font("Impact", 14, FontStyle.Bold);
+    private static readonly Font DefaultChatFont = new Font("Microsoft YaHei UI", 9.5f, FontStyle.Bold);
+
+    private static readonly StringFormat CenterFormat = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+    private static readonly StringFormat CenterHorizFormat = new StringFormat { Alignment = StringAlignment.Center };
+
     public static void DrawRobot(Graphics g, Robot robot)
     {
         float scale = robot.Size / 64.0f; // 缩放比例
@@ -733,40 +745,24 @@ public static class PixelRobotRenderer
         if (robot.ChatTimer <= 0 || string.IsNullOrEmpty(text)) return;
 
         float scale = robot.Size / 64.0f;
-        float fontSize = Math.Clamp(9.5f * scale, 6.0f, 22.0f);
-        using var font = new Font("Microsoft YaHei UI", fontSize, FontStyle.Bold);
-        
         float bx = rx + robot.Size / 2;
         float by = ry - Math.Max(20.0f, 32.0f * scale);
-
-        using var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-        
-        // 四向外描边，消除黑框矩形，保证文字在任何背景上悬浮且清澈醒目
-        Color strokeColor = robot.CurseMode ? Color.FromArgb((int)(240 * alpha), 80, 0, 0) : Color.FromArgb((int)(240 * alpha), 0, 0, 0);
-        using var strokeBrush = new SolidBrush(strokeColor);
-
-        float off = Math.Max(1.0f, 1.5f * scale);
-        g.DrawString(text, font, strokeBrush, bx + off, by + off, format);
-        g.DrawString(text, font, strokeBrush, bx - off, by + off, format);
-        g.DrawString(text, font, strokeBrush, bx + off, by - off, format);
-        g.DrawString(text, font, strokeBrush, bx - off, by - off, format);
 
         // 主字体颜色：对骂/吐槽模式下亮红，普通模式亮白/浅金
         Color textColor = robot.CurseMode ? Color.FromArgb((int)(255 * alpha), 255, 65, 65) : Color.FromArgb((int)(255 * alpha), 255, 255, 255);
         using var textBrush = new SolidBrush(textColor);
-        g.DrawString(text, font, textBrush, bx, by, format);
+        g.DrawString(text, DefaultChatFont, textBrush, bx, by, CenterFormat);
     }
 
     private static void DrawEmojiBubble(Graphics g, Robot robot, float rx, float ry, float alpha = 1.0f)
     {
         if (robot.EmojiBubbleTimer <= 0 || string.IsNullOrEmpty(robot.EmojiBubble)) return;
 
-        using var font = new Font("Segoe UI Emoji", 12);
         float bx = rx + robot.Size / 2;
         float by = ry - 35;
 
         using var textBrush = new SolidBrush(Color.FromArgb((int)(255 * alpha), Color.Black));
-        g.DrawString(robot.EmojiBubble, font, textBrush, bx, by, new StringFormat { Alignment = StringAlignment.Center });
+        g.DrawString(robot.EmojiBubble, EmojiFont12, textBrush, bx, by, CenterHorizFormat);
     }
 
     private static void DrawThinkingIndicator(Graphics g, Robot robot, float rx, float ry, float alpha = 1.0f)
@@ -816,28 +812,17 @@ public static class PixelRobotRenderer
         if (PureBattleGame.Core.SettingsManager.Current.HideNameAndPersonality) return;
         if (string.IsNullOrEmpty(robot.Name)) return;
 
-        using var font = new Font("Consolas", 8, FontStyle.Bold);
         using var brush = new SolidBrush(Color.FromArgb((int)(255 * alpha), Color.White));
-        using var shadowBrush = new SolidBrush(Color.FromArgb((int)(255 * alpha), Color.Black));
         var personalityColor = robot.GetPersonalityColor();
         using var personalityBrush = new SolidBrush(Color.FromArgb((int)(255 * alpha), personalityColor));
 
         float textX = rx + robot.Size / 2;
         float textY = ry - 20;
 
-        // 绘制名称阴影
-        g.DrawString(robot.Name, font, shadowBrush, textX + 1, textY + 1,
-            new StringFormat { Alignment = StringAlignment.Center });
-        g.DrawString(robot.Name, font, brush, textX, textY,
-            new StringFormat { Alignment = StringAlignment.Center });
+        g.DrawString(robot.Name, NameFont, brush, textX, textY, CenterHorizFormat);
 
-        // 绘制个性标签
-        using var smallFont = new Font("Microsoft YaHei", 7);
         string personalityLabel = $"{robot.GetPersonalityEmoji()} {robot.GetPersonalityName()}";
-        g.DrawString(personalityLabel, smallFont, shadowBrush, textX + 1, textY + 13,
-            new StringFormat { Alignment = StringAlignment.Center });
-        g.DrawString(personalityLabel, smallFont, personalityBrush, textX, textY + 12,
-            new StringFormat { Alignment = StringAlignment.Center });
+        g.DrawString(personalityLabel, SmallFont, personalityBrush, textX, textY + 12, CenterHorizFormat);
     }
 
     private static void DrawHealthBar(Graphics g, Robot robot, float rx, float ry, float alpha = 1.0f)

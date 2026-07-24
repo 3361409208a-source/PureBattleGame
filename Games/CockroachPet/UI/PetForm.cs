@@ -1313,32 +1313,36 @@ public partial class PetForm : Form
         DrawPerformanceHUD(e.Graphics);
     }
 
+    private static readonly Font HudFont = new Font("Consolas", 8.5f, FontStyle.Bold);
+    private static readonly SolidBrush HudBgBrush = new SolidBrush(Color.FromArgb(210, 10, 12, 18));
+    private static readonly Pen HudBorderPen = new Pen(Color.FromArgb(180, 52, 211, 153), 1f);
+    private static readonly SolidBrush HudTextBrush = new SolidBrush(Color.FromArgb(240, 240, 240));
+    private static readonly SolidBrush HudGreenBrush = new SolidBrush(Color.FromArgb(52, 211, 153));
+    private static readonly SolidBrush HudWarnBrush = new SolidBrush(Color.FromArgb(251, 146, 60));
+
     private void DrawPerformanceHUD(Graphics g)
     {
         if (!_showPerfHUD || _bossMode) return;
 
-        using var font = new Font("Consolas", 8.5f, FontStyle.Bold);
-        using var bgBrush = new SolidBrush(Color.FromArgb(210, 10, 12, 18));
-        using var borderPen = new Pen(Color.FromArgb(180, 52, 211, 153), 1f);
-        using var textBrush = new SolidBrush(Color.FromArgb(240, 240, 240));
-        using var greenBrush = new SolidBrush(Color.FromArgb(52, 211, 153));
-        using var warnBrush = new SolidBrush(Color.FromArgb(251, 146, 60));
-
-        g.FillRoundedRectangle(bgBrush, 12, 12, 330, 96, 6);
-        g.DrawRoundedRectangle(borderPen, 12, 12, 330, 96, 6);
+        g.FillRoundedRectangle(HudBgBrush, 12, 12, 330, 96, 6);
+        g.DrawRoundedRectangle(HudBorderPen, 12, 12, 330, 96, 6);
 
         // 标头
-        g.DrawString("⚡ PURE BATTLE 性能诊断看板 (Ctrl+Shift+D 隐藏)", font, greenBrush, 18, 16);
+        g.DrawString("⚡ PURE BATTLE 性能诊断看板 (Ctrl+Shift+D 隐藏)", HudFont, HudGreenBrush, 18, 16);
 
         // 指标
         string fpsColorStr = _fps >= 50 ? "🟢" : (_fps >= 35 ? "🟡" : "🔴");
-        g.DrawString($"{fpsColorStr} FPS: {_fps:F1} ({_frameTimeMs:F1}ms/帧)", font, _fps < 40 ? warnBrush : textBrush, 18, 33);
+        g.DrawString($"{fpsColorStr} FPS: {_fps:F1} ({_frameTimeMs:F1}ms/帧)", HudFont, _fps < 40 ? HudWarnBrush : HudTextBrush, 18, 33);
 
-        int activeRobots = _robots.Count(r => r.IsActive && !r.IsDead);
-        g.DrawString($"🎯 活跃实体: 机器人 {activeRobots}/{_robots.Count} | 弹幕 {_projectiles.Count} | 怪物 {_monsters.Count}", font, textBrush, 18, 49);
+        int activeRobots = 0;
+        for (int i = 0; i < _robots.Count; i++)
+        {
+            if (_robots[i].IsActive && !_robots[i].IsDead) activeRobots++;
+        }
+        g.DrawString($"🎯 活跃实体: 机器人 {activeRobots}/{_robots.Count} | 弹幕 {_projectiles.Count} | 怪物 {_monsters.Count}", HudFont, HudTextBrush, 18, 49);
 
         long ramMb = System.GC.GetTotalMemory(false) / (1024 * 1024);
-        g.DrawString($"💾 内存: {ramMb} MB | GC0回收: {GC.CollectionCount(0)} 次", font, textBrush, 18, 65);
+        g.DrawString($"💾 内存: {ramMb} MB | GC0回收: {GC.CollectionCount(0)} 次", HudFont, HudTextBrush, 18, 65);
 
         // 日志
         lock (_perfLogs)
@@ -1346,11 +1350,11 @@ public partial class PetForm : Form
             if (_perfLogs.Count > 0)
             {
                 string lastLog = _perfLogs[_perfLogs.Count - 1];
-                g.DrawString($"📋 日志: {lastLog}", font, warnBrush, 18, 81);
+                g.DrawString($"📋 日志: {lastLog}", HudFont, HudWarnBrush, 18, 81);
             }
             else
             {
-                g.DrawString("📋 日志: 系统运行平稳，无告警", font, greenBrush, 18, 81);
+                g.DrawString("📋 日志: 系统运行平稳，无告警", HudFont, HudGreenBrush, 18, 81);
             }
         }
     }
