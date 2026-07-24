@@ -279,8 +279,8 @@ public partial class Robot
         if (float.IsNaN(Dx) || float.IsInfinity(Dx)) Dx = 0;
         if (float.IsNaN(Dy) || float.IsInfinity(Dy)) Dy = 0;
 
-        // 限制最大速度，防止跳变
-        float maxVelocity = 20.0f;
+        // 限制最大平滑速度，防止瞬间暴冲闪现
+        float maxVelocity = 3.5f;
         if (Dx > maxVelocity) Dx = maxVelocity;
         if (Dx < -maxVelocity) Dx = -maxVelocity;
         if (Dy > maxVelocity) Dy = maxVelocity;
@@ -289,8 +289,9 @@ public partial class Robot
         X += Dx * finalSpeed;
         Y += Dy * finalSpeed;
 
-        Dx *= 0.98f;
-        Dy *= 0.98f;
+        // 摩擦力平滑阻尼，迅速止减余速，消除抽搐感
+        Dx *= 0.90f;
+        Dy *= 0.90f;
 
         FacingRight = Dx >= 0;
     }

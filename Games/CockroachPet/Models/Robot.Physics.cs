@@ -121,8 +121,8 @@ public partial class Robot
         float ox = other.X - X;
         float oy = other.Y - Y;
         float odist = (float)Math.Max(1, Math.Sqrt(ox * ox + oy * oy));
-        other.Dx = (ox / odist) * 25 * other.SpeedMultiplier;
-        other.Dy = (oy / odist) * 25 * other.SpeedMultiplier;
+        other.Dx = (ox / odist) * 4.0f * other.SpeedMultiplier;
+        other.Dy = (oy / odist) * 4.0f * other.SpeedMultiplier;
         other.ApplyAttackEffect(15, Name);
     }
 
@@ -147,8 +147,8 @@ public partial class Robot
         float ox = other.X - X;
         float oy = other.Y - Y;
         float odist = (float)Math.Max(1, Math.Sqrt(ox * ox + oy * oy));
-        Dx = (ox / odist) * 10;
-        Dy = (oy / odist) * 10;
+        Dx = (ox / odist) * 3.0f;
+        Dy = (oy / odist) * 3.0f;
         
         other.StunTimer = 60;
         other.SpecialState = "SHAKING";
@@ -171,8 +171,8 @@ public partial class Robot
             float ox = target.X - X;
             float oy = target.Y - Y;
             float odist = (float)Math.Max(1, Math.Sqrt(ox * ox + oy * oy));
-            target.Dx = (ox / odist) * 20 * target.SpeedMultiplier;
-            target.Dy = (oy / odist) * 20 * target.SpeedMultiplier;
+            target.Dx = (ox / odist) * 3.5f * target.SpeedMultiplier;
+            target.Dy = (oy / odist) * 3.5f * target.SpeedMultiplier;
             target.ApplyAttackEffect(10, Name);
         }
     }
@@ -187,8 +187,8 @@ public partial class Robot
         float ox = other.X - X;
         float oy = other.Y - Y;
         float odist = (float)Math.Max(1, Math.Sqrt(ox * ox + oy * oy));
-        other.Dx = (ox / odist) * 12 * other.SpeedMultiplier;
-        other.Dy = (oy / odist) * 12 * other.SpeedMultiplier;
+        other.Dx = (ox / odist) * 2.5f * other.SpeedMultiplier;
+        other.Dy = (oy / odist) * 2.5f * other.SpeedMultiplier;
         other.SpecialState = "SHAKING";
         other.SpecialStateTimer = 30;
     }
@@ -235,8 +235,8 @@ public partial class Robot
         }
 
         float dist = (float)Math.Max(1, Math.Sqrt(tx * tx + ty * ty));
-        PhysicalTarget.Dx = (tx / dist) * 25 * PhysicalTarget.SpeedMultiplier;
-        PhysicalTarget.Dy = (ty / dist) * 25 * PhysicalTarget.SpeedMultiplier;
+        PhysicalTarget.Dx = (tx / dist) * 4.0f * PhysicalTarget.SpeedMultiplier;
+        PhysicalTarget.Dy = (ty / dist) * 4.0f * PhysicalTarget.SpeedMultiplier;
         PhysicalTarget.IsBeingThrown = true;
         PhysicalTarget.PullingMe = null;
 
