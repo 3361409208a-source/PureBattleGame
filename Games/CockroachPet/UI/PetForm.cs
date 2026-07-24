@@ -1517,175 +1517,227 @@ public partial class PetForm : Form
 
             switch (p.Type)
             {
-                case "BEAM": // 毁灭光束 (高亮光柱 + 双层能量包络)
-                    float beamW = Math.Max(2f, 10f * pScale);
-                    using (var beamOuterPen = new Pen(Color.FromArgb(180, 59, 130, 246), beamW * 1.8f))
+                case "BEAM": // 毁灭光束 (天蓝高能光柱 + 亮白核心线 + 头部闪光)
+                    float beamW = Math.Max(2.5f, 11f * pScale);
+                    using (var beamOuterPen = new Pen(Color.FromArgb(190, 59, 130, 246), beamW * 1.8f))
                     using (var beamCorePen = new Pen(Color.White, beamW * 0.8f))
+                    using (var flashBrush = new SolidBrush(Color.FromArgb(230, 191, 219, 254)))
                     {
-                        g.DrawLine(beamOuterPen, p.X - p.Dx * 2, p.Y - p.Dy * 2, p.X, p.Y);
-                        g.DrawLine(beamCorePen, p.X - p.Dx * 2, p.Y - p.Dy * 2, p.X, p.Y);
-                    }
-                    using (var flashBrush = new SolidBrush(Color.FromArgb(220, 147, 197, 253)))
-                    {
+                        g.DrawLine(beamOuterPen, p.X - p.Dx * 2.2f, p.Y - p.Dy * 2.2f, p.X, p.Y);
+                        g.DrawLine(beamCorePen, p.X - p.Dx * 2.2f, p.Y - p.Dy * 2.2f, p.X, p.Y);
                         g.FillEllipse(flashBrush, p.X - beamW, p.Y - beamW, beamW * 2, beamW * 2);
                     }
                     break;
 
-                case "LASER": // 激光射线 (极细亮红光束线段)
-                    using (var laserPen = new Pen(Color.Red, Math.Max(1.5f, 3f * pScale)))
-                    using (var laserCore = new Pen(Color.Yellow, Math.Max(0.8f, 1.2f * pScale)))
+                case "LASER": // 激光射线 (极细亮红高能脉冲线段 + 头部红点)
+                    using (var laserPen = new Pen(Color.Red, Math.Max(1.8f, 3.5f * pScale)))
+                    using (var laserCore = new Pen(Color.Yellow, Math.Max(0.9f, 1.4f * pScale)))
+                    using (var tipBrush = new SolidBrush(Color.Red))
                     {
-                        g.DrawLine(laserPen, p.X - p.Dx * 1.5f, p.Y - p.Dy * 1.5f, p.X, p.Y);
-                        g.DrawLine(laserCore, p.X - p.Dx * 1.5f, p.Y - p.Dy * 1.5f, p.X, p.Y);
+                        g.DrawLine(laserPen, p.X - p.Dx * 1.8f, p.Y - p.Dy * 1.8f, p.X, p.Y);
+                        g.DrawLine(laserCore, p.X - p.Dx * 1.8f, p.Y - p.Dy * 1.8f, p.X, p.Y);
+                        g.FillEllipse(tipBrush, p.X - 2.5f * pScale, p.Y - 2.5f * pScale, 5f * pScale, 5f * pScale);
                     }
                     break;
 
-                case "FIREBALL": // 极速双色火球 (黄色内核 + 橙红外圈 + 尾星，零 GC 渐变开销)
-                    float fireR = Math.Max(3f, 8f * pScale);
+                case "FIREBALL": // 烈焰火球 (黄色内核 + 橙红外圈 + 2阶火花拖尾)
+                    float fireR = Math.Max(3.5f, 9.0f * pScale);
                     using (var outerBrush = new SolidBrush(Color.OrangeRed))
                     using (var innerBrush = new SolidBrush(Color.Yellow))
                     using (var sparkBrush = new SolidBrush(Color.Orange))
                     {
                         g.FillEllipse(outerBrush, p.X - fireR, p.Y - fireR, fireR * 2, fireR * 2);
                         g.FillEllipse(innerBrush, p.X - fireR * 0.5f, p.Y - fireR * 0.5f, fireR, fireR);
-                        g.FillEllipse(sparkBrush, p.X - p.Dx * 0.8f - 2, p.Y - p.Dy * 0.8f - 2, 4 * pScale, 4 * pScale);
+                        g.FillEllipse(sparkBrush, p.X - p.Dx * 0.8f - 2, p.Y - p.Dy * 0.8f - 2, 4.5f * pScale, 4.5f * pScale);
+                        g.FillEllipse(sparkBrush, p.X - p.Dx * 1.5f - 1, p.Y - p.Dy * 1.5f - 1, 2.5f * pScale, 2.5f * pScale);
                     }
                     break;
 
-                case "ICE_SHARD": // 冰霜尖刺 (冰蓝菱形晶体)
-                    float iceS = Math.Max(4f, 9f * pScale);
+                case "ICE_SHARD": // 冰霜尖刺 (冰蓝菱形晶体 + 亮白切线)
+                    float iceS = Math.Max(4f, 9.5f * pScale);
                     PointF[] icePoints = {
-                        new PointF(p.X + p.Dx * 0.5f, p.Y + p.Dy * 0.5f),
-                        new PointF(p.X - p.Dy * 0.3f, p.Y + p.Dx * 0.3f),
-                        new PointF(p.X - p.Dx * 0.8f, p.Y - p.Dy * 0.8f),
-                        new PointF(p.X + p.Dy * 0.3f, p.Y - p.Dx * 0.3f)
+                        new PointF(p.X + p.Dx * 0.6f, p.Y + p.Dy * 0.6f),
+                        new PointF(p.X - p.Dy * 0.35f, p.Y + p.Dx * 0.35f),
+                        new PointF(p.X - p.Dx * 0.9f, p.Y - p.Dy * 0.9f),
+                        new PointF(p.X + p.Dy * 0.35f, p.Y - p.Dx * 0.35f)
                     };
                     using (var iceBrush = new SolidBrush(Color.Cyan))
-                    using (var icePen = new Pen(Color.White, 1f * pScale))
+                    using (var icePen = new Pen(Color.White, 1.2f * pScale))
                     {
                         g.FillPolygon(iceBrush, icePoints);
                         g.DrawPolygon(icePen, icePoints);
                     }
                     break;
 
-                case "ROCKET": // 追踪火箭 (火箭弹体 + 喷火尾烟)
-                    float rkW = Math.Max(2f, 4f * pScale);
+                case "ROCKET": // 追踪火箭 (暗灰弹体 + 红尖 + 橙喷火 + 灰烟痕)
+                    float rkW = Math.Max(2.5f, 4.5f * pScale);
                     using (var rkBrush = new SolidBrush(Color.DarkSlateGray))
                     using (var rkTip = new SolidBrush(Color.Red))
                     using (var flameBrush = new SolidBrush(Color.Orange))
+                    using (var smokeBrush = new SolidBrush(Color.FromArgb(160, Color.Gray)))
                     {
                         g.FillEllipse(rkBrush, p.X - rkW, p.Y - rkW, rkW * 2, rkW * 2);
-                        g.FillEllipse(rkTip, p.X + p.Dx * 0.2f - 2, p.Y + p.Dy * 0.2f - 2, 4 * pScale, 4 * pScale);
-                        g.FillEllipse(flameBrush, p.X - p.Dx * 0.8f - 3, p.Y - p.Dy * 0.8f - 3, 6 * pScale, 6 * pScale);
+                        g.FillEllipse(rkTip, p.X + p.Dx * 0.2f - 2, p.Y + p.Dy * 0.2f - 2, 4f * pScale, 4f * pScale);
+                        g.FillEllipse(flameBrush, p.X - p.Dx * 0.8f - 3, p.Y - p.Dy * 0.8f - 3, 6f * pScale, 6f * pScale);
+                        g.FillEllipse(smokeBrush, p.X - p.Dx * 1.6f - 4, p.Y - p.Dy * 1.6f - 4, 7f * pScale, 7f * pScale);
                     }
                     break;
 
-                case "CANNON": // 极速重炮 (纯色双圈开花黑金重弹，无 Gradient 开销)
-                    float cannonR = Math.Max(3f, 10f * pScale);
+                case "CANNON": // 超级重炮 (开花黑金重弹 + 烫金边框)
+                    float cannonR = Math.Max(3.5f, 10.5f * pScale);
                     using (var cannonBrush = new SolidBrush(Color.FromArgb(40, 40, 40)))
-                    using (var goldPen = new Pen(Color.Gold, 1.5f * pScale))
+                    using (var goldPen = new Pen(Color.Gold, 1.8f * pScale))
                     {
                         g.FillEllipse(cannonBrush, p.X - cannonR, p.Y - cannonR, cannonR * 2, cannonR * 2);
                         g.DrawEllipse(goldPen, p.X - cannonR, p.Y - cannonR, cannonR * 2, cannonR * 2);
                     }
                     break;
 
-                case "PLASMA": // 等离子炮 (高能紫光团 + 涟漪外环)
-                    float plR = Math.Max(3f, 8f * pScale);
-                    using (var plRing = new Pen(Color.Magenta, 1.5f * pScale))
+                case "PLASMA": // 等离子炮 (高能紫光团 + 亮粉双层外环)
+                    float plR = Math.Max(3.5f, 8.5f * pScale);
+                    using (var plRing = new Pen(Color.Magenta, 1.8f * pScale))
                     using (var plCore = new SolidBrush(Color.Violet))
+                    using (var whiteCore = new SolidBrush(Color.White))
                     {
                         g.DrawEllipse(plRing, p.X - plR * 1.4f, p.Y - plR * 1.4f, plR * 2.8f, plR * 2.8f);
                         g.FillEllipse(plCore, p.X - plR, p.Y - plR, plR * 2, plR * 2);
+                        g.FillEllipse(whiteCore, p.X - plR * 0.4f, p.Y - plR * 0.4f, plR * 0.8f, plR * 0.8f);
                     }
                     break;
 
-                case "NOVA": // 新星爆破 (四角金色光芒星)
-                    float nS = Math.Max(4f, 10f * pScale);
+                case "NOVA": // 新星爆破 (金色八角耀星)
+                    float nS = Math.Max(4.5f, 11f * pScale);
                     PointF[] starPoints = {
                         new PointF(p.X, p.Y - nS),
-                        new PointF(p.X + nS * 0.3f, p.Y - nS * 0.3f),
+                        new PointF(p.X + nS * 0.25f, p.Y - nS * 0.25f),
                         new PointF(p.X + nS, p.Y),
-                        new PointF(p.X + nS * 0.3f, p.Y + nS * 0.3f),
+                        new PointF(p.X + nS * 0.25f, p.Y + nS * 0.25f),
                         new PointF(p.X, p.Y + nS),
-                        new PointF(p.X - nS * 0.3f, p.Y + nS * 0.3f),
+                        new PointF(p.X - nS * 0.25f, p.Y + nS * 0.25f),
                         new PointF(p.X - nS, p.Y),
-                        new PointF(p.X - nS * 0.3f, p.Y - nS * 0.3f)
+                        new PointF(p.X - nS * 0.25f, p.Y - nS * 0.25f)
                     };
                     using (var starBrush = new SolidBrush(Color.Gold))
+                    using (var starCore = new SolidBrush(Color.White))
                     {
                         g.FillPolygon(starBrush, starPoints);
+                        g.FillEllipse(starCore, p.X - nS * 0.3f, p.Y - nS * 0.3f, nS * 0.6f, nS * 0.6f);
                     }
                     break;
 
-                case "PULSE":
-                case "WAVE": // 脉冲波 / 震荡声波 (扩散半圆声波弧)
-                    float waveR = Math.Max(5f, 12f * pScale);
-                    using (var wavePen = new Pen(p.Type == "WAVE" ? Color.LightGreen : Color.Cyan, 2f * pScale))
+                case "PULSE": // 脉冲波 (双重扩散亮青脉冲弧)
+                    float pulseR = Math.Max(5.5f, 13f * pScale);
+                    using (var p1 = new Pen(Color.Cyan, 2.2f * pScale))
+                    using (var p2 = new Pen(Color.FromArgb(160, Color.LightBlue), 1.2f * pScale))
+                    {
+                        g.DrawArc(p1, p.X - pulseR, p.Y - pulseR, pulseR * 2, pulseR * 2, -60, 120);
+                        g.DrawArc(p2, p.X - pulseR * 0.7f, p.Y - pulseR * 0.7f, pulseR * 1.4f, pulseR * 1.4f, -60, 120);
+                    }
+                    break;
+
+                case "WAVE": // 震荡声波 (同心绿波气浪)
+                    float waveR = Math.Max(5.5f, 13f * pScale);
+                    using (var wavePen = new Pen(Color.LightGreen, 2.2f * pScale))
+                    using (var waveInner = new Pen(Color.FromArgb(160, Color.Lime), 1.2f * pScale))
                     {
                         g.DrawArc(wavePen, p.X - waveR, p.Y - waveR, waveR * 2, waveR * 2, -60, 120);
+                        g.DrawArc(waveInner, p.X - waveR * 0.6f, p.Y - waveR * 0.6f, waveR * 1.2f, waveR * 1.2f, -60, 120);
                     }
                     break;
 
-                case "SHURIKEN": // 忍者手里剑 (旋转四角十字星)
-                    float shR = Math.Max(3f, 8f * pScale);
-                    double rot = (Environment.TickCount / 50.0);
+                case "SHURIKEN": // 忍者手里剑 (极速自转银色四角星)
+                    float shR = Math.Max(3.5f, 8.5f * pScale);
+                    double rot = (Environment.TickCount / 40.0);
                     PointF[] shuriPoints = new PointF[4];
                     for (int k = 0; k < 4; k++)
                     {
                         double a = rot + k * Math.PI / 2;
                         shuriPoints[k] = new PointF(p.X + (float)Math.Cos(a) * shR, p.Y + (float)Math.Sin(a) * shR);
                     }
-                    using (var shuriPen = new Pen(Color.Silver, 2f * pScale))
+                    using (var shuriPen = new Pen(Color.Silver, 2.2f * pScale))
+                    using (var shuriCenter = new SolidBrush(Color.White))
                     {
                         g.DrawLine(shuriPen, shuriPoints[0], shuriPoints[2]);
                         g.DrawLine(shuriPen, shuriPoints[1], shuriPoints[3]);
+                        g.FillEllipse(shuriCenter, p.X - 2, p.Y - 2, 4, 4);
                     }
                     break;
 
-                case "BOOMERANG": // 飞天回旋镖 (弯月旋转弧形)
-                    float bmR = Math.Max(4f, 9f * pScale);
-                    using (var bmPen = new Pen(Color.Peru, 3f * pScale))
+                case "BOOMERANG": // 飞天回旋镖 (弯月旋转棕木弧)
+                    float bmR = Math.Max(4.5f, 9.5f * pScale);
+                    using (var bmPen = new Pen(Color.Peru, 3.2f * pScale))
                     {
-                        g.DrawArc(bmPen, p.X - bmR, p.Y - bmR, bmR * 2, bmR * 2, (Environment.TickCount / 30) % 360, 140);
+                        g.DrawArc(bmPen, p.X - bmR, p.Y - bmR, bmR * 2, bmR * 2, (Environment.TickCount / 25) % 360, 150);
                     }
                     break;
 
-                case "GRENADE": // 高爆手雷 (深绿椭圆弹体)
-                    float grW = Math.Max(3f, 6f * pScale);
+                case "GRENADE": // 高爆手雷 (深绿手雷体 + 黄火花引信)
+                    float grW = Math.Max(3.5f, 6.5f * pScale);
                     using (var grBrush = new SolidBrush(Color.DarkOliveGreen))
                     using (var grFuse = new SolidBrush(Color.Yellow))
                     {
                         g.FillEllipse(grBrush, p.X - grW, p.Y - grW * 1.2f, grW * 2, grW * 2.4f);
-                        g.FillEllipse(grFuse, p.X - 1, p.Y - grW * 1.4f, 3, 3);
+                        g.FillEllipse(grFuse, p.X - 1.5f, p.Y - grW * 1.5f, 3f * pScale, 3f * pScale);
                     }
                     break;
 
-                case "INK": // 墨迹喷射 (深紫液滴)
-                    float inkR = Math.Max(3f, 7f * pScale);
+                case "INK": // 墨迹喷射 (深紫主液滴 + 散喷点)
+                    float inkR = Math.Max(3.5f, 7.5f * pScale);
                     using (var inkBrush = new SolidBrush(Color.Purple))
+                    using (var dropBrush = new SolidBrush(Color.Indigo))
                     {
                         g.FillEllipse(inkBrush, p.X - inkR, p.Y - inkR, inkR * 2, inkR * 2);
+                        g.FillEllipse(dropBrush, p.X - p.Dx * 0.8f - 2, p.Y - p.Dy * 0.8f - 2, 3f * pScale, 3f * pScale);
                     }
                     break;
 
-                case "LIGHTNING": // 十万伏特 (锯齿雷电)
-                    Color[] lightningColors = { Color.White, Color.Yellow, Color.FromArgb(150, Color.Gold) };
-                    float[] lightningWidths = { 1f * pScale, 3f * pScale, 6f * pScale };
+                case "LIGHTNING": // 十万伏特 (多层闪烁金黄雷光折线)
+                    Color[] lightningColors = { Color.White, Color.Yellow, Color.FromArgb(160, Color.Gold) };
+                    float[] lightningWidths = { 1.2f * pScale, 3.2f * pScale, 6.5f * pScale };
                     for (int layer = 2; layer >= 0; layer--)
                     {
                         using var pen = new Pen(lightningColors[layer], Math.Max(1f, lightningWidths[layer]));
-                        g.DrawLine(pen, p.X, p.Y, p.X + p.Dx * 2, p.Y + p.Dy * 2);
+                        g.DrawLine(pen, p.X, p.Y, p.X + p.Dx * 2.2f, p.Y + p.Dy * 2.2f);
                     }
                     break;
 
-                default: // BULLET / SPIT / 默认拖尾子弹
-                    float bR = Math.Max(2f, 4f * pScale);
+                case "BURST": // 爆裂弹 (黄红弹头 + 四散开花火花)
+                    float btR = Math.Max(3.0f, 6.5f * pScale);
+                    using (var btBrush = new SolidBrush(Color.Orange))
+                    using (var btCore = new SolidBrush(Color.Yellow))
+                    {
+                        g.FillEllipse(btBrush, p.X - btR, p.Y - btR, btR * 2, btR * 2);
+                        g.FillEllipse(btCore, p.X - btR * 0.5f, p.Y - btR * 0.5f, btR, btR);
+                    }
+                    break;
+
+                case "BLASTER": // 爆破强炮 (发光橙红重弹 + 头部高亮)
+                    float blR = Math.Max(3.5f, 8.5f * pScale);
+                    using (var blBrush = new SolidBrush(Color.OrangeRed))
+                    using (var blCore = new SolidBrush(Color.White))
+                    {
+                        g.FillEllipse(blBrush, p.X - blR, p.Y - blR, blR * 2, blR * 2);
+                        g.FillEllipse(blCore, p.X - blR * 0.4f, p.Y - blR * 0.4f, blR * 0.8f, blR * 0.8f);
+                    }
+                    break;
+
+                case "SHOCK": // 高压电击 (金色环状电场圈)
+                    float skR = Math.Max(4.0f, 9.0f * pScale);
+                    using (var skPen = new Pen(Color.Gold, 2.0f * pScale))
+                    using (var skCore = new SolidBrush(Color.White))
+                    {
+                        g.DrawEllipse(skPen, p.X - skR, p.Y - skR, skR * 2, skR * 2);
+                        g.FillEllipse(skCore, p.X - 2, p.Y - 2, 4, 4);
+                    }
+                    break;
+
+                default: // BULLET / SPIT / 默认亮黄拖尾子弹
+                    float bR = Math.Max(2.5f, 4.5f * pScale);
                     using (var b = new SolidBrush(p.ProjectileColor))
+                    using (var tailPen = new Pen(p.ProjectileColor, 1.8f * pScale))
                     {
                         g.FillEllipse(b, p.X - bR, p.Y - bR, bR * 2, bR * 2);
-                        using var tailPen = new Pen(p.ProjectileColor, 1.5f * pScale);
-                        g.DrawLine(tailPen, p.X, p.Y, p.X - p.Dx * 0.6f, p.Y - p.Dy * 0.6f);
+                        g.DrawLine(tailPen, p.X, p.Y, p.X - p.Dx * 0.8f, p.Y - p.Dy * 0.8f);
                     }
                     break;
             }
