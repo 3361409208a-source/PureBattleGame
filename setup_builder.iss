@@ -1,12 +1,12 @@
 [Setup]
 AppId={{33614092-08A0-4C1F-9A61-PUREBATTLEGAM}}
 AppName=PureBattleGame (像素机器人桌宠 & 星核防线)
-AppVersion=2.0
+AppVersion=2.1
 AppPublisher=PureBattleGame
 DefaultDirName={userpf}\PureBattleGame
 DefaultGroupName=PureBattleGame
 OutputDir=E:\PureBattleGame
-OutputBaseFilename=PureBattleGame_Setup_v2.0
+OutputBaseFilename=PureBattleGame_Setup_v2.1
 Compression=lzma2/fast
 SolidCompression=no
 WizardStyle=modern
