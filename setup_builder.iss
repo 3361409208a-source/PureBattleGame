@@ -1,12 +1,12 @@
 [Setup]
 AppId={{33614092-08A0-4C1F-9A61-PUREBATTLEGAM}}
 AppName=Pure Battle Hub · 纯战枢纽 (Cyber-Quantum Hub)
-AppVersion=v2.2 Cyber Edition
+AppVersion=v2.3 Cyber Edition
 AppPublisher=Pure Battle Matrix Core
 DefaultDirName={userpf}\PureBattleGame
 DefaultGroupName=PureBattleGame (星核矩阵)
 OutputDir=E:\PureBattleGame
-OutputBaseFilename=PureBattleGame_Setup_v2.2
+OutputBaseFilename=PureBattleGame_Setup_v2.3
 Compression=lzma2/fast
 SolidCompression=no
 WizardStyle=modern

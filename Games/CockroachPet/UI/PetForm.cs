@@ -846,8 +846,8 @@ public partial class PetForm : Form
         };
 
         // 启动提示
-        _notifyIcon.BalloonTipTitle = "Pixel Robot Pet";
-        _notifyIcon.BalloonTipText = "系统已启动！\nCtrl+Shift+M 打开菜单\nCtrl+Shift+P 暂停/继续\nCtrl+Shift+H 摸鱼模式\nCtrl+Shift+B 切换伪装\nCtrl+Shift+X 投放怪物";
+        _notifyIcon.BalloonTipTitle = "Pure Battle Hub (像素机器人桌宠)";
+        _notifyIcon.BalloonTipText = "系统已部署成功！\nCtrl+Shift+L ⚔️ 开启实时战斗日志与MVP榜\nCtrl+Shift+M 打开控制菜单\nCtrl+Shift+P 暂停/继续\nCtrl+Shift+H 摸鱼模式\nCtrl+Shift+X 投放怪物";
         _notifyIcon.ShowBalloonTip(3000);
     }
 
@@ -2272,6 +2272,10 @@ public partial class PetForm : Form
 
     public void ShowCombatLogModal()
     {
+        // 1. 弹起原生无延迟 WinForms 战斗大屏窗口
+        CombatLogForm.Instance.ShowWindow();
+
+        // 2. 同步唤醒 WebUI 大屏
         TerminalManagerForm.Instance.ShowWorldChat();
         TerminalManagerForm.Instance.Bridge?.SendEvent("openCombatModal", new { });
         ShowNotification("⚔️ 开启实时战斗日志与 MVP 战况大屏 (Ctrl+Shift+L)");
