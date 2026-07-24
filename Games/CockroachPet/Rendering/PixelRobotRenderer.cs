@@ -86,30 +86,39 @@ public static class PixelRobotRenderer
         float centerX = x + size / 2;
         float centerY = y + size / 2;
 
-        DrawTentacles(g, robot, centerX, centerY, scale, alpha);
+        bool hasCustomAvatar = robot.GetAvatarImage() != null;
+
+        if (!hasCustomAvatar)
+        {
+            DrawTentacles(g, robot, centerX, centerY, scale, alpha);
+        }
+
         DrawBody(g, robot, centerX, centerY, scale, alpha);
 
-        // 眼睛和天线单独处理旋转，确保围绕中心转
-        if (robot.SpecialState == "SPINNING")
+        if (!hasCustomAvatar)
         {
-            // 补偿翻转造成的旋转轴偏移
-            float rotAngle = facingRight ? robot.RotationAngle : -robot.RotationAngle;
+            // 眼睛和天线单独处理旋转，确保围绕中心转
+            if (robot.SpecialState == "SPINNING")
+            {
+                // 补偿翻转造成的旋转轴偏移
+                float rotAngle = facingRight ? robot.RotationAngle : -robot.RotationAngle;
 
-            // 围绕局部中心旋转
-            var m = g.Transform;
-            g.TranslateTransform(centerX, centerY);
-            g.RotateTransform(rotAngle);
-            g.TranslateTransform(-centerX, -centerY);
+                // 围绕局部中心旋转
+                var m = g.Transform;
+                g.TranslateTransform(centerX, centerY);
+                g.RotateTransform(rotAngle);
+                g.TranslateTransform(-centerX, -centerY);
 
-            DrawEyes(g, robot, centerX, centerY, scale, alpha);
-            DrawAntennas(g, robot, centerX, centerY, scale, alpha);
+                DrawEyes(g, robot, centerX, centerY, scale, alpha);
+                DrawAntennas(g, robot, centerX, centerY, scale, alpha);
 
-            g.Transform = m;
-        }
-        else
-        {
-            DrawEyes(g, robot, centerX, centerY, scale, alpha);
-            DrawAntennas(g, robot, centerX, centerY, scale, alpha);
+                g.Transform = m;
+            }
+            else
+            {
+                DrawEyes(g, robot, centerX, centerY, scale, alpha);
+                DrawAntennas(g, robot, centerX, centerY, scale, alpha);
+            }
         }
 
         if (robot.SpecialState == "BLUSH")
@@ -214,7 +223,10 @@ public static class PixelRobotRenderer
                         float startAngle = (angle * 180f / (float)Math.PI) - sweep / 2f;
                         for(int rWave=1; rWave<=3; rWave++) {
                             float currentRadius = (dist / 3f) * rWave;
-                            g.DrawArc(wavePen, worldCenterX - currentRadius, worldCenterY - currentRadius, currentRadius * 2, currentRadius * 2, startAngle, sweep);
+                            if (currentRadius > 1f && !float.IsNaN(currentRadius))
+                            {
+                                g.DrawArc(wavePen, worldCenterX - currentRadius, worldCenterY - currentRadius, currentRadius * 2, currentRadius * 2, startAngle, sweep);
+                            }
                         }
                     }
                     break;
@@ -574,44 +586,61 @@ public static class PixelRobotRenderer
 
     private static void DrawBody(Graphics g, Robot robot, float cx, float cy, float scale, float alpha = 1.0f)
     {
+        var avatarImg = robot.GetAvatarImage();
+        if (avatarImg != null)
+        {
+            float drawSize = robot.Size;
+            float drawX = cx - drawSize / 2;
+            float drawY = cy - drawSize / 2;
+
+            var oldInterp = g.InterpolationMode;
+            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+
+            if (robot.DamageFeedbackTimer > 0 || alpha < 1.0f)
+            {
+                using var ia = new ImageAttributes();
+                float rRed = robot.DamageFeedbackTimer > 0 ? 1.5f : 1.0f;
+                float rGb = robot.DamageFeedbackTimer > 0 ? 0.3f : 1.0f;
+                ColorMatrix cm = new ColorMatrix(new float[][]
+                {
+                    new float[] { rRed, 0, 0, 0, 0 },
+                    new float[] { 0, rGb, 0, 0, 0 },
+                    new float[] { 0, 0, rGb, 0, 0 },
+                    new float[] { 0, 0, 0, alpha, 0 },
+                    new float[] { 0, 0, 0, 0, 1 }
+                });
+                ia.SetColorMatrix(cm);
+                g.DrawImage(avatarImg, new Rectangle((int)drawX, (int)drawY, (int)drawSize, (int)drawSize), 0, 0, avatarImg.Width, avatarImg.Height, GraphicsUnit.Pixel, ia);
+            }
+            else
+            {
+                g.DrawImage(avatarImg, new Rectangle((int)drawX, (int)drawY, (int)drawSize, (int)drawSize), 0, 0, avatarImg.Width, avatarImg.Height, GraphicsUnit.Pixel);
+            }
+
+            g.InterpolationMode = oldInterp;
+            return;
+        }
+
         Color pColor = robot.IsDead ? Color.FromArgb((int)(130 * alpha), 130, 130, 130) : Color.FromArgb((int)(255 * alpha), robot.PrimaryColor);
         Color sColor = robot.IsDead ? Color.FromArgb((int)(90 * alpha), 90, 90, 90) : Color.FromArgb((int)(255 * alpha), robot.SecondaryColor);
         using var bodyBrush = new SolidBrush(pColor);
         using var bodyDarkBrush = new SolidBrush(sColor);
 
-        float pSize = PIXEL_SIZE * scale;
+        float bodyR = 24 * scale;
+        g.FillEllipse(bodyDarkBrush, cx - bodyR, cy - bodyR, bodyR * 2, bodyR * 2);
+        g.FillEllipse(bodyBrush, cx - bodyR * 0.85f, cy - bodyR * 0.85f, bodyR * 1.7f, bodyR * 1.7f);
 
-        for (int dx = -12; dx <= 12; dx++)
+        if (robot.DamageFeedbackTimer > 0)
         {
-            for (int dy = -12; dy <= 12; dy++)
-            {
-                if (dx * dx + dy * dy <= 144)
-                {
-                    float px = cx + dx * pSize / 2;
-                    float py = cy + dy * pSize / 2;
-
-                    var brush = (dx * dx + dy * dy > 100) ? bodyDarkBrush : bodyBrush;
-                    
-                    // 受击红闪覆盖
-                    if (robot.DamageFeedbackTimer > 0)
-                    {
-                        int localAlpha = Math.Min(255, robot.DamageFeedbackTimer * 4);
-                        using var hitBrush = new SolidBrush(Color.FromArgb(localAlpha, Color.Red));
-                        g.FillRectangle(brush, px - pSize / 2, py - pSize / 2, pSize, pSize);
-                        g.FillRectangle(hitBrush, px - pSize / 2, py - pSize / 2, pSize, pSize);
-                    }
-                    else
-                    {
-                        g.FillRectangle(brush, px - pSize / 2, py - pSize / 2, pSize, pSize);
-                    }
-                }
-            }
+            int localAlpha = Math.Min(220, robot.DamageFeedbackTimer * 8);
+            using var hitBrush = new SolidBrush(Color.FromArgb(localAlpha, Color.Red));
+            g.FillEllipse(hitBrush, cx - bodyR, cy - bodyR, bodyR * 2, bodyR * 2);
         }
 
         using var coreBrush = new SolidBrush(Color.FromArgb((int)(200 * alpha), 255, 255, 255));
         float corePulse = 1 + (float)Math.Sin(robot.AnimationFrame * Math.PI / 2) * 0.2f;
         float coreSize = 6 * corePulse * scale;
-        g.FillRectangle(coreBrush, cx - coreSize / 2, cy - coreSize / 2 + 5 * scale, coreSize, coreSize);
+        g.FillEllipse(coreBrush, cx - coreSize / 2, cy - coreSize / 2 + 5 * scale, coreSize, coreSize);
     }
 
     private static void DrawEyes(Graphics g, Robot robot, float cx, float cy, float scale, float alpha = 1.0f)
@@ -860,29 +889,20 @@ public static class PixelRobotRenderer
 
     private static void DrawPixelLine(Graphics g, Brush brush, float x1, float y1, float x2, float y2, int thickness)
     {
-        float dx = x2 - x1;
-        float dy = y2 - y1;
-        float steps = Math.Max(Math.Abs(dx), Math.Abs(dy));
+        Color penColor = Color.White;
+        if (brush is SolidBrush sb) penColor = sb.Color;
 
-        for (int i = 0; i <= steps; i++)
+        using var pen = new Pen(penColor, Math.Max(1f, thickness))
         {
-            float t = i / steps;
-            float x = x1 + dx * t;
-            float y = y1 + dy * t;
-            g.FillRectangle(brush, x - thickness / 2, y - thickness / 2, thickness, thickness);
-        }
+            StartCap = System.Drawing.Drawing2D.LineCap.Round,
+            EndCap = System.Drawing.Drawing2D.LineCap.Round
+        };
+        g.DrawLine(pen, x1, y1, x2, y2);
     }
 
     private static void DrawPixelEllipse(Graphics g, Brush brush, float cx, float cy, float w, float h)
     {
-        int steps = 16;
-        for (int i = 0; i < steps; i++)
-        {
-            float angle = (float)(i * 2 * Math.PI / steps);
-            float x = cx + (float)Math.Cos(angle) * w / 2;
-            float y = cy + (float)Math.Sin(angle) * h / 2;
-            g.FillRectangle(brush, x - 2, y - 2, 4, 4);
-        }
+        g.FillEllipse(brush, cx - w / 2, cy - h / 2, w, h);
     }
 
     /// <summary>

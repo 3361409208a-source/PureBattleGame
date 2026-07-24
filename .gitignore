@@ -1,10 +1,13 @@
 bin/
 obj/
-publish/*
-!publish/PureBattleGame.exe
-!PureBattleGame.exe
+publish/
+installer_output/
+*.exe.WebView2/
+*.exe
+*.pdb
 *.user
 *.suo
 *.userosscache
 *.sln.docstates
 *.zip
+*.log

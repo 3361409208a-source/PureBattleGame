@@ -1,3 +1,11 @@
+export interface SkillInfo {
+  name: string;
+  level: number;
+  experience: number;
+  nextLevelXp: number;
+  description: string;
+}
+
 export interface RobotInfo {
   id: string;
   name: string;
@@ -22,6 +30,17 @@ export interface RobotInfo {
   speedMultiplier: number;
   posX: number;
   posY: number;
+  guidelines?: string;
+  consciousnessLevel?: number;
+  learnedInsights?: string[];
+  skills?: Record<string, SkillInfo>;
+  customPhrases?: string[];
+  avatarPath?: string;
+  avatarDataUrl?: string;
+  isWeaponMaster?: boolean;
+  fightFrequency?: number;
+  aiThoughtFrequency?: number;
+  enableAiThinking?: boolean;
 }
 
 export interface SocialMessage {

@@ -58,6 +58,35 @@ public partial class Robot
     public Color SecondaryColor { get; set; }
     public Color EyeColor { get; set; }
 
+    // 自定义 AI 头像/抠图精灵路径
+    public string CustomAvatarPath { get; set; } = "";
+    private Image? _cachedAvatarImage;
+    private string? _cachedAvatarPath;
+
+    public Image? GetAvatarImage()
+    {
+        if (string.IsNullOrWhiteSpace(CustomAvatarPath)) return null;
+        if (_cachedAvatarImage != null && _cachedAvatarPath == CustomAvatarPath) return _cachedAvatarImage;
+
+        try
+        {
+            if (System.IO.File.Exists(CustomAvatarPath))
+            {
+                _cachedAvatarImage?.Dispose();
+                using var fs = new System.IO.FileStream(CustomAvatarPath, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.ReadWrite);
+                using var ms = new System.IO.MemoryStream();
+                fs.CopyTo(ms);
+                ms.Position = 0;
+                _cachedAvatarImage = Image.FromStream(ms);
+                _cachedAvatarPath = CustomAvatarPath;
+                return _cachedAvatarImage;
+            }
+        }
+        catch { }
+
+        return null;
+    }
+
     // 透明度 (0-255, 255为不透明)
     public int Opacity { get; set; } = 255;
 

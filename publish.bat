@@ -45,13 +45,23 @@ if errorlevel 1 (
 
 echo.
 echo ========================================
-echo   打包成功！
+echo   打包成功！自动同步至根目录 PureBattleGame.exe
 echo ========================================
 echo.
-echo 独立 EXE 位置:
-echo   E:\PureBattleGame\publish\PureBattleGame.exe
+taskkill /F /IM PureBattleGame.exe 2>nul
+timeout /t 1 /nobreak >nul
+copy /Y "publish\PureBattleGame.exe" "PureBattleGame.exe"
 echo.
-echo 此文件可直接复制到任意 64位 Windows 电脑直接双击运行！
 echo.
-explorer .\publish
+echo 正在使用 Inno Setup 编译最新安装包...
+if exist "C:\Users\Administrator\AppData\Local\Programs\Inno Setup 6\ISCC.exe" (
+    "C:\Users\Administrator\AppData\Local\Programs\Inno Setup 6\ISCC.exe" /O"E:\PureBattleGame" setup_builder.iss
+    echo 安装包已重新生成: E:\PureBattleGame\PureBattleGame_Setup_v2.0.exe
+)
+echo.
+echo 产物位置:
+echo 1. 独立程序: publish\PureBattleGame.exe
+echo 2. 根目录程序: PureBattleGame.exe
+echo 3. 安装包: PureBattleGame_Setup_v2.0.exe
+echo.
 pause

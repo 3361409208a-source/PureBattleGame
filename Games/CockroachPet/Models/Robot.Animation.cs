@@ -147,7 +147,15 @@ public partial class Robot
     {
         if (string.IsNullOrWhiteSpace(text)) return;
         string langMode = Core.SettingsManager.Current.LanguageInteractionMode;
-        if (langMode == "关闭 / 静音" || langMode == "关闭语言交互" || langMode == "静音模式") return;
+        if (string.Equals(langMode, "静音默契", StringComparison.OrdinalIgnoreCase) ||
+            langMode.Contains("静音") || langMode.Contains("关闭") || langMode.Contains("不喊话"))
+        {
+            ChatText = "";
+            ChatMessage = "";
+            _fullChatText = "";
+            ChatTimer = 0;
+            return;
+        }
 
         _fullChatText = text;
         ChatText = text;

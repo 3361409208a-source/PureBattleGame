@@ -80,34 +80,61 @@ public class Projectile
             Dx = Dx * 0.9f + (backDx / dist) * returnSpeed * 0.1f;
             Dy = Dy * 0.9f + (backDy / dist) * returnSpeed * 0.1f;
         }
-        // 普通追踪锁定逻辑
-        else if (TrackingTarget != null && TrackingTarget.IsActive && !TrackingTarget.IsDead && lifePercent > 0.2f)
+        // 智能自动索敌与追踪锁定逻辑
+        else if (lifePercent > 0.05f)
         {
-            float tx = TrackingTarget.X + TrackingTarget.Size / 2;
-            float ty = TrackingTarget.Y + TrackingTarget.Size / 2;
-            float curDx = tx - X;
-            float curDy = ty - Y;
-            float dist = (float)Math.Max(1, Math.Sqrt(curDx * curDx + curDy * curDy));
+            // 如果缺乏目标或原目标已死亡，自动重新锁定全场距离最近的活动机器人！
+            if (TrackingTarget == null || !TrackingTarget.IsActive || TrackingTarget.IsDead)
+            {
+                var robots = PetForm.Instance?.GetRobots();
+                if (robots != null)
+                {
+                    Robot? closest = null;
+                    float minDistSq = float.MaxValue;
+                    foreach (var r in robots)
+                    {
+                        if (r == Owner || !r.IsActive || r.IsDead || !r.IsVisible) continue;
+                        float rdx = (r.X + r.Size / 2) - X;
+                        float rdy = (r.Y + r.Size / 2) - Y;
+                        float dSq = rdx * rdx + rdy * rdy;
+                        if (dSq < minDistSq)
+                        {
+                            minDistSq = dSq;
+                            closest = r;
+                        }
+                    }
+                    TrackingTarget = closest;
+                }
+            }
 
-            float targetDx = (curDx / dist) * GetBaseSpeed(Type);
-            float targetDy = (curDy / dist) * GetBaseSpeed(Type);
+            if (TrackingTarget != null && TrackingTarget.IsActive && !TrackingTarget.IsDead)
+            {
+                float tx = TrackingTarget.X + TrackingTarget.Size / 2;
+                float ty = TrackingTarget.Y + TrackingTarget.Size / 2;
+                float curDx = tx - X;
+                float curDy = ty - Y;
+                float dist = (float)Math.Max(1, Math.Sqrt(curDx * curDx + curDy * curDy));
 
-            float lerp = Type switch {
-                "ROCKET" => 0.12f,
-                "PLASMA" => 0.20f,
-                "LIGHTNING" => 0.25f,
-                "BULLET" => 0.05f,
-                "PULSE" => 0.30f,
-                "FIREBALL" => 0.08f,
-                "ICE_SHARD" => 0.05f,
-                _ => 0.08f
-            };
-            Dx = Dx * (1 - lerp) + targetDx * lerp;
-            Dy = Dy * (1 - lerp) + targetDy * lerp;
-        }
-        else
-        {
-            TrackingTarget = null;
+                float targetDx = (curDx / dist) * GetBaseSpeed(Type);
+                float targetDy = (curDy / dist) * GetBaseSpeed(Type);
+
+                float lerp = Type switch {
+                    "ROCKET" => 0.22f,
+                    "PLASMA" => 0.28f,
+                    "LIGHTNING" => 0.35f,
+                    "PULSE" => 0.35f,
+                    "FIREBALL" => 0.20f,
+                    "ICE_SHARD" => 0.18f,
+                    "SHURIKEN" => 0.25f,
+                    "BOOMERANG" => 0.20f,
+                    "CANNON" => 0.12f,
+                    "SPIT" => 0.15f,
+                    "INK" => 0.15f,
+                    _ => 0.15f
+                };
+                Dx = Dx * (1 - lerp) + targetDx * lerp;
+                Dy = Dy * (1 - lerp) + targetDy * lerp;
+            }
         }
 
         X += Dx;

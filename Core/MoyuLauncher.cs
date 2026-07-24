@@ -167,6 +167,7 @@ public partial class MoyuLauncher : WebUIHostForm
             isWeaponMaster = SettingsManager.Current.IsWeaponMaster,
             robotMaxHp = SettingsManager.Current.RobotMaxHp,
             isGodMode = SettingsManager.Current.IsGodMode,
+            enabledWeapons = SettingsManager.Current.EnabledWeapons,
             apiKey = PersistenceManager.GetApiKey()
         });
 
@@ -297,6 +298,24 @@ public partial class MoyuLauncher : WebUIHostForm
 
             SettingsManager.Save();
             return true;
+        });
+
+        bridge.RegisterSyncHandler("startRecording", payload =>
+        {
+            string mode = payload.TryGetProperty("mode", out var m) ? m.GetString() ?? "CUSTOM_BG" : "CUSTOM_BG";
+            string hex = payload.TryGetProperty("hexColor", out var h) ? h.GetString() ?? "#00FF00" : "#00FF00";
+            bool success = PureBattleGame.Games.CockroachPet.Services.PromoRecorder.Instance.StartRecording(mode, hex);
+            return new { success };
+        });
+
+        bridge.RegisterSyncHandler("stopRecording", payload =>
+        {
+            return PureBattleGame.Games.CockroachPet.Services.PromoRecorder.Instance.StopRecording();
+        });
+
+        bridge.RegisterSyncHandler("getRecordingStatus", payload =>
+        {
+            return PureBattleGame.Games.CockroachPet.Services.PromoRecorder.Instance.GetStatus();
         });
 
         bridge.RegisterSyncHandler("getLauncherStats", payload => new

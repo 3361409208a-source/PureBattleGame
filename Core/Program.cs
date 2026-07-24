@@ -11,13 +11,20 @@ static class Program
     [STAThread]
     static void Main()
     {
-        // 捕获未处理异常
-        Application.ThreadException += (s, e) => LogException(e.Exception);
-        AppDomain.CurrentDomain.UnhandledException += (s, e) => LogException(e.ExceptionObject as Exception);
+        try
+        {
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+            Application.ThreadException += (s, e) => LogException(e.Exception);
+            AppDomain.CurrentDomain.UnhandledException += (s, e) => LogException(e.ExceptionObject as Exception);
 
-        Application.EnableVisualStyles();
-        Application.SetCompatibleTextRenderingDefault(false);
-        Application.Run(new MoyuLauncher());
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            Application.Run(new MoyuLauncher());
+        }
+        catch (Exception ex)
+        {
+            LogException(ex);
+        }
     }
 
     static void LogException(Exception? ex)

@@ -137,11 +137,25 @@ public static class AudioManager
 
     #region Sound Generation
 
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> _lastPlayedTime = new();
+    private static readonly System.Threading.SemaphoreSlim _audioSemaphore = new System.Threading.SemaphoreSlim(4, 4);
+
     private static void PlayRandomVariant(string soundName)
     {
         if (!_isEnabled || _volumeScale <= 0.01f) return;
         if (!SoundCache.TryGetValue(soundName, out var variants)) return;
         if (variants.Count == 0) return;
+
+        // 频率限制: 同种音效至少间隔 45ms，防止弹幕密集撞击导致音频线程爆满
+        long now = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
+        if (_lastPlayedTime.TryGetValue(soundName, out long lastTime) && (now - lastTime < 45))
+        {
+            return;
+        }
+        _lastPlayedTime[soundName] = now;
+
+        // 并发限制: 最多允许 4 个音效播放线程同时执行，超出直接忽略，彻底防止 CPU 线程池饥饿与卡顿
+        if (!_audioSemaphore.Wait(0)) return;
 
         var soundData = variants[_rand.Next(variants.Count)];
 
@@ -154,6 +168,10 @@ public static class AudioManager
                 player.PlaySync();
             }
             catch { /* 忽略音效播放错误 */ }
+            finally
+            {
+                _audioSemaphore.Release();
+            }
         });
     }
 

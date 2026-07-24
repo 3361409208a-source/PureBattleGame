@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bot, Sparkles, CheckCircle2, AlertCircle, Loader2, X, Wand2 } from 'lucide-react';
+import { Bot, Sparkles, CheckCircle2, AlertCircle, Loader2, X, Wand2, Image as ImageIcon } from 'lucide-react';
 import { bridge } from '../../utils/bridge';
 
 interface AiGeneratedConfig {
@@ -8,6 +8,7 @@ interface AiGeneratedConfig {
   guidelines: string;
   color: string;
   isWeaponMaster: boolean;
+  avatarPath?: string;
 }
 
 interface ProgressState {
@@ -34,6 +35,8 @@ const PRESETS = [
 
 export const AiGeneratorModal: React.FC<AiGeneratorModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const [prompt, setPrompt] = useState('加入赛罗');
+  const [enableImageGen, setEnableImageGen] = useState(true);
+  const [imageModel, setImageModel] = useState('Kwai-Kolors/Kolors');
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState<ProgressState>({
     percent: 0,
@@ -64,7 +67,7 @@ export const AiGeneratorModal: React.FC<AiGeneratorModalProps> = ({ isOpen, onCl
         message?: string;
         count?: number;
         configs?: AiGeneratedConfig[];
-      }>('generateAiRobots', { prompt: prompt.trim() });
+      }>('generateAiRobots', { prompt: prompt.trim(), enableImageGen, imageModel });
 
       if (res && res.success && res.configs) {
         setGeneratedConfigs(res.configs);
@@ -92,7 +95,7 @@ export const AiGeneratorModal: React.FC<AiGeneratorModalProps> = ({ isOpen, onCl
   const steps = [
     { num: 1, label: '建立 API 连接', desc: '连接 SiliconFlow 大模型' },
     { num: 2, label: 'LLM 语义拆解', desc: '提取角色设定与性格' },
-    { num: 3, label: '像素外貌合成', desc: '匹配色值与技能特质' },
+    { num: 3, label: '生图与自动抠图', desc: 'Kwai-Kolors绿幕抠图' },
     { num: 4, label: '实例化投放', desc: '生成桌宠并降临桌面' },
   ];
 
@@ -154,6 +157,44 @@ export const AiGeneratorModal: React.FC<AiGeneratorModalProps> = ({ isOpen, onCl
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* SiliconFlow AI 生图与纯绿幕抠图配置 */}
+          <div className="p-3 bg-zinc-950/80 rounded-xl border border-zinc-800 space-y-2">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={enableImageGen}
+                onChange={e => setEnableImageGen(e.target.checked)}
+                disabled={isGenerating}
+                className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-emerald-500 focus:ring-emerald-500/30"
+              />
+              <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                <ImageIcon className="w-3.5 h-3.5" />
+                同步开启 SiliconFlow 生图与纯绿幕自动抠图
+              </span>
+            </label>
+
+            {enableImageGen && (
+              <div className="space-y-1.5 pl-6 pt-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-zinc-400 font-mono">生图模型：</span>
+                  <select
+                    value={imageModel}
+                    onChange={e => setImageModel(e.target.value)}
+                    disabled={isGenerating}
+                    className="bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1 text-xs text-amber-300 font-mono focus:outline-none focus:border-emerald-500/50"
+                  >
+                    <option value="Kwai-Kolors/Kolors">Kwai-Kolors/Kolors (首选 - 角色生成优选)</option>
+                    <option value="black-forest-labs/FLUX.1-schnell">black-forest-labs/FLUX.1-schnell</option>
+                    <option value="stabilityai/stable-diffusion-3-5-large">stabilityai/stable-diffusion-3-5-large</option>
+                  </select>
+                </div>
+                <div className="text-[10px] text-zinc-400">
+                  💡 提示：SiliconFlow 生图 API (Kwai-Kolors) 需 API Key 保持充值余额。若余额不足 (Code 30001) 将自动降级生成像素形态桌宠。
+                </div>
+              </div>
+            )}
           </div>
 
           {/* 过程进度展示 (Progress & Step Timeline) */}
@@ -241,6 +282,9 @@ export const AiGeneratorModal: React.FC<AiGeneratorModalProps> = ({ isOpen, onCl
                     </span>
                     {cfg.isWeaponMaster && (
                       <span className="text-[10px] text-rose-400">⚔️ 武器大师</span>
+                    )}
+                    {cfg.avatarPath && (
+                      <span className="text-[10px] text-emerald-400 bg-emerald-950/80 px-1 rounded border border-emerald-800 flex items-center gap-0.5">🎨 抠图特写已生成</span>
                     )}
                   </div>
                 ))}

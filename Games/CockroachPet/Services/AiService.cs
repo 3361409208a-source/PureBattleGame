@@ -555,4 +555,5 @@ public class AiGeneratedRobotConfig
     public string Guidelines { get; set; } = "";
     public string Color { get; set; } = "#FF4D4D";
     public bool IsWeaponMaster { get; set; } = false;
+    public string AvatarPath { get; set; } = "";
 }

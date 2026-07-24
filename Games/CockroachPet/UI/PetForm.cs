@@ -37,6 +37,7 @@ public partial class PetForm : Form
     private const int HOTKEY_ID_SPAWN_MONSTER = 6; // 投放怪物热键ID
     private const int HOTKEY_ID_OPACITY_UP = 7; // 增加透明度
     private const int HOTKEY_ID_OPACITY_DOWN = 8; // 减少透明度
+    private const int HOTKEY_ID_PERF = 9; // 切换性能诊断看板 (Ctrl+Shift+D)
     private const uint MOD_CTRL_SHIFT = 0x0002 | 0x0004; // MOD_CONTROL | MOD_SHIFT
 
     // 机器人列表
@@ -66,6 +67,39 @@ public partial class PetForm : Form
     private bool _bossModeHideRobots = true; // 摸鱼模式是否真正隐藏机器人（而非伪装界面）
     private BossModeTheme _bossModeTheme = BossModeTheme.Excel;
     private readonly string[] _themeNames = { "无（仅隐藏）", "Excel表格", "VS Code编辑器", "CMD终端", "Word文档" };
+
+    // 宣传录像状态
+    private bool _isRecordingMode = false;
+    private bool _isRecordingCustomBg = false;
+    private Color _recordingBgColor = Color.FromArgb(0, 255, 0);
+
+    // 实时性能诊断与日志系统
+    private bool _showPerfHUD = true;
+    private readonly System.Diagnostics.Stopwatch _perfStopwatch = System.Diagnostics.Stopwatch.StartNew();
+    private int _frameCount = 0;
+    private float _fps = 60.0f;
+    private float _frameTimeMs = 16.6f;
+    private long _lastFpsTimestamp = 0;
+    private readonly System.Collections.Generic.List<string> _perfLogs = new System.Collections.Generic.List<string>();
+
+    public void LogPerfEvent(string message)
+    {
+        string logLine = $"[{DateTime.Now:HH:mm:ss}] {message}";
+        lock (_perfLogs)
+        {
+            _perfLogs.Add(logLine);
+            if (_perfLogs.Count > 5) _perfLogs.RemoveAt(0);
+        }
+        System.Diagnostics.Debug.WriteLine(logLine);
+    }
+
+    public void SetRecordingState(bool isRecording, bool isCustomBg, Color bgColor)
+    {
+        _isRecordingMode = isRecording;
+        _isRecordingCustomBg = isCustomBg;
+        _recordingBgColor = bgColor;
+        Invalidate();
+    }
 
     // 默认设置
     public int DefaultRobotSize { get; set; } = 64;
@@ -253,10 +287,23 @@ public partial class PetForm : Form
         }
     }
 
+    [System.Runtime.InteropServices.DllImport("winmm.dll", EntryPoint = "timeBeginPeriod", SetLastError = true)]
+    private static extern uint timeBeginPeriod(uint uMilliseconds);
+
+    [System.Runtime.InteropServices.DllImport("winmm.dll", EntryPoint = "timeEndPeriod", SetLastError = true)]
+    private static extern uint timeEndPeriod(uint uMilliseconds);
+
     private void InitializeWindow()
     {
         int screenWidth = Screen.PrimaryScreen!.Bounds.Width;
         int screenHeight = Screen.PrimaryScreen.Bounds.Height;
+
+        // 锁定 Windows 系统内核定时器精度为 1ms，消除 WM_TIMER 的 30-47ms 随机撕裂抖动
+        timeBeginPeriod(1);
+
+        // 启用高级硬件级双缓冲与绘图优化模式，防微小闪烁与帧率下降
+        this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
+        this.UpdateStyles();
 
         // 全屏无边框
         this.Text = "Pixel Robot Pet";
@@ -280,9 +327,9 @@ public partial class PetForm : Form
         // 设置窗口图标
         this.Icon = CreateRobotIcon();
 
-        // 定时器
+        // 定时器: 升级为 60 FPS (16ms) 丝滑流畅物理与帧重绘
         _moveTimer = new System.Windows.Forms.Timer();
-        _moveTimer.Interval = 30;
+        _moveTimer.Interval = 16;
         _moveTimer.Tick += MoveTimer_Tick;
         _moveTimer.Start();
 
@@ -316,6 +363,8 @@ public partial class PetForm : Form
         RegisterHotKey(this.Handle, HOTKEY_ID_OPACITY_UP, MOD_CTRL_SHIFT, 0x26); // Up arrow
         // Ctrl+Shift+Down = 减少透明度
         RegisterHotKey(this.Handle, HOTKEY_ID_OPACITY_DOWN, MOD_CTRL_SHIFT, 0x28); // Down arrow
+        // Ctrl+Shift+D = 开关性能诊断看板 (Diagnostic HUD)
+        RegisterHotKey(this.Handle, HOTKEY_ID_PERF, MOD_CTRL_SHIFT, 0x44); // D
     }
 
     protected override void WndProc(ref Message m)
@@ -350,6 +399,11 @@ public partial class PetForm : Form
                     break;
                 case HOTKEY_ID_OPACITY_DOWN:
                     ChangeOpacity(-20); // 减少透明度（更透明）
+                    break;
+                case HOTKEY_ID_PERF:
+                    _showPerfHUD = !_showPerfHUD;
+                    ShowNotification(_showPerfHUD ? "性能诊断看板: 开启" : "性能诊断看板: 隐藏");
+                    Invalidate();
                     break;
             }
         }
@@ -838,6 +892,23 @@ public partial class PetForm : Form
         int screenWidth = Screen.PrimaryScreen!.Bounds.Width;
         int screenHeight = Screen.PrimaryScreen.Bounds.Height;
 
+        // 计算实时 FPS 与帧耗时
+        _frameCount++;
+        long currentMs = _perfStopwatch.ElapsedMilliseconds;
+        if (currentMs - _lastFpsTimestamp >= 1000)
+        {
+            _fps = (_frameCount * 1000f) / (currentMs - _lastFpsTimestamp);
+            _frameTimeMs = (currentMs - _lastFpsTimestamp) / (float)_frameCount;
+            _frameCount = 0;
+            _lastFpsTimestamp = currentMs;
+
+            if (_fps < 45f)
+            {
+                long ramMb = System.GC.GetTotalMemory(false) / (1024 * 1024);
+                LogPerfEvent($"[性能告警] 帧率下降: {_fps:F1} FPS | 耗时: {_frameTimeMs:F1}ms | 弹幕: {_projectiles.Count} | RAM: {ramMb}MB");
+            }
+        }
+
         // 1. 更新所有机器人位置与基本逻辑
         foreach (var robot in _robots)
         {
@@ -854,12 +925,41 @@ public partial class PetForm : Form
         {
             var p = _projectiles[pIdx];
             p.Update();
-            if (!p.IsActive) { _projectiles.RemoveAt(pIdx); continue; }
+
+            if (!p.IsActive || p.LifeTime <= 0) 
+            { 
+                _projectiles.RemoveAt(pIdx); 
+                continue; 
+            }
+
+            // 飞出屏幕边界 (超出 300px) 自动销毁
+            if (p.X < -300 || p.X > screenWidth + 300 || p.Y < -300 || p.Y > screenHeight + 300)
+            {
+                p.IsActive = false;
+                _projectiles.RemoveAt(pIdx);
+                continue;
+            }
+
+            // 场上没有任何活着的机器人时，清理残留子弹
+            if (_robots.Count == 0 || !_robots.Any(r => r.IsActive && !r.IsDead))
+            {
+                p.IsActive = false;
+                _projectiles.RemoveAt(pIdx);
+                continue;
+            }
+
+            // 发射者与目标均不存在时销毁
+            if ((p.Owner != null && !_robots.Contains(p.Owner)) && (p.TrackingTarget != null && !_robots.Contains(p.TrackingTarget)))
+            {
+                p.IsActive = false;
+                _projectiles.RemoveAt(pIdx);
+                continue;
+            }
 
             // 碰撞检测：遍历所有可能被击中的机器人
             foreach (var target in _robots)
             {
-                if (target == p.Owner || !target.IsVisible || !target.IsActive) continue;
+                if (target == p.Owner || !target.IsVisible || !target.IsActive || target.IsDead) continue;
                 
                 float pdx = p.X - (target.X + target.Size / 2);
                 float pdy = p.Y - (target.Y + target.Size / 2);
@@ -874,20 +974,40 @@ public partial class PetForm : Form
                     break;
                 }
             }
+
+            // 碰撞检测：遍历所有可能被击中的怪物
+            if (p.IsActive && _monsters.Count > 0)
+            {
+                foreach (var monster in _monsters)
+                {
+                    if (!monster.IsActive || monster.IsDead) continue;
+                    var (mX, mY) = monster.GetCenter();
+                    float mdx = p.X - mX;
+                    float mdy = p.Y - mY;
+                    float mdistSq = mdx * mdx + mdy * mdy;
+                    float mradius = monster.Size / 1.8f;
+
+                    if (mdistSq < mradius * mradius)
+                    {
+                        monster.TakeDamage(25);
+                        AudioManager.PlayProjectileHitSound(p.Type);
+                        p.IsActive = false;
+                        break;
+                    }
+                }
+            }
         }
 
-        // 3. 处理机器人间的近距离社交/物理互动 (随机排序，确保所有机器人均等配对互动)
-        var rng = new Random();
-        var activeRobots = _robots.Where(r => r.IsVisible && r.IsActive && !r.IsDead).OrderBy(_ => rng.Next()).ToList();
-        for (int i = 0; i < activeRobots.Count; i++)
+        // 3. 处理机器人间的近距离社交/物理互动 (高效遍历，避免每帧 GC 分配)
+        for (int i = 0; i < _robots.Count; i++)
         {
-            var r1 = activeRobots[i];
-            if (r1.SocialCooldown > 0 || r1.IsBusy) continue;
+            var r1 = _robots[i];
+            if (!r1.IsVisible || !r1.IsActive || r1.IsDead || r1.SocialCooldown > 0 || r1.IsBusy) continue;
 
-            for (int j = i + 1; j < activeRobots.Count; j++)
+            for (int j = i + 1; j < _robots.Count; j++)
             {
-                var r2 = activeRobots[j];
-                if (r2.SocialCooldown > 0 || r2.IsBusy) continue;
+                var r2 = _robots[j];
+                if (!r2.IsVisible || !r2.IsActive || r2.IsDead || r2.SocialCooldown > 0 || r2.IsBusy) continue;
 
                 r1.InteractWith(r2);
                 break;
@@ -1115,38 +1235,24 @@ public partial class PetForm : Form
         }
     }
 
-    private void PetForm_Paint(object? sender, PaintEventArgs e)
+    public void RenderToBitmap(Graphics g)
     {
-        // 摸鱼模式下绘制伪装界面
-        if (_bossMode)
-        {
-            PixelRobotRenderer.DrawBossModeIndicator(e.Graphics,
-                Screen.PrimaryScreen!.Bounds.Width,
-                Screen.PrimaryScreen.Bounds.Height,
-                _bossModeTheme);
-            return; // 不绘制机器人
-        }
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
 
-        e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-        e.Graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
-
-        foreach (var robot in _robots)
+        var robotsCopy = _robots.ToArray();
+        foreach (var robot in robotsCopy)
         {
             if (robot.IsVisible)
-                PixelRobotRenderer.DrawRobot(e.Graphics, robot);
+                PixelRobotRenderer.DrawRobot(g, robot);
         }
 
-        // 绘制子弹 (特效增强版)
-        var projectilesCopy = _projectiles.ToArray(); // 创建快照防止并发修改崩溃
+        var projectilesCopy = _projectiles.ToArray();
         foreach (var p in projectilesCopy)
         {
             if (p == null || !p.IsActive) continue;
-            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
-            if (p == null || !p.IsActive) continue;
-            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-
-            // 根据发射者尺寸与全局技能缩放，动态计算技能弹道尺寸
             float ownerSize = p.Owner != null ? p.Owner.Size : DefaultRobotSize;
             float pScale = Math.Max(0.12f, (ownerSize / 64.0f) * (GlobalSkillScale / 100.0f));
 
@@ -1156,164 +1262,96 @@ public partial class PetForm : Form
                     float cannonR = Math.Max(2f, 9 * pScale);
                     using (var cannonBrush = new System.Drawing.Drawing2D.LinearGradientBrush(new RectangleF(p.X - cannonR, p.Y - cannonR, cannonR * 2, cannonR * 2), Color.FromArgb(60, 60, 60), Color.Black, 45f))
                     {
-                        e.Graphics.FillEllipse(cannonBrush, p.X - cannonR, p.Y - cannonR, cannonR * 2, cannonR * 2);
+                        g.FillEllipse(cannonBrush, p.X - cannonR, p.Y - cannonR, cannonR * 2, cannonR * 2);
                     }
-                    e.Graphics.DrawEllipse(Pens.DimGray, p.X - cannonR, p.Y - cannonR, cannonR * 2, cannonR * 2);
+                    g.DrawEllipse(Pens.DimGray, p.X - cannonR, p.Y - cannonR, cannonR * 2, cannonR * 2);
                     break;
-
                 case "LIGHTNING":
                     Color[] lightningColors = { Color.White, Color.Yellow, Color.FromArgb(150, Color.Gold) };
                     float[] lightningWidths = { 1f * pScale, 3f * pScale, 6f * pScale };
-                    float jitter = Math.Max(2f, 12 * pScale);
                     for (int layer = 2; layer >= 0; layer--)
                     {
                         using var pen = new Pen(lightningColors[layer], Math.Max(1f, lightningWidths[layer]));
-                        float lx = p.X - p.Dx, ly = p.Y - p.Dy;
-                        Random rng = new Random((int)p.X + (int)p.Y + layer);
-                        for (int k = 0; k < 4; k++)
-                        {
-                            float nxtX = lx + p.Dx * 0.4f + rng.Next(-(int)jitter, (int)jitter + 1);
-                            float nxtY = ly + p.Dy * 0.4f + rng.Next(-(int)jitter, (int)jitter + 1);
-                            e.Graphics.DrawLine(pen, lx, ly, nxtX, nxtY);
-                            lx = nxtX; ly = nxtY;
-                        }
+                        g.DrawLine(pen, p.X, p.Y, p.X + p.Dx * 2, p.Y + p.Dy * 2);
                     }
                     break;
-
-                case "SPIT":
-                    float baseSpitR = Math.Max(3f, 8f * pScale);
-                    using (var spitBrush = new SolidBrush(Color.FromArgb(180, Color.Chartreuse)))
-                    {
-                        e.Graphics.FillEllipse(spitBrush, p.X - baseSpitR, p.Y - baseSpitR, baseSpitR * 2, baseSpitR * 2);
-                        float sub1 = Math.Max(2f, baseSpitR * 0.7f);
-                        float sub2 = Math.Max(1.5f, baseSpitR * 0.5f);
-                        e.Graphics.FillEllipse(spitBrush, p.X - p.Dx * 1.5f + 4 * pScale, p.Y - p.Dy * 1.5f, sub1, sub1);
-                        e.Graphics.FillEllipse(spitBrush, p.X - p.Dx * 0.8f - 3 * pScale, p.Y - p.Dy * 0.8f + 2 * pScale, sub2, sub2);
-                    }
-                    break;
-
-                case "INK":
-                    float inkR = Math.Max(2f, 8 * pScale);
-                    using (var inkBrush = new SolidBrush(Color.FromArgb(200, Color.Indigo)))
-                    {
-                        float currentAngle = (float)Math.Atan2(p.Dy, p.Dx);
-                        e.Graphics.FillEllipse(inkBrush, p.X - inkR, p.Y - inkR, inkR * 2, inkR * 2);
-                        float sub1 = Math.Max(1.5f, 6 * pScale);
-                        float sub2 = Math.Max(1.5f, 5 * pScale);
-                        e.Graphics.FillEllipse(inkBrush, p.X + (float)Math.Cos(currentAngle + 0.5) * 10 * pScale, p.Y + (float)Math.Sin(currentAngle + 0.5) * 10 * pScale, sub1, sub1);
-                        e.Graphics.FillEllipse(inkBrush, p.X + (float)Math.Cos(currentAngle - 0.5) * 12 * pScale, p.Y + (float)Math.Sin(currentAngle - 0.5) * 12 * pScale, sub2, sub2);
-                    }
-                    break;
-
-                case "PULSE":
-                    float pulseR = Math.Max(3f, (6f + (float)Math.Sin(p.LifeTime * 0.3) * 3f) * pScale);
-                    using (var pulseBrush = new SolidBrush(Color.FromArgb(200, Color.DeepSkyBlue)))
-                    using (var pulsePen = new Pen(Color.White, Math.Max(1f, 2 * pScale)))
-                    {
-                        e.Graphics.FillEllipse(pulseBrush, p.X - pulseR, p.Y - pulseR, pulseR * 2, pulseR * 2);
-                        e.Graphics.DrawEllipse(pulsePen, p.X - pulseR, p.Y - pulseR, pulseR * 2, pulseR * 2);
-                    }
-                    break;
-
-                case "BLASTER":
-                    using (var blasterPen = new Pen(p.ProjectileColor, Math.Max(2f, 4 * pScale)))
-                    {
-                        e.Graphics.DrawLine(blasterPen, p.X, p.Y, p.X - p.Dx * 2, p.Y - p.Dy * 2);
-                    }
-                    break;
-
-                case "BOOMERANG":
-                    e.Graphics.TranslateTransform(p.X, p.Y);
-                    e.Graphics.RotateTransform(p.LifeTime * 20);
-                    using (var bPen = new Pen(Color.Silver, Math.Max(2f, 3 * pScale)))
-                    {
-                        float bl = Math.Max(5f, 15 * pScale);
-                        e.Graphics.DrawLine(bPen, -bl, 0, bl, 0);
-                        e.Graphics.DrawLine(bPen, 0, -bl, 0, bl);
-                        e.Graphics.FillEllipse(Brushes.White, -bl/4, -bl/4, bl/2, bl/2);
-                    }
-                    e.Graphics.ResetTransform();
-                    break;
-
-                case "SHURIKEN":
-                    e.Graphics.TranslateTransform(p.X, p.Y);
-                    e.Graphics.RotateTransform(p.LifeTime * 30);
-                    using (var sBrush = new SolidBrush(Color.Gray))
-                    {
-                        float sl = Math.Max(3f, 10 * pScale);
-                        PointF[] star = { new PointF(0, -sl), new PointF(sl/3, -sl/3), new PointF(sl, 0), new PointF(sl/3, sl/3), new PointF(0, sl), new PointF(-sl/3, sl/3), new PointF(-sl, 0), new PointF(-sl/3, -sl/3) };
-                        e.Graphics.FillPolygon(sBrush, star);
-                    }
-                    e.Graphics.ResetTransform();
-                    break;
-
-                case "GRENADE":
-                    float gr = Math.Max(3f, 6 * pScale);
-                    e.Graphics.FillEllipse(new SolidBrush(Color.DarkGreen), p.X - gr, p.Y - gr, gr * 2, gr * 2);
-                    if (p.LifeTime % 10 < 5) e.Graphics.FillEllipse(Brushes.Red, p.X - gr/2, p.Y - gr/2, gr, gr);
-                    break;
-
-                case "FIREBALL":
-                    float fr = Math.Max(4f, 12 * pScale);
-                    e.Graphics.FillEllipse(new SolidBrush(Color.FromArgb(150, Color.OrangeRed)), p.X - fr, p.Y - fr, fr * 2, fr * 2);
-                    e.Graphics.FillEllipse(Brushes.Yellow, p.X - fr/2, p.Y - fr/2, fr, fr);
-                    break;
-
-                case "ICE_SHARD":
-                    e.Graphics.TranslateTransform(p.X, p.Y);
-                    e.Graphics.RotateTransform((float)(Math.Atan2(p.Dy, p.Dx) * 180 / Math.PI) + 90);
-                    using (var iceBrush = new SolidBrush(Color.LightCyan))
-                    {
-                        float w = Math.Max(2f, 6 * pScale);
-                        float h = Math.Max(6f, 18 * pScale);
-                        PointF[] shard = { new PointF(0, -h), new PointF(w, h/2), new PointF(0, h), new PointF(-w, h/2) };
-                        e.Graphics.FillPolygon(iceBrush, shard);
-                    }
-                    e.Graphics.ResetTransform();
-                    break;
-
-                case "ROCKET":
-                    using (var rocketPath = new System.Drawing.Drawing2D.GraphicsPath())
-                    {
-                        float rSize = Math.Max(3f, 10 * pScale);
-                        rocketPath.AddRectangle(new RectangleF(p.X - rSize/2, p.Y - rSize/2, rSize, rSize));
-                        e.Graphics.FillPath(Brushes.DarkRed, rocketPath);
-                        using var fireBrush = new System.Drawing.Drawing2D.LinearGradientBrush(new PointF(p.X, p.Y), new PointF(p.X - p.Dx * 2, p.Y - p.Dy * 2), Color.Orange, Color.Transparent);
-                        float fireSize = Math.Max(3f, 10 * pScale);
-                        e.Graphics.FillEllipse(fireBrush, p.X - p.Dx * 1.5f - fireSize/2, p.Y - p.Dy * 1.5f - fireSize/2, fireSize, fireSize);
-                    }
-                    break;
-
-                case "PLASMA":
-                    float cCore = Math.Max(1.5f, 3 * pScale);
-                    float cMid = Math.Max(3f, 7 * pScale);
-                    float cOuter = Math.Max(4f, 10 * pScale);
-                    e.Graphics.FillEllipse(Brushes.White, p.X - cCore, p.Y - cCore, cCore * 2, cCore * 2);
-                    using (var pPen = new Pen(Color.FromArgb(150, p.ProjectileColor), Math.Max(1f, 4 * pScale)))
-                    {
-                        e.Graphics.DrawEllipse(pPen, p.X - cMid, p.Y - cMid, cMid * 2, cMid * 2);
-                    }
-                    using (var outerPen = new Pen(Color.FromArgb(60, p.ProjectileColor), Math.Max(1f, 8 * pScale)))
-                    {
-                        e.Graphics.DrawEllipse(outerPen, p.X - cOuter, p.Y - cOuter, cOuter * 2, cOuter * 2);
-                    }
-                    break;
-
                 default:
-                    float defR = Math.Max(1.5f, 3 * pScale);
-                    using (var defBrush = new SolidBrush(p.ProjectileColor))
+                    using (var b = new SolidBrush(p.ProjectileColor))
                     {
-                        e.Graphics.FillEllipse(defBrush, p.X - defR, p.Y - defR, defR * 2, defR * 2);
+                        g.FillEllipse(b, p.X - 4 * pScale, p.Y - 4 * pScale, 8 * pScale, 8 * pScale);
                     }
                     break;
             }
         }
 
         // 绘制怪物
-        foreach (var monster in _monsters)
+        var monstersCopy = _monsters.ToArray();
+        foreach (var monster in monstersCopy)
         {
             if (monster.IsActive && !monster.IsDead)
-                MonsterRenderer.DrawMonster(e.Graphics, monster);
+                MonsterRenderer.DrawMonster(g, monster);
+        }
+    }
+
+    private void PetForm_Paint(object? sender, PaintEventArgs e)
+    {
+        if (_bossMode)
+        {
+            PixelRobotRenderer.DrawBossModeIndicator(e.Graphics,
+                Screen.PrimaryScreen!.Bounds.Width,
+                Screen.PrimaryScreen.Bounds.Height,
+                _bossModeTheme);
+            return;
+        }
+
+        if (_isRecordingCustomBg)
+        {
+            e.Graphics.Clear(_recordingBgColor);
+        }
+
+        RenderToBitmap(e.Graphics);
+        DrawPerformanceHUD(e.Graphics);
+    }
+
+    private void DrawPerformanceHUD(Graphics g)
+    {
+        if (!_showPerfHUD || _bossMode) return;
+
+        using var font = new Font("Consolas", 8.5f, FontStyle.Bold);
+        using var bgBrush = new SolidBrush(Color.FromArgb(210, 10, 12, 18));
+        using var borderPen = new Pen(Color.FromArgb(180, 52, 211, 153), 1f);
+        using var textBrush = new SolidBrush(Color.FromArgb(240, 240, 240));
+        using var greenBrush = new SolidBrush(Color.FromArgb(52, 211, 153));
+        using var warnBrush = new SolidBrush(Color.FromArgb(251, 146, 60));
+
+        g.FillRoundedRectangle(bgBrush, 12, 12, 330, 96, 6);
+        g.DrawRoundedRectangle(borderPen, 12, 12, 330, 96, 6);
+
+        // 标头
+        g.DrawString("⚡ PURE BATTLE 性能诊断看板 (Ctrl+Shift+D 隐藏)", font, greenBrush, 18, 16);
+
+        // 指标
+        string fpsColorStr = _fps >= 50 ? "🟢" : (_fps >= 35 ? "🟡" : "🔴");
+        g.DrawString($"{fpsColorStr} FPS: {_fps:F1} ({_frameTimeMs:F1}ms/帧)", font, _fps < 40 ? warnBrush : textBrush, 18, 33);
+
+        int activeRobots = _robots.Count(r => r.IsActive && !r.IsDead);
+        g.DrawString($"🎯 活跃实体: 机器人 {activeRobots}/{_robots.Count} | 弹幕 {_projectiles.Count} | 怪物 {_monsters.Count}", font, textBrush, 18, 49);
+
+        long ramMb = System.GC.GetTotalMemory(false) / (1024 * 1024);
+        g.DrawString($"💾 内存: {ramMb} MB | GC0回收: {GC.CollectionCount(0)} 次", font, textBrush, 18, 65);
+
+        // 日志
+        lock (_perfLogs)
+        {
+            if (_perfLogs.Count > 0)
+            {
+                string lastLog = _perfLogs[_perfLogs.Count - 1];
+                g.DrawString($"📋 日志: {lastLog}", font, warnBrush, 18, 81);
+            }
+            else
+            {
+                g.DrawString("📋 日志: 系统运行平稳，无告警", font, greenBrush, 18, 81);
+            }
         }
     }
 
@@ -1523,13 +1561,13 @@ public partial class PetForm : Form
                 try { color = ColorTranslator.FromHtml(cfg.Color); } catch { }
             }
 
-            var robot = SpawnRobotWithConfig(cfg.Name, personality, cfg.Guidelines, color, cfg.IsWeaponMaster);
+            var robot = SpawnRobotWithConfig(cfg.Name, personality, cfg.Guidelines, color, cfg.IsWeaponMaster, cfg.AvatarPath);
             list.Add(robot);
         }
         return list;
     }
 
-    public Robot SpawnRobotWithConfig(string name, RobotPersonalityType personality, string guidelines, Color primaryColor, bool isWeaponMaster)
+    public Robot SpawnRobotWithConfig(string name, RobotPersonalityType personality, string guidelines, Color primaryColor, bool isWeaponMaster, string avatarPath = "")
     {
         Robot robot = SpawnRobot(name, -1, -1);
         robot.SetPersonality(personality);
@@ -1546,6 +1584,10 @@ public partial class PetForm : Form
                 Math.Max(0, primaryColor.B - 40));
         }
         robot.IsWeaponMaster = isWeaponMaster;
+        if (!string.IsNullOrWhiteSpace(avatarPath))
+        {
+            robot.CustomAvatarPath = avatarPath;
+        }
 
         if (!string.IsNullOrWhiteSpace(guidelines))
         {
@@ -1591,6 +1633,10 @@ public partial class PetForm : Form
         robot.AiThoughtFrequency = AiThoughtFrequency;
         robot.FightFrequency = FightFrequency;
         robot.IsWeaponMaster = IsWeaponMaster;
+        if (!string.IsNullOrWhiteSpace(data.AvatarPath))
+        {
+            robot.CustomAvatarPath = data.AvatarPath;
+        }
 
         robot.PrimaryColor = Color.FromArgb(data.PrimaryColorR, data.PrimaryColorG, data.PrimaryColorB);
 
@@ -1617,6 +1663,8 @@ public partial class PetForm : Form
     public void ClearAllRobots()
     {
         _robots.Clear();
+        _projectiles.Clear(); // 清空机器人时同时清除所有飞行中的子弹与特效
+        _monsters.Clear();    // 同时清除所有怪物
         PersistenceManager.SaveRobots(_robots);
     }
 
@@ -1626,8 +1674,14 @@ public partial class PetForm : Form
         {
             robot.CloseTerminal();
             _robots.Remove(robot);
+            _projectiles.RemoveAll(p => p.Owner == robot || p.TrackingTarget == robot);
             PersistenceManager.SaveRobots(_robots);
         }
+    }
+
+    public void ClearAllProjectiles()
+    {
+        _projectiles.Clear();
     }
 
     public void SetCombatMode(CombatMode mode)
@@ -1702,6 +1756,11 @@ public partial class PetForm : Form
     {
         if (p != null)
         {
+            if (_projectiles.Count >= 35)
+            {
+                _projectiles.RemoveAt(0);
+                LogPerfEvent("[自动配额] 弹幕过密已自动清理早期旧弹幕");
+            }
             _projectiles.Add(p);
         }
     }

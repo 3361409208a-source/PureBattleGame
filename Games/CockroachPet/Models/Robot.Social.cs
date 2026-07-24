@@ -236,6 +236,11 @@ public partial class Robot
             if (Rand.Next(100) < 45)
             {
                 string langMode = SettingsManager.Current.LanguageInteractionMode;
+                if (string.Equals(langMode, "静音默契", StringComparison.OrdinalIgnoreCase) ||
+                    langMode.Contains("静音") || langMode.Contains("关闭") || langMode.Contains("不喊话"))
+                {
+                    return;
+                }
                 string[] thoughts = langMode switch
                 {
                     "科幻极客" => new[] { "主板温度 36.5℃，核心协议对齐中。", "正在对桌面全域像素矩阵进行量子校验...", "暗网数据流解析完毕，系统运行流畅。", "检测到高频代码波动，正在进行降噪处理..." },

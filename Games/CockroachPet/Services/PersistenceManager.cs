@@ -32,7 +32,7 @@ namespace PureBattleGame.Games.CockroachPet
         public int PrimaryColorB { get; set; }
         public List<string> CustomPhrases { get; set; } = new List<string>();
         public bool CurseMode { get; set; } = false;
-
+        public string AvatarPath { get; set; } = "";
     }
 
     public static class PersistenceManager
@@ -111,7 +111,7 @@ namespace PureBattleGame.Games.CockroachPet
                     PrimaryColorB = r.PrimaryColor.B,
                     CustomPhrases = r.CustomPhrases,
                     CurseMode = r.CurseMode,
-
+                    AvatarPath = r.CustomAvatarPath,
                 }).ToList();
 
                 string json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });

@@ -41,7 +41,8 @@ public class WebUIHostForm : Form
     {
         try
         {
-            var env = await CoreWebView2Environment.CreateAsync(null, null, null);
+            string userDataPath = Path.Combine(Path.GetTempPath(), "PureBattleGame_WebUI_Data");
+            var env = await CoreWebView2Environment.CreateAsync(null, userDataPath, null);
             await WebViewControl.EnsureCoreWebView2Async(env);
 
             // 映射 WebUI 产物路径到虚拟域名 app.local
