@@ -135,11 +135,16 @@ export const SocialHubView: React.FC = () => {
       });
     });
 
+    const unsubCombatModal = bridge.on('openCombatModal', () => {
+      setIsCombatModalOpen(true);
+    });
+
     return () => {
       unsubRobots();
       unsubStats();
       unsubWorld();
       unsubPrivate();
+      unsubCombatModal();
     };
   }, []);
 

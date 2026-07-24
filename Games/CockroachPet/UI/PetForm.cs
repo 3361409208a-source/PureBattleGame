@@ -38,6 +38,7 @@ public partial class PetForm : Form
     private const int HOTKEY_ID_OPACITY_UP = 7; // 增加透明度
     private const int HOTKEY_ID_OPACITY_DOWN = 8; // 减少透明度
     private const int HOTKEY_ID_PERF = 9; // 切换性能诊断看板 (Ctrl+Shift+D)
+    private const int HOTKEY_ID_COMBAT_LOG = 10; // 打开战斗日志与MVP大屏 (Ctrl+Shift+L)
     private const uint MOD_CTRL_SHIFT = 0x0002 | 0x0004; // MOD_CONTROL | MOD_SHIFT
 
     // 机器人列表
@@ -594,6 +595,8 @@ public partial class PetForm : Form
         RegisterHotKey(this.Handle, HOTKEY_ID_OPACITY_DOWN, MOD_CTRL_SHIFT, 0x28); // Down arrow
         // Ctrl+Shift+D = 开关性能诊断看板 (Diagnostic HUD)
         RegisterHotKey(this.Handle, HOTKEY_ID_PERF, MOD_CTRL_SHIFT, 0x44); // D
+        // Ctrl+Shift+L = 打开战斗日志与战况大屏 (Combat Log)
+        RegisterHotKey(this.Handle, HOTKEY_ID_COMBAT_LOG, MOD_CTRL_SHIFT, 0x4C); // L
     }
 
     protected override void WndProc(ref Message m)
@@ -606,6 +609,9 @@ public partial class PetForm : Form
             {
                 case HOTKEY_ID_MENU:
                     ShowTrayMenu();
+                    break;
+                case HOTKEY_ID_COMBAT_LOG:
+                    ShowCombatLogModal();
                     break;
                 case HOTKEY_ID_TOGGLE:
                     SetClickThrough(!_clickThrough);
@@ -890,6 +896,7 @@ public partial class PetForm : Form
 
         // 控制面板 & 社交中心
         menu.Items.Add("🎛️ 打开控制面板", null, (s, e) => ShowControlPanel());
+        menu.Items.Add("⚔️ 实时战斗日志与 MVP 战况榜 (Ctrl+Shift+L)", null, (s, e) => ShowCombatLogModal());
         menu.Items.Add("💬 世界聊天频道", null, (s, e) => TerminalManagerForm.Instance.ShowWorldChat());
 
         // 单人 1v1 私聊子菜单
@@ -2261,6 +2268,13 @@ public partial class PetForm : Form
     private void ShowControlPanel()
     {
         TerminalManagerForm.Instance.ShowWorldChat();
+    }
+
+    public void ShowCombatLogModal()
+    {
+        TerminalManagerForm.Instance.ShowWorldChat();
+        TerminalManagerForm.Instance.Bridge?.SendEvent("openCombatModal", new { });
+        ShowNotification("⚔️ 开启实时战斗日志与 MVP 战况大屏 (Ctrl+Shift+L)");
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)
