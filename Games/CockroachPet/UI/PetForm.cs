@@ -293,6 +293,21 @@ public partial class PetForm : Form
     [System.Runtime.InteropServices.DllImport("winmm.dll", EntryPoint = "timeEndPeriod", SetLastError = true)]
     private static extern uint timeEndPeriod(uint uMilliseconds);
 
+    // 原生 WS_EX_LAYERED 模式 - 完全绕过 WM_PAINT，UpdateLayeredWindow 独占渲染
+    private const int WS_EX_LAYERED = 0x00080000;
+    private const int WS_EX_TRANSPARENT = 0x00000020;
+
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            var cp = base.CreateParams;
+            cp.ExStyle |= WS_EX_LAYERED;
+            cp.ExStyle |= WS_EX_TRANSPARENT;
+            return cp;
+        }
+    }
+
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, Pack = 1)]
     private struct BLENDFUNCTION
     {
@@ -511,11 +526,10 @@ public partial class PetForm : Form
         this.TopMost = true;
         this.ShowInTaskbar = false; // 主窗口不显示在任务栏
 
-        // 透明设置
+        // 使用 WS_EX_LAYERED 分层窗口，绕过 WM_PAINT 消息，完全由 UpdateLayeredWindow 驱动渲染
+        // 不设置 AllowTransparency/TransparencyKey - 它们会触发软件 alpha 混合，极耗 CPU
         this.BackColor = Color.Black;
-        this.TransparencyKey = Color.Black;
-        this.AllowTransparency = true;
-        this.DoubleBuffered = true;
+        this.DoubleBuffered = false; // UpdateLayeredWindow 模式不需要 WinForms 双缓冲
 
         // 启用点击穿透
         SetClickThrough(true);
@@ -526,8 +540,7 @@ public partial class PetForm : Form
         // 高精度 60 FPS (16.6ms) 硬件级独立物理与渲染循环
         StartHighPrecisionRenderLoop();
 
-        // 事件绑定
-        this.Paint += PetForm_Paint;
+        // 事件绑定 (不注册 PetForm_Paint - UpdateLayeredWindow 独立驱动渲染，不依赖 WM_PAINT)
         this.MouseClick += PetForm_MouseClick;
         this.KeyDown += PetForm_KeyDown;
 

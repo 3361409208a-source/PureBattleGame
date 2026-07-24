@@ -42,19 +42,23 @@ public static class PixelRobotRenderer
             g.CompositingMode = System.Drawing.Drawing2D.CompositingMode.SourceOver;
         }
 
-        // 创建带透明度的颜色变换矩阵
+        // 创建带透明度的颜色变换矩阵（仅在非完全不透明时分配）
         float alpha = robot.Opacity / 255f;
-        ColorMatrix colorMatrix = new ColorMatrix(new float[][]
-        {
-            new float[] {1, 0, 0, 0, 0},
-            new float[] {0, 1, 0, 0, 0},
-            new float[] {0, 0, 1, 0, 0},
-            new float[] {0, 0, 0, alpha, 0},
-            new float[] {0, 0, 0, 0, 1}
-        });
+        ImageAttributes? imageAttributes = null;
 
-        ImageAttributes imageAttributes = new ImageAttributes();
-        imageAttributes.SetColorMatrix(colorMatrix, ColorMatrixFlag.Default, ColorAdjustType.Bitmap);
+        if (robot.Opacity < 255)
+        {
+            ColorMatrix colorMatrix = new ColorMatrix(new float[][]
+            {
+                new float[] {1, 0, 0, 0, 0},
+                new float[] {0, 1, 0, 0, 0},
+                new float[] {0, 0, 1, 0, 0},
+                new float[] {0, 0, 0, alpha, 0},
+                new float[] {0, 0, 0, 0, 1}
+            });
+            imageAttributes = new ImageAttributes();
+            imageAttributes.SetColorMatrix(colorMatrix, ColorMatrixFlag.Default, ColorAdjustType.Bitmap);
+        }
 
         // 记录世界坐标中心，用于绘制不受翻转影响的效果
         float worldCenterX = x + size / 2;
