@@ -1446,6 +1446,11 @@ public partial class PetForm : Form
 
     public void RenderToBitmap(Graphics g)
     {
+        if (!_isRecordingCustomBg)
+        {
+            g.Clear(this.TransparencyKey);
+        }
+
         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
         g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
 
@@ -1508,6 +1513,8 @@ public partial class PetForm : Form
     {
         try
         {
+            e.Graphics.Clear(this.TransparencyKey);
+
             if (_bossMode)
             {
                 PixelRobotRenderer.DrawBossModeIndicator(e.Graphics,
@@ -1913,6 +1920,7 @@ public partial class PetForm : Form
             _robots.Remove(robot);
             _projectiles.RemoveAll(p => p.Owner == robot || p.TrackingTarget == robot);
             PersistenceManager.SaveRobots(_robots);
+            this.Invalidate();
         }
     }
 
