@@ -8,12 +8,14 @@ import {
 import { bridge } from '../../utils/bridge';
 import { AiGeneratorModal } from './AiGeneratorModal';
 import { RobotDetailsModal } from './RobotDetailsModal';
+import { CombatLogModal } from './CombatLogModal';
 import type { RobotInfo, SocialMessage, ChatMessage, SystemStats, AppSettings } from '../../types/bridge';
 
 export const SocialHubView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'world' | 'control' | 'settings' | string>('overview');
   const [robots, setRobots] = useState<RobotInfo[]>([]);
   const [selectedRobotForDetails, setSelectedRobotForDetails] = useState<RobotInfo | null>(null);
+  const [isCombatModalOpen, setIsCombatModalOpen] = useState(false);
   const [stats, setStats] = useState<SystemStats>({
     onlineCount: 0,
     totalRobots: 0,
@@ -409,6 +411,13 @@ export const SocialHubView: React.FC = () => {
               <Zap className="w-3 h-3 text-amber-400" />
               Token: {stats.totalTokens}
             </span>
+            <button
+              onClick={() => setIsCombatModalOpen(true)}
+              className="px-3 py-1 bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow transition shrink-0"
+              title="查看实时对战日志与MVP数据榜"
+            >
+              ⚔️ 战况与伤害榜
+            </button>
             <button 
               onClick={fetchData}
               className="p-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg transition shrink-0"
@@ -1356,6 +1365,12 @@ export const SocialHubView: React.FC = () => {
         onOpenPrivateChat={handleOpenPrivateChat}
         onInspirate={handleInspirate}
         onToggleCurse={handleToggleCurse}
+      />
+
+      {/* 实时战况与伤害击杀数据看板弹窗 */}
+      <CombatLogModal
+        isOpen={isCombatModalOpen}
+        onClose={() => setIsCombatModalOpen(false)}
       />
     </div>
   );

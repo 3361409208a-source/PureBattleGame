@@ -81,6 +81,7 @@ public partial class PetForm : Form
     private float _frameTimeMs = 16.6f;
     private long _lastFpsTimestamp = 0;
     private readonly System.Collections.Generic.List<string> _perfLogs = new System.Collections.Generic.List<string>();
+    private readonly System.Collections.Generic.List<CombatLogItem> _combatLogs = new System.Collections.Generic.List<CombatLogItem>();
 
     public void LogPerfEvent(string message)
     {
@@ -91,6 +92,41 @@ public partial class PetForm : Form
             if (_perfLogs.Count > 5) _perfLogs.RemoveAt(0);
         }
         System.Diagnostics.Debug.WriteLine(logLine);
+    }
+
+    public void AddCombatLog(string attacker, string target, string skill, int damage, string type, string message)
+    {
+        lock (_combatLogs)
+        {
+            var item = new CombatLogItem
+            {
+                Time = DateTime.Now.ToString("HH:mm:ss"),
+                Attacker = attacker,
+                Target = target,
+                Skill = skill,
+                Damage = damage,
+                Type = type,
+                Message = message
+            };
+            _combatLogs.Add(item);
+            if (_combatLogs.Count > 100) _combatLogs.RemoveAt(0);
+        }
+    }
+
+    public System.Collections.Generic.List<CombatLogItem> GetCombatLogs()
+    {
+        lock (_combatLogs)
+        {
+            return new System.Collections.Generic.List<CombatLogItem>(_combatLogs);
+        }
+    }
+
+    public void ClearCombatLogs()
+    {
+        lock (_combatLogs)
+        {
+            _combatLogs.Clear();
+        }
     }
 
     public void SetRecordingState(bool isRecording, bool isCustomBg, Color bgColor)
@@ -2200,4 +2236,15 @@ public partial class PetForm : Form
         
         base.OnFormClosing(e);
     }
+}
+
+public class CombatLogItem
+{
+    public string Time { get; set; } = "";
+    public string Attacker { get; set; } = "";
+    public string Target { get; set; } = "";
+    public string Skill { get; set; } = "";
+    public int Damage { get; set; }
+    public string Type { get; set; } = "ATTACK"; // ATTACK, KILL, MELEE, MONSTER
+    public string Message { get; set; } = "";
 }

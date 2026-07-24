@@ -555,6 +555,43 @@ public class TerminalManagerForm : WebUIHostForm
             }
             return new { success = false };
         });
+
+        // 16. 获取实时战斗日志
+        bridge.RegisterHandler("getCombatLogs", async payload =>
+        {
+            var logs = PetForm.Instance?.GetCombatLogs() ?? new System.Collections.Generic.List<CombatLogItem>();
+            return new { success = true, logs = logs };
+        });
+
+        // 17. 获取实时战斗数据统计榜单
+        bridge.RegisterHandler("getCombatStats", async payload =>
+        {
+            var robots = PetForm.Instance?.GetRobots() ?? new System.Collections.Generic.List<Robot>();
+            var stats = robots.Select(r => new
+            {
+                id = r.Name,
+                name = r.Name,
+                personality = r.Personality.ToString(),
+                color = System.Drawing.ColorTranslator.ToHtml(r.PrimaryColor),
+                hp = r.HP,
+                maxHp = r.MaxHP,
+                damageDealt = r.DamageDealt,
+                damageTaken = r.DamageTaken,
+                kills = r.Kills,
+                shotsFired = r.ShotsFired,
+                isWeaponMaster = r.IsWeaponMaster,
+                weapons = r.PersonalWeapons
+            }).OrderByDescending(s => s.damageDealt).ToList();
+
+            return new { success = true, stats = stats };
+        });
+
+        // 18. 清空战况日志
+        bridge.RegisterHandler("clearCombatLogs", async payload =>
+        {
+            PetForm.Instance?.ClearCombatLogs();
+            return new { success = true };
+        });
     }
 
     private void EnsureSubscribedToRobots()

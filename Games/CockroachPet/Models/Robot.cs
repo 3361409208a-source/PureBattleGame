@@ -56,6 +56,12 @@ public partial class Robot
     // 角色专属技能池（最多5种，由AI根据角色特征分配，空列表则回退到全局设置）
     public List<string> PersonalWeapons { get; set; } = new List<string>();
 
+    // 实时战斗数据统计
+    public int DamageDealt { get; set; } = 0; // 累计总输出伤害
+    public int DamageTaken { get; set; } = 0; // 累计承受伤害
+    public int Kills { get; set; } = 0;       // 击杀敌人/对手数量
+    public int ShotsFired { get; set; } = 0;  // 释放技能/射击次数
+
     // 颜色主题
     public Color PrimaryColor { get; set; }
     public Color SecondaryColor { get; set; }

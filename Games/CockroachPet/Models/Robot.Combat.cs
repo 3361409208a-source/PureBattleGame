@@ -328,6 +328,15 @@ public partial class Robot
         }
 
         HP = Math.Max(0, HP - damage);
+        DamageTaken += damage;
+
+        // 查找攻击者并增加其 DamageDealt 统计
+        Robot? attackerObj = null;
+        if (!string.IsNullOrEmpty(attackerName) && PetForm.Instance != null)
+        {
+            attackerObj = PetForm.Instance.GetRobots().FirstOrDefault(r => r.Name == attackerName);
+            if (attackerObj != null) attackerObj.DamageDealt += damage;
+        }
 
         if (HP <= 0)
         {
@@ -335,14 +344,27 @@ public partial class Robot
             IsMoving = false;
             RotationAngle = 90f;
             Dx = 0; Dy = 0;
+            if (attackerObj != null) attackerObj.Kills++;
+
             string deathMsg = !string.IsNullOrEmpty(attackerName) ? $"{attackerName}...老子被你阴了 🖕💀" : "操...老子被阴了 🖕💀";
             SetBark(CurseMode ? deathMsg : "核心崩溃...系统下线 💀", 200);
             AudioManager.PlayDeathSound();
+
+            string logMsg = !string.IsNullOrEmpty(attackerName) 
+                ? $"💥 【击杀】{attackerName} 击败了 {Name}！"
+                : $"💀 【倒下】{Name} 核心崩溃下线！";
+            PetForm.Instance?.AddCombatLog(attackerName ?? "系统", Name, "击杀", damage, "KILL", logMsg);
         }
         else
         {
             // 受伤音效
             AudioManager.PlayHitSound();
+
+            if (!string.IsNullOrEmpty(attackerName))
+            {
+                string logMsg = $"⚔️ 【命中】{attackerName} 对 {Name} 造成 {damage} 点伤害！";
+                PetForm.Instance?.AddCombatLog(attackerName, Name, "技能攻击", damage, "ATTACK", logMsg);
+            }
         }
 
         LastDamageText = $"-{damage}";
