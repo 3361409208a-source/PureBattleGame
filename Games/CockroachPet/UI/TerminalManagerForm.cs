@@ -498,7 +498,8 @@ public class TerminalManagerForm : WebUIHostForm
                     guidelines = c.Guidelines,
                     color = c.Color,
                     isWeaponMaster = c.IsWeaponMaster,
-                    avatarPath = c.AvatarPath
+                    avatarPath = c.AvatarPath,
+                    weapons = c.Weapons
                 }).ToList()
             };
         });

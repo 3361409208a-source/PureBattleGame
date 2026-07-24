@@ -1788,6 +1788,13 @@ public partial class PetForm : Form
             }
 
             var robot = SpawnRobotWithConfig(cfg.Name, personality, cfg.Guidelines, color, cfg.IsWeaponMaster, cfg.AvatarPath);
+
+            // 应用 AI 分配的专属技能（最多5种），超出部分截断
+            if (cfg.Weapons != null && cfg.Weapons.Count > 0)
+            {
+                robot.PersonalWeapons = cfg.Weapons.Take(5).ToList();
+            }
+
             list.Add(robot);
         }
         return list;

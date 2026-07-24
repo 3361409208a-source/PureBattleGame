@@ -9,6 +9,7 @@ interface AiGeneratedConfig {
   color: string;
   isWeaponMaster: boolean;
   avatarPath?: string;
+  weapons?: string[];
 }
 
 interface ProgressState {
@@ -266,25 +267,42 @@ export const AiGeneratorModal: React.FC<AiGeneratorModalProps> = ({ isOpen, onCl
                 <Sparkles className="w-3.5 h-3.5" />
                 已生成并投放的专属机器人 ({generatedConfigs.length} 个):
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="space-y-2">
                 {generatedConfigs.map((cfg, idx) => (
                   <div
                     key={idx}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-xs"
+                    className="p-2.5 bg-zinc-900 border border-zinc-800 rounded-lg space-y-1.5"
                   >
-                    <span
-                      className="w-3 h-3 rounded-full shrink-0"
-                      style={{ backgroundColor: cfg.color || '#10B981' }}
-                    />
-                    <span className="font-bold text-zinc-100">{cfg.name}</span>
-                    <span className="text-[10px] px-1 bg-zinc-800 text-amber-400 rounded">
-                      {cfg.personality}
-                    </span>
-                    {cfg.isWeaponMaster && (
-                      <span className="text-[10px] text-rose-400">⚔️ 武器大师</span>
-                    )}
-                    {cfg.avatarPath && (
-                      <span className="text-[10px] text-emerald-400 bg-emerald-950/80 px-1 rounded border border-emerald-800 flex items-center gap-0.5">🎨 抠图特写已生成</span>
+                    {/* 角色基本信息行 */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span
+                        className="w-3 h-3 rounded-full shrink-0"
+                        style={{ backgroundColor: cfg.color || '#10B981' }}
+                      />
+                      <span className="font-bold text-zinc-100 text-xs">{cfg.name}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-amber-400 rounded font-mono">
+                        {cfg.personality}
+                      </span>
+                      {cfg.isWeaponMaster && (
+                        <span className="text-[10px] text-rose-400 font-semibold">⚔️ 武器大师</span>
+                      )}
+                      {cfg.avatarPath && (
+                        <span className="text-[10px] text-emerald-400 bg-emerald-950/80 px-1 rounded border border-emerald-800 flex items-center gap-0.5">🎨 抠图已生成</span>
+                      )}
+                    </div>
+                    {/* 专属技能列表 */}
+                    {cfg.weapons && cfg.weapons.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        <span className="text-[10px] text-zinc-500 font-mono mr-0.5">⚡技能:</span>
+                        {cfg.weapons.slice(0, 5).map((w, wi) => (
+                          <span
+                            key={wi}
+                            className="text-[10px] px-1.5 py-0.5 bg-indigo-950/80 border border-indigo-700/50 text-indigo-300 rounded font-mono"
+                          >
+                            {w}
+                          </span>
+                        ))}
+                      </div>
                     )}
                   </div>
                 ))}

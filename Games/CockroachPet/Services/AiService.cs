@@ -364,15 +364,18 @@ public class AiService
             try
             {
                 var systemMessage = "你是一个像素桌面宠物机器人的AI生成专家。" +
-                    "用户会给出自然语言文本指令（如“加入赛罗”、“加入十个奥特曼成员”、“生成三个三国武将”等）。" +
+                    "用户会给出自然语言文本指令（如加入赛罗、加入十个奥特曼成员、生成三个三国武将等）。" +
                     "请理解用户的指令，拆解出具体要生成的机器人列表，并严格按 JSON 数组格式返回。" +
                     "不要包含任何解释文本或 Markdown 标记。" +
                     "JSON 数组中每个对象包含以下属性：" +
-                    "- \"name\": 机器人名称 (简短清晰)" +
-                    "- \"personality\": 个性，必须在 ['友好', '害羞', '叛逆', '幽默', '严肃', '好奇', '懒惰', '精力'] 中选择一个" +
-                    "- \"guidelines\": 角色性格口头禅/战吼设定（25字内）" +
-                    "- \"color\": 角色代表色的 Hex 颜色值 (如 #E63946, #457B9D, #FFD700)" +
-                    "- \"isWeaponMaster\": 布尔值 (true/false)，是否为强力武器战士";
+                    "name: 机器人名称; " +
+                    "personality: 个性，必须在 友好 害羞 叛逆 幽默 严肃 好奇 懒惰 精力 中选一; " +
+                    "guidelines: 角色口头禅或战吼（25字内）; " +
+                    "color: 角色代表色Hex（如 #E63946）; " +
+                    "isWeaponMaster: true或false，是否为强力武器战士; " +
+                    "weapons: 字符串数组，为角色选最多5种最贴合其特征的专属技能，不能为空。" +
+                    "可选技能：LASER SHOCK BURST WAVE BEAM PULSE NOVA BLASTER BULLET ROCKET PLASMA CANNON LIGHTNING SPIT INK BOOMERANG SHURIKEN GRENADE FIREBALL ICE_SHARD PUSH PULL GRAB THROW DUEL SLAM KICK SUPLEX HEADBUTT TORNADO。" +
+                    "示例：赛罗奥特曼 weapons=[BEAM,LASER,KICK,NOVA,SLAM]，关羽 weapons=[DUEL,SLAM,WAVE,CANNON,KICK]，钢铁侠 weapons=[ROCKET,LASER,CANNON,BLAST,NOVA]。";
 
                 var requestBody = new
                 {
@@ -447,40 +450,48 @@ public class AiService
             };
         }
 
-        // 预设丰富名录库
-        var ultramanRoster = new (string name, string personality, string guidelines, string color, bool weapon)[]
+        // 预设丰富名录库（含角色专属技能）
+        var ultramanRoster = new (string name, string personality, string guidelines, string color, bool weapon, string[] weapons)[]
         {
-            ("赛罗奥特曼", "叛逆", "赛文奥特曼之子，战吼：还差两万年呢！", "#E63946", true),
-            ("迪迦奥特曼", "友好", "超古代守护者，战吼：相信光的力量！", "#457B9D", true),
-            ("赛文奥特曼", "严肃", "恒星观测员340号，头镖切裂黑暗！", "#D90429", true),
-            ("泰罗奥特曼", "精力", "奥特警备队总教官，奥特炸弹爆发！", "#F77F00", true),
-            ("雷欧奥特曼", "叛逆", "狮子座L77星云王者，宇宙拳法！", "#D62828", false),
-            ("欧布奥特曼", "幽默", "浪客红凯，借用大家的光芒！", "#00B4D8", true),
-            ("捷德奥特曼", "好奇", "贝利亚之子，命运由我来改变！", "#7209B7", true),
-            ("泽塔奥特曼", "精力", "赛罗的弟子，喊出我的名字吧！", "#4895EF", true),
-            ("梦比优斯", "友好", "无限羁绊，同伴的誓言刻在心中！", "#F15BB5", false),
-            ("盖亚奥特曼", "严肃", "大地之光，重装落地爆发巨浪！", "#E63946", true)
+            ("赛罗奥特曼", "叛逆", "赛文奥特曼之子，战吼：还差两万年呢！", "#E63946", true, new[]{"BEAM","LASER","NOVA","KICK","SLAM"}),
+            ("迪迦奥特曼", "友好", "超古代守护者，战吼：相信光的力量！", "#457B9D", true, new[]{"BEAM","NOVA","PULSE","PUSH","DUEL"}),
+            ("赛文奥特曼", "严肃", "恒星观测员340号，头镖切裂黑暗！", "#D90429", true, new[]{"LASER","SHURIKEN","CANNON","HEADBUTT","WAVE"}),
+            ("泰罗奥特曼", "精力", "奥特警备队总教官，奥特炸弹爆发！", "#F77F00", true, new[]{"NOVA","GRENADE","BEAM","SLAM","TORNADO"}),
+            ("雷欧奥特曼", "叛逆", "狮子座L77星云王者，宇宙拳法！", "#D62828", false, new[]{"KICK","SUPLEX","DUEL","HEADBUTT","SLAM"}),
+            ("欧布奥特曼", "幽默", "浪客红凯，借用大家的光芒！", "#00B4D8", true, new[]{"BEAM","LASER","FIREBALL","ICE_SHARD","NOVA"}),
+            ("捷德奥特曼", "好奇", "贝利亚之子，命运由我来改变！", "#7209B7", true, new[]{"LIGHTNING","SHOCK","BEAM","GRAB","TORNADO"}),
+            ("泽塔奥特曼", "精力", "赛罗的弟子，喊出我的名字吧！", "#4895EF", true, new[]{"BEAM","NOVA","LASER","KICK","DUEL"}),
+            ("梦比优斯", "友好", "无限羁绊，同伴的誓言刻在心中！", "#F15BB5", false, new[]{"PUSH","PULL","GRAB","DUEL","WAVE"}),
+            ("盖亚奥特曼", "严肃", "大地之光，重装落地爆发巨浪！", "#E63946", true, new[]{"NOVA","SLAM","WAVE","CANNON","BEAM"})
         };
 
-        var threeKingdomsRoster = new (string name, string personality, string guidelines, string color, bool weapon)[]
+        var threeKingdomsRoster = new (string name, string personality, string guidelines, string color, bool weapon, string[] weapons)[]
         {
-            ("关羽", "严肃", "美髯公，青龙偃月刀一出斩敌！", "#2A9D8F", true),
-            ("张飞", "叛逆", "燕人张翼德，咆哮断长坂桥！", "#264653", true),
-            ("赵云", "精力", "常山赵子龙，七进七出浑身是胆！", "#E9C46A", true),
-            ("马超", "叛逆", "锦马超，西凉铁骑横扫千军！", "#F4A261", true),
-            ("黄忠", "严肃", "百步穿杨老将军，神弓烈火！", "#E76F51", true),
-            ("吕布", "叛逆", "人中吕布马中赤兔，无双乱舞！", "#D62828", true),
-            ("诸葛亮", "幽默", "卧龙先生，借东风火烧赤壁！", "#0077B6", false)
+            ("关羽", "严肃", "美髯公，青龙偃月刀一出斩敌！", "#2A9D8F", true, new[]{"DUEL","SLAM","WAVE","CANNON","KICK"}),
+            ("张飞", "叛逆", "燕人张翼德，咆哮断长坂桥！", "#264653", true, new[]{"HEADBUTT","SUPLEX","SLAM","TORNADO","DUEL"}),
+            ("赵云", "精力", "常山赵子龙，七进七出浑身是胆！", "#E9C46A", true, new[]{"BULLET","KICK","DUEL","SLAM","GRAB"}),
+            ("马超", "叛逆", "锦马超，西凉铁骑横扫千军！", "#F4A261", true, new[]{"SLAM","HEADBUTT","ROCKET","KICK","TORNADO"}),
+            ("黄忠", "严肃", "百步穿杨老将军，神弓烈火！", "#E76F51", true, new[]{"CANNON","FIREBALL","WAVE","BOOMERANG","SHURIKEN"}),
+            ("吕布", "叛逆", "人中吕布马中赤兔，无双乱舞！", "#D62828", true, new[]{"TORNADO","SUPLEX","DUEL","SLAM","CANNON"}),
+            ("诸葛亮", "幽默", "卧龙先生，借东风火烧赤壁！", "#0077B6", false, new[]{"FIREBALL","LIGHTNING","WAVE","NOVA","INK"})
         };
 
-        var avengersRoster = new (string name, string personality, string guidelines, string color, bool weapon)[]
+        var avengersRoster = new (string name, string personality, string guidelines, string color, bool weapon, string[] weapons)[]
         {
-            ("钢铁侠", "幽默", "I am Iron Man, 贾维斯开启激光全射！", "#D62828", true),
-            ("美国队长", "严肃", "我可以这样打一整天！振金盾牌！", "#0077B6", false),
-            ("雷神索尔", "精力", "阿斯加德之王，召唤暴风战斧！", "#FFB703", true),
-            ("绿巨人", "叛逆", "HULK SMASH! 砸碎面前一切！", "#2A9D8F", false),
-            ("蜘蛛侠", "幽默", "能力越大责任越大，蛛丝射击！", "#E63946", false)
+            ("钢铁侠", "幽默", "I am Iron Man, 贾维斯开启激光全射！", "#D62828", true, new[]{"ROCKET","LASER","CANNON","NOVA","BEAM"}),
+            ("美国队长", "严肃", "我可以这样打一整天！振金盾牌！", "#0077B6", false, new[]{"DUEL","PUSH","SLAM","HEADBUTT","BOOMERANG"}),
+            ("雷神索尔", "精力", "阿斯加德之王，召唤暴风战斧！", "#FFB703", true, new[]{"LIGHTNING","TORNADO","SLAM","CANNON","WAVE"}),
+            ("绿巨人", "叛逆", "HULK SMASH! 砸碎面前一切！", "#2A9D8F", false, new[]{"SUPLEX","SLAM","HEADBUTT","GRAB","TORNADO"}),
+            ("蜘蛛侠", "幽默", "能力越大责任越大，蛛丝射击！", "#E63946", false, new[]{"GRAB","PULL","SPIT","DUEL","KICK"})
         };
+
+        // 所有可选技能池（用于随机回退）
+        var allWeaponsPool = new[] {
+            "LASER","SHOCK","BURST","WAVE","BEAM","PULSE","NOVA","BLASTER",
+            "BULLET","ROCKET","PLASMA","CANNON","LIGHTNING","SPIT","INK","BOOMERANG","SHURIKEN","GRENADE","FIREBALL","ICE_SHARD",
+            "PUSH","PULL","GRAB","THROW","DUEL","SLAM","KICK","SUPLEX","HEADBUTT","TORNADO"
+        };
+        var rand = new Random();
 
         // 识别主题关键词
         if (input.Contains("奥特曼") || input.Contains("赛罗") || input.Contains("迪迦") || input.Contains("光之国"))
@@ -488,14 +499,14 @@ public class AiService
             if (input.Contains("赛罗") && count == 1)
             {
                 var r = ultramanRoster[0];
-                list.Add(new AiGeneratedRobotConfig { Name = r.name, Personality = r.personality, Guidelines = r.guidelines, Color = r.color, IsWeaponMaster = r.weapon });
+                list.Add(new AiGeneratedRobotConfig { Name = r.name, Personality = r.personality, Guidelines = r.guidelines, Color = r.color, IsWeaponMaster = r.weapon, Weapons = new List<string>(r.weapons) });
                 return list;
             }
             int take = Math.Min(count, ultramanRoster.Length);
             for (int i = 0; i < take; i++)
             {
                 var r = ultramanRoster[i];
-                list.Add(new AiGeneratedRobotConfig { Name = r.name, Personality = r.personality, Guidelines = r.guidelines, Color = r.color, IsWeaponMaster = r.weapon });
+                list.Add(new AiGeneratedRobotConfig { Name = r.name, Personality = r.personality, Guidelines = r.guidelines, Color = r.color, IsWeaponMaster = r.weapon, Weapons = new List<string>(r.weapons) });
             }
             return list;
         }
@@ -506,7 +517,7 @@ public class AiService
             for (int i = 0; i < take; i++)
             {
                 var r = threeKingdomsRoster[i];
-                list.Add(new AiGeneratedRobotConfig { Name = r.name, Personality = r.personality, Guidelines = r.guidelines, Color = r.color, IsWeaponMaster = r.weapon });
+                list.Add(new AiGeneratedRobotConfig { Name = r.name, Personality = r.personality, Guidelines = r.guidelines, Color = r.color, IsWeaponMaster = r.weapon, Weapons = new List<string>(r.weapons) });
             }
             return list;
         }
@@ -517,12 +528,12 @@ public class AiService
             for (int i = 0; i < take; i++)
             {
                 var r = avengersRoster[i];
-                list.Add(new AiGeneratedRobotConfig { Name = r.name, Personality = r.personality, Guidelines = r.guidelines, Color = r.color, IsWeaponMaster = r.weapon });
+                list.Add(new AiGeneratedRobotConfig { Name = r.name, Personality = r.personality, Guidelines = r.guidelines, Color = r.color, IsWeaponMaster = r.weapon, Weapons = new List<string>(r.weapons) });
             }
             return list;
         }
 
-        // 通用兜底拆解
+        // 通用兜底拆解（随机分配5种技能）
         string baseName = prompt.Replace("加入", "").Replace("生成", "").Replace("创建", "").Replace("个", "").Trim();
         if (string.IsNullOrEmpty(baseName)) baseName = "像素战士";
         baseName = System.Text.RegularExpressions.Regex.Replace(baseName, @"\d+", "").Trim();
@@ -534,13 +545,16 @@ public class AiService
         for (int i = 0; i < count; i++)
         {
             string name = count == 1 ? baseName : $"{baseName}-{i + 1}";
+            // 随机从全池抽取5种不重复技能
+            var shuffled = allWeaponsPool.OrderBy(_ => rand.Next()).Take(5).ToList();
             list.Add(new AiGeneratedRobotConfig
             {
                 Name = name,
                 Personality = personalities[i % personalities.Length],
                 Guidelines = $"来自指令生成：{prompt}",
                 Color = colors[i % colors.Length],
-                IsWeaponMaster = (i % 2 == 0)
+                IsWeaponMaster = (i % 2 == 0),
+                Weapons = shuffled
             });
         }
 
@@ -556,4 +570,9 @@ public class AiGeneratedRobotConfig
     public string Color { get; set; } = "#FF4D4D";
     public bool IsWeaponMaster { get; set; } = false;
     public string AvatarPath { get; set; } = "";
+    /// <summary>AI 为该角色分配的专属技能列表（最多5种）。
+    /// 远程: LASER SHOCK BURST WAVE BEAM PULSE NOVA BLASTER BULLET ROCKET PLASMA CANNON LIGHTNING SPIT INK BOOMERANG SHURIKEN GRENADE FIREBALL ICE_SHARD
+    /// 近战: PUSH PULL GRAB THROW DUEL SLAM KICK SUPLEX HEADBUTT TORNADO
+    /// </summary>
+    public List<string> Weapons { get; set; } = new List<string>();
 }

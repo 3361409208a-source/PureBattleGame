@@ -244,7 +244,17 @@ public partial class Robot
         if (IsWeaponMaster)
         {
             var masterWeapons = new[] { "BULLET", "ROCKET", "PLASMA", "CANNON", "LIGHTNING", "SPIT", "INK", "BOOMERANG", "SHURIKEN", "GRENADE", "FIREBALL", "ICE_SHARD" };
-            var allowedWeapons = masterWeapons.Where(w => Core.SettingsManager.Current.EnabledWeapons.Contains(w)).ToArray();
+            // 优先使用角色专属技能池，否则回退到全局设置
+            string[] allowedWeapons;
+            if (PersonalWeapons.Count > 0)
+            {
+                allowedWeapons = masterWeapons.Where(w => PersonalWeapons.Contains(w)).ToArray();
+                if (allowedWeapons.Length == 0) allowedWeapons = masterWeapons.Where(w => Core.SettingsManager.Current.EnabledWeapons.Contains(w)).ToArray();
+            }
+            else
+            {
+                allowedWeapons = masterWeapons.Where(w => Core.SettingsManager.Current.EnabledWeapons.Contains(w)).ToArray();
+            }
             if (allowedWeapons.Length == 0) allowedWeapons = new[] { "BULLET" }; // Fallback
 
             string selectedType = allowedWeapons[Rand.Next(allowedWeapons.Length)];
@@ -276,7 +286,17 @@ public partial class Robot
         else
         {
             var baseWeapons = new[] { "LASER", "SHOCK", "BURST", "WAVE", "BEAM", "PULSE", "NOVA", "BLASTER" };
-            var allowedWeapons = baseWeapons.Where(w => Core.SettingsManager.Current.EnabledWeapons.Contains(w)).ToArray();
+            // 优先使用角色专属技能池，否则回退到全局设置
+            string[] allowedWeapons;
+            if (PersonalWeapons.Count > 0)
+            {
+                allowedWeapons = baseWeapons.Where(w => PersonalWeapons.Contains(w)).ToArray();
+                if (allowedWeapons.Length == 0) allowedWeapons = baseWeapons.Where(w => Core.SettingsManager.Current.EnabledWeapons.Contains(w)).ToArray();
+            }
+            else
+            {
+                allowedWeapons = baseWeapons.Where(w => Core.SettingsManager.Current.EnabledWeapons.Contains(w)).ToArray();
+            }
             if (allowedWeapons.Length == 0) allowedWeapons = new[] { "LASER" }; // Fallback
             
             CurrentAttackType = allowedWeapons[Rand.Next(allowedWeapons.Length)];

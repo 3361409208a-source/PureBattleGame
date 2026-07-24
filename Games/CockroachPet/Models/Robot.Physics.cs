@@ -67,7 +67,17 @@ public partial class Robot
         if (other == null || !other.IsActive || other.IsDead || IsDead) return;
 
         var allMelee = new[] { "PUSH", "PULL", "GRAB", "THROW", "DUEL", "SLAM", "KICK", "SUPLEX", "HEADBUTT", "TORNADO" };
-        var allowedMelee = allMelee.Where(w => Core.SettingsManager.Current.EnabledWeapons.Contains(w)).ToArray();
+        // 优先使用角色专属技能池，否则回退到全局设置
+        string[] allowedMelee;
+        if (PersonalWeapons.Count > 0)
+        {
+            allowedMelee = allMelee.Where(w => PersonalWeapons.Contains(w)).ToArray();
+            if (allowedMelee.Length == 0) allowedMelee = allMelee.Where(w => Core.SettingsManager.Current.EnabledWeapons.Contains(w)).ToArray();
+        }
+        else
+        {
+            allowedMelee = allMelee.Where(w => Core.SettingsManager.Current.EnabledWeapons.Contains(w)).ToArray();
+        }
         if (allowedMelee.Length == 0) allowedMelee = new[] { "PUSH" };
 
         string selected = allowedMelee[Rand.Next(allowedMelee.Length)];

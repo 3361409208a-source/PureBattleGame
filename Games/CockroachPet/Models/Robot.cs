@@ -53,6 +53,9 @@ public partial class Robot
     public int FightFrequency { get; set; } = 15;
     public bool IsWeaponMaster { get; set; } = false;
 
+    // 角色专属技能池（最多5种，由AI根据角色特征分配，空列表则回退到全局设置）
+    public List<string> PersonalWeapons { get; set; } = new List<string>();
+
     // 颜色主题
     public Color PrimaryColor { get; set; }
     public Color SecondaryColor { get; set; }
