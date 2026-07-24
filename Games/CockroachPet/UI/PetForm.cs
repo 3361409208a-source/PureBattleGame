@@ -1540,22 +1540,15 @@ public partial class PetForm : Form
                     }
                     break;
 
-                case "FIREBALL": // 烈焰火球 (黄红渐变火球 + 火焰粒子尾迹)
+                case "FIREBALL": // 极速双色火球 (黄色内核 + 橙红外圈 + 尾星，零 GC 渐变开销)
                     float fireR = Math.Max(3f, 8f * pScale);
-                    using (var firePath = new System.Drawing.Drawing2D.GraphicsPath())
-                    {
-                        firePath.AddEllipse(p.X - fireR, p.Y - fireR, fireR * 2, fireR * 2);
-                        using var fireBrush = new System.Drawing.Drawing2D.PathGradientBrush(firePath)
-                        {
-                            CenterColor = Color.Yellow,
-                            SurroundColors = new[] { Color.OrangeRed }
-                        };
-                        g.FillPath(fireBrush, firePath);
-                    }
+                    using (var outerBrush = new SolidBrush(Color.OrangeRed))
+                    using (var innerBrush = new SolidBrush(Color.Yellow))
                     using (var sparkBrush = new SolidBrush(Color.Orange))
                     {
+                        g.FillEllipse(outerBrush, p.X - fireR, p.Y - fireR, fireR * 2, fireR * 2);
+                        g.FillEllipse(innerBrush, p.X - fireR * 0.5f, p.Y - fireR * 0.5f, fireR, fireR);
                         g.FillEllipse(sparkBrush, p.X - p.Dx * 0.8f - 2, p.Y - p.Dy * 0.8f - 2, 4 * pScale, 4 * pScale);
-                        g.FillEllipse(sparkBrush, p.X - p.Dx * 1.4f - 1, p.Y - p.Dy * 1.4f - 1, 2 * pScale, 2 * pScale);
                     }
                     break;
 
@@ -1587,13 +1580,14 @@ public partial class PetForm : Form
                     }
                     break;
 
-                case "CANNON": // 超级重炮 (黑金开花重弹)
+                case "CANNON": // 极速重炮 (纯色双圈开花黑金重弹，无 Gradient 开销)
                     float cannonR = Math.Max(3f, 10f * pScale);
-                    using (var cannonBrush = new System.Drawing.Drawing2D.LinearGradientBrush(new RectangleF(p.X - cannonR, p.Y - cannonR, cannonR * 2, cannonR * 2), Color.FromArgb(80, 80, 80), Color.Black, 45f))
+                    using (var cannonBrush = new SolidBrush(Color.FromArgb(40, 40, 40)))
+                    using (var goldPen = new Pen(Color.Gold, 1.5f * pScale))
                     {
                         g.FillEllipse(cannonBrush, p.X - cannonR, p.Y - cannonR, cannonR * 2, cannonR * 2);
+                        g.DrawEllipse(goldPen, p.X - cannonR, p.Y - cannonR, cannonR * 2, cannonR * 2);
                     }
-                    g.DrawEllipse(Pens.Gold, p.X - cannonR, p.Y - cannonR, cannonR * 2, cannonR * 2);
                     break;
 
                 case "PLASMA": // 等离子炮 (高能紫光团 + 涟漪外环)
