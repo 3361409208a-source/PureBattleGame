@@ -749,39 +749,67 @@ public static class PixelRobotRenderer
         if (robot.ChatTimer <= 0 || string.IsNullOrEmpty(text)) return;
 
         float scale = robot.Size / 64.0f;
-        float bx = rx + robot.Size / 2;
-        float by = ry - Math.Max(20.0f, 32.0f * scale);
+        float fontSize = Math.Clamp(9.5f * scale, 8.5f, 26.0f);
+        using var font = new Font("Microsoft YaHei UI", fontSize, FontStyle.Bold);
 
-        // 主字体颜色：对骂/吐槽模式下亮红，普通模式亮白/浅金
-        Color textColor = robot.CurseMode ? Color.FromArgb((int)(255 * alpha), 255, 65, 65) : Color.FromArgb((int)(255 * alpha), 255, 255, 255);
+        var textSize = g.MeasureString(text, font);
+        float bx = rx + robot.Size / 2;
+        float by = ry - (18.0f * scale) - textSize.Height;
+
+        // 气泡背景框 (带自适应内边距与动态圆角)
+        float padX = 8f * scale;
+        float padY = 4f * scale;
+        RectangleF bubbleRect = new RectangleF(bx - textSize.Width / 2 - padX, by - padY, textSize.Width + padX * 2, textSize.Height + padY * 2);
+
+        Color bubbleBgColor = robot.CurseMode ? Color.FromArgb((int)(230 * alpha), 30, 10, 10) : Color.FromArgb((int)(230 * alpha), 15, 23, 42);
+        Color borderColor = robot.CurseMode ? Color.FromArgb((int)(220 * alpha), 239, 68, 68) : Color.FromArgb((int)(220 * alpha), 59, 130, 246);
+
+        using var bgBrush = new SolidBrush(bubbleBgColor);
+        using var borderPen = new Pen(borderColor, Math.Max(1f, 1.5f * scale));
+
+        g.FillRoundedRectangle(bgBrush, bubbleRect.X, bubbleRect.Y, bubbleRect.Width, bubbleRect.Height, 4 * scale);
+        g.DrawRoundedRectangle(borderPen, bubbleRect.X, bubbleRect.Y, bubbleRect.Width, bubbleRect.Height, 4 * scale);
+
+        Color textColor = robot.CurseMode ? Color.FromArgb((int)(255 * alpha), 254, 202, 202) : Color.FromArgb((int)(255 * alpha), 255, 255, 255);
         using var textBrush = new SolidBrush(textColor);
-        g.DrawString(text, DefaultChatFont, textBrush, bx, by, CenterFormat);
+        g.DrawString(text, font, textBrush, bx, bubbleRect.Y + padY, CenterHorizFormat);
+
+        PointF[] arrow = {
+            new PointF(bx - 4 * scale, bubbleRect.Bottom),
+            new PointF(bx + 4 * scale, bubbleRect.Bottom),
+            new PointF(bx, bubbleRect.Bottom + 5 * scale)
+        };
+        g.FillPolygon(bgBrush, arrow);
     }
 
     private static void DrawEmojiBubble(Graphics g, Robot robot, float rx, float ry, float alpha = 1.0f)
     {
         if (robot.EmojiBubbleTimer <= 0 || string.IsNullOrEmpty(robot.EmojiBubble)) return;
 
+        float scale = robot.Size / 64.0f;
         float bx = rx + robot.Size / 2;
-        float by = ry - 35;
+        float by = ry - (35.0f * scale);
+
+        float fontSize = Math.Clamp(12.0f * scale, 9.0f, 32.0f);
+        using var font = new Font("Segoe UI Emoji", fontSize);
 
         using var textBrush = new SolidBrush(Color.FromArgb((int)(255 * alpha), Color.Black));
-        g.DrawString(robot.EmojiBubble, EmojiFont12, textBrush, bx, by, CenterHorizFormat);
+        g.DrawString(robot.EmojiBubble, font, textBrush, bx, by, CenterHorizFormat);
     }
 
     private static void DrawThinkingIndicator(Graphics g, Robot robot, float rx, float ry, float alpha = 1.0f)
     {
         if (!robot.IsAiSpeaking) return;
 
+        float scale = robot.Size / 64.0f;
         float bx = rx + robot.Size / 2;
-        float by = ry - 30;
+        float by = ry - (30.0f * scale);
 
-        // 三个跳动的小点
         for (int i = 0; i < 3; i++)
         {
-            float offset = (float)Math.Sin((Environment.TickCount / 200.0) + i * 1.5) * 3;
+            float offset = (float)Math.Sin((Environment.TickCount / 200.0) + i * 1.5) * (3f * scale);
             using var brush = new SolidBrush(Color.FromArgb((int)(200 * alpha), 100, 200, 255));
-            g.FillEllipse(brush, bx - 8 + i * 8, by + offset, 6, 6);
+            g.FillEllipse(brush, bx - (8 * scale) + i * (8 * scale), by + offset, 6 * scale, 6 * scale);
         }
     }
     private static void DrawHeart(Graphics g, Brush brush, float x, float y, float size)
@@ -798,82 +826,70 @@ public static class PixelRobotRenderer
         g.FillPolygon(brush, points);
     }
 
-    private static void DrawAngryEyes(Graphics g, Robot robot, float cx, float cy, float scale)
-    {
-        using var eyeBrush = new SolidBrush(Color.Red);
-        using var pen = new Pen(eyeBrush, 3 * scale);
-        
-        // 愤怒的 V 型眼
-        g.DrawLine(pen, cx - 12 * scale, cy - 10 * scale, cx - 4 * scale, cy - 4 * scale);
-        g.DrawLine(pen, cx - 12 * scale, cy - 4 * scale, cx - 4 * scale, cy - 10 * scale); // 左眼 X
-        
-        g.DrawLine(pen, cx + 4 * scale, cy - 10 * scale, cx + 12 * scale, cy - 4 * scale);
-        g.DrawLine(pen, cx + 4 * scale, cy - 4 * scale, cx + 12 * scale, cy - 10 * scale); // 右眼 X
-    }
-
     private static void DrawName(Graphics g, Robot robot, float rx, float ry, float alpha = 1.0f)
     {
         if (PureBattleGame.Core.SettingsManager.Current.HideNameAndPersonality) return;
         if (string.IsNullOrEmpty(robot.Name)) return;
+
+        float scale = robot.Size / 64.0f;
+        float nameFontSize = Math.Clamp(8.0f * scale, 7.0f, 22.0f);
+        float smallFontSize = Math.Clamp(7.0f * scale, 6.0f, 18.0f);
+
+        using var font = new Font("Consolas", nameFontSize, FontStyle.Bold);
+        using var smallFont = new Font("Microsoft YaHei", smallFontSize);
 
         using var brush = new SolidBrush(Color.FromArgb((int)(255 * alpha), Color.White));
         var personalityColor = robot.GetPersonalityColor();
         using var personalityBrush = new SolidBrush(Color.FromArgb((int)(255 * alpha), personalityColor));
 
         float textX = rx + robot.Size / 2;
-        float textY = ry - 20;
+        float textY = ry - (18.0f * scale) - (smallFontSize * 2.2f);
 
-        g.DrawString(robot.Name, NameFont, brush, textX, textY, CenterHorizFormat);
+        g.DrawString(robot.Name, font, brush, textX, textY, CenterHorizFormat);
 
         string personalityLabel = $"{robot.GetPersonalityEmoji()} {robot.GetPersonalityName()}";
-        g.DrawString(personalityLabel, SmallFont, personalityBrush, textX, textY + 12, CenterHorizFormat);
+        g.DrawString(personalityLabel, smallFont, personalityBrush, textX, textY + nameFontSize * 1.3f, CenterHorizFormat);
     }
 
     private static void DrawHealthBar(Graphics g, Robot robot, float rx, float ry, float alpha = 1.0f)
     {
         if (robot.IsDead) return;
+        float scale = robot.Size / 64.0f;
         float barWidth = robot.Size * 0.8f;
-        float barHeight = 4;
+        float barHeight = Math.Max(3f, 4f * scale);
         float bx = rx + (robot.Size - barWidth) / 2;
-        float by = ry - 8;
+        float by = ry - (6f * scale);
 
-        // 确保值在有效范围内，防止溢出
-        bx = Math.Clamp(bx, -10000, 10000);
-        by = Math.Clamp(by, -10000, 10000);
-        barWidth = Math.Clamp(barWidth, 0, 10000);
-        barHeight = Math.Clamp(barHeight, 0, 1000);
-
-        // 背景
         using var bgBrush = new SolidBrush(Color.FromArgb((int)(255 * alpha), Color.Gray));
         g.FillRectangle(bgBrush, bx, by, barWidth, barHeight);
 
-        // 血条
         float hpPercent = (float)robot.HP / robot.MaxHP;
         hpPercent = Math.Clamp(hpPercent, 0, 1);
         Color hpColor = hpPercent > 0.5 ? Color.Lime : (hpPercent > 0.2 ? Color.Yellow : Color.Red);
         using var hpBrush = new SolidBrush(Color.FromArgb((int)(255 * alpha), hpColor));
         g.FillRectangle(hpBrush, bx, by, barWidth * hpPercent, barHeight);
 
-        // 边框
-        using var borderPen = new Pen(Color.FromArgb((int)(255 * alpha), Color.Black));
+        using var borderPen = new Pen(Color.FromArgb((int)(255 * alpha), Color.Black), Math.Max(1f, scale));
         g.DrawRectangle(borderPen, bx, by, barWidth, barHeight);
     }
 
     private static void DrawDamageText(Graphics g, Robot robot, float rx, float ry, float alpha = 1.0f)
     {
-        if (robot.DamageTextTimer <= 0) return;
+        if (robot.DamageTextTimer <= 0 || string.IsNullOrEmpty(robot.LastDamageText)) return;
 
+        float scale = robot.Size / 64.0f;
         float localAlpha = Math.Min(1.0f, robot.DamageTextTimer / 30f);
-        using var font = new Font("Impact", 14, FontStyle.Bold);
+        float fontSize = Math.Clamp(14.0f * scale, 10.0f, 36.0f);
+        using var font = new Font("Impact", fontSize, FontStyle.Bold);
         using var brush = new SolidBrush(Color.FromArgb((int)(localAlpha * 255), Color.OrangeRed));
-
-        float floatOffset = (45 - robot.DamageTextTimer) * 1.5f;
-        float tx = rx + robot.Size / 2;
-        float ty = ry - 20 - floatOffset;
-
         using var shadowBrush = new SolidBrush(Color.FromArgb((int)(localAlpha * 255), Color.Black));
-        g.DrawString(robot.LastDamageText, font, shadowBrush, tx + 1, ty + 1, new StringFormat { Alignment = StringAlignment.Center });
-        g.DrawString(robot.LastDamageText, font, brush, tx, ty, new StringFormat { Alignment = StringAlignment.Center });
+
+        float floatOffset = (45 - robot.DamageTextTimer) * (1.5f * scale);
+        float tx = rx + robot.Size / 2;
+        float ty = ry - (15 * scale) - floatOffset;
+
+        g.DrawString(robot.LastDamageText, font, shadowBrush, tx + 1 * scale, ty + 1 * scale, CenterHorizFormat);
+        g.DrawString(robot.LastDamageText, font, brush, tx, ty, CenterHorizFormat);
     }
 
     private static void DrawPixelLine(Graphics g, Brush brush, float x1, float y1, float x2, float y2, int thickness)
