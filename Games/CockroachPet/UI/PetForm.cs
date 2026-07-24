@@ -1229,7 +1229,16 @@ public partial class PetForm : Form
         // 5. 更新怪物
         UpdateMonsters(screenWidth, screenHeight);
 
-        RenderFrameWithLayeredWindow();
+        // 触发 UI 线程 60 FPS 重绘（防堆积）
+        if (this.IsHandleCreated && !this.IsDisposed && !_isInvalidatePending)
+        {
+            _isInvalidatePending = true;
+            try
+            {
+                this.BeginInvoke((Action)(() => this.Invalidate()));
+            }
+            catch { _isInvalidatePending = false; }
+        }
     }
 
     private void HandleGameRules(int sw, int sh)
@@ -1509,8 +1518,11 @@ public partial class PetForm : Form
 
     private static readonly object _hudDrawLock = new object();
 
+    private volatile bool _isInvalidatePending = false;
+
     private void PetForm_Paint(object? sender, PaintEventArgs e)
     {
+        _isInvalidatePending = false;
         try
         {
             e.Graphics.Clear(this.TransparencyKey);
