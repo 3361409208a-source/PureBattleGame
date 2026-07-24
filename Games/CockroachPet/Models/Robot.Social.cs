@@ -113,17 +113,17 @@ public partial class Robot
             if (dist < 80)
             {
                 PerformPush(other);
-                SocialCooldown = 45;
-                other.SocialCooldown = 45;
+                SocialCooldown = 180;
+                other.SocialCooldown = 180;
                 if (ShootCooldown == 0) LaunchRemoteAttack(other);
                 if (EnableAiThinking) _ = TriggerAiFightAsync(other);
             }
             else if (dist < 600 && ShootCooldown == 0)
             {
-                if (Rand.Next(100) < 30)
+                if (Rand.Next(100) < 10)
                 {
                     LaunchRemoteAttack(other);
-                    SocialCooldown = 60;
+                    SocialCooldown = 240;
                     if (EnableAiThinking) _ = TriggerAiFightAsync(other);
                 }
             }
@@ -139,18 +139,18 @@ public partial class Robot
             if (dist < 100)
             {
                 PerformPush(other);
-                SocialCooldown = 45;
-                other.SocialCooldown = 45;
+                SocialCooldown = 180;
+                other.SocialCooldown = 180;
                 if (ShootCooldown == 0) LaunchRemoteAttack(other);
                 if (EnableAiThinking) _ = TriggerAiFightAsync(other);
             }
             else if (dist < 600 && ShootCooldown == 0)
             {
-                int chance = IsWeaponMaster ? 40 : 20;
+                int chance = IsWeaponMaster ? 12 : 6;
                 if (Rand.Next(100) < chance)
                 {
                     LaunchRemoteAttack(other);
-                    SocialCooldown = 60;
+                    SocialCooldown = 240;
                     if (EnableAiThinking) _ = TriggerAiFightAsync(other);
                 }
             }
@@ -161,23 +161,23 @@ public partial class Robot
             if (dist < 80)
             {
                 StartDuel(other);
-                SocialCooldown = 100;
-                other.SocialCooldown = 100;
+                SocialCooldown = 300;
+                other.SocialCooldown = 300;
                 SetBark(aliveCount == 2 ? "这是最后的清算！💥" : "找到对手了，来格斗吧！", 80);
                 if (EnableAiThinking) _ = TriggerAiFightAsync(other);
             }
             else
             {
-                if (ChaseTimer <= 0 && FollowingTarget == null && Rand.Next(100) < 15)
+                if (ChaseTimer <= 0 && FollowingTarget == null && Rand.Next(100) < 5)
                 {
                     ChasingTarget = other;
-                    ChaseTimer = 350;
+                    ChaseTimer = 200;
                 }
 
-                if (dist > 150 && ShootCooldown == 0 && Rand.Next(100) < 15)
+                if (dist > 150 && ShootCooldown == 0 && Rand.Next(100) < 5)
                 {
                     LaunchRemoteAttack(other);
-                    SocialCooldown = 30;
+                    SocialCooldown = 240;
                     if (EnableAiThinking) _ = TriggerAiFightAsync(other);
                 }
             }

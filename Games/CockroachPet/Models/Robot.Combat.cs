@@ -239,7 +239,7 @@ public partial class Robot
         SetBark(attackBarks[Rand.Next(attackBarks.Length)], 100);
         SpecialState = "ANGRY";
         SpecialStateTimer = 100;
-        ShootCooldown = IsWeaponMaster ? 120 : 400;
+        ShootCooldown = IsWeaponMaster ? (360 + Rand.Next(180)) : (600 + Rand.Next(300));
 
         if (IsWeaponMaster)
         {

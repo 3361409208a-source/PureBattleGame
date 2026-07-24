@@ -752,34 +752,17 @@ public static class PixelRobotRenderer
         float fontSize = Math.Clamp(9.5f * scale, 8.5f, 26.0f);
         using var font = new Font("Microsoft YaHei UI", fontSize, FontStyle.Bold);
 
-        var textSize = g.MeasureString(text, font);
         float bx = rx + robot.Size / 2;
-        float by = ry - (18.0f * scale) - textSize.Height;
+        float by = ry - (18.0f * scale);
 
-        // 气泡背景框 (带自适应内边距与动态圆角)
-        float padX = 8f * scale;
-        float padY = 4f * scale;
-        RectangleF bubbleRect = new RectangleF(bx - textSize.Width / 2 - padX, by - padY, textSize.Width + padX * 2, textSize.Height + padY * 2);
+        // 黑色文字阴影（确保任何背景下都清晰透亮）
+        using var shadowBrush = new SolidBrush(Color.FromArgb((int)(200 * alpha), 0, 0, 0));
+        g.DrawString(text, font, shadowBrush, bx + 1f * scale, by + 1f * scale, CenterHorizFormat);
 
-        Color bubbleBgColor = robot.CurseMode ? Color.FromArgb((int)(230 * alpha), 30, 10, 10) : Color.FromArgb((int)(230 * alpha), 15, 23, 42);
-        Color borderColor = robot.CurseMode ? Color.FromArgb((int)(220 * alpha), 239, 68, 68) : Color.FromArgb((int)(220 * alpha), 59, 130, 246);
-
-        using var bgBrush = new SolidBrush(bubbleBgColor);
-        using var borderPen = new Pen(borderColor, Math.Max(1f, 1.5f * scale));
-
-        g.FillRoundedRectangle(bgBrush, bubbleRect.X, bubbleRect.Y, bubbleRect.Width, bubbleRect.Height, 4 * scale);
-        g.DrawRoundedRectangle(borderPen, bubbleRect.X, bubbleRect.Y, bubbleRect.Width, bubbleRect.Height, 4 * scale);
-
-        Color textColor = robot.CurseMode ? Color.FromArgb((int)(255 * alpha), 254, 202, 202) : Color.FromArgb((int)(255 * alpha), 255, 255, 255);
+        // 主字体颜色：对骂/吐槽模式下亮红，普通模式亮白
+        Color textColor = robot.CurseMode ? Color.FromArgb((int)(255 * alpha), 255, 65, 65) : Color.FromArgb((int)(255 * alpha), 255, 255, 255);
         using var textBrush = new SolidBrush(textColor);
-        g.DrawString(text, font, textBrush, bx, bubbleRect.Y + padY, CenterHorizFormat);
-
-        PointF[] arrow = {
-            new PointF(bx - 4 * scale, bubbleRect.Bottom),
-            new PointF(bx + 4 * scale, bubbleRect.Bottom),
-            new PointF(bx, bubbleRect.Bottom + 5 * scale)
-        };
-        g.FillPolygon(bgBrush, arrow);
+        g.DrawString(text, font, textBrush, bx, by, CenterHorizFormat);
     }
 
     private static void DrawEmojiBubble(Graphics g, Robot robot, float rx, float ry, float alpha = 1.0f)
