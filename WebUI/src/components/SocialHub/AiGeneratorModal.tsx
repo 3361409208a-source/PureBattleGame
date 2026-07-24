@@ -292,16 +292,50 @@ export const AiGeneratorModal: React.FC<AiGeneratorModalProps> = ({ isOpen, onCl
                     </div>
                     {/* 专属技能列表 */}
                     {cfg.weapons && cfg.weapons.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        <span className="text-[10px] text-zinc-500 font-mono mr-0.5">⚡技能:</span>
-                        {cfg.weapons.slice(0, 5).map((w, wi) => (
-                          <span
-                            key={wi}
-                            className="text-[10px] px-1.5 py-0.5 bg-indigo-950/80 border border-indigo-700/50 text-indigo-300 rounded font-mono"
-                          >
-                            {w}
-                          </span>
-                        ))}
+                      <div className="flex flex-wrap gap-1 items-center">
+                        <span className="text-[10px] text-zinc-500 font-mono mr-0.5">⚡流派技能:</span>
+                        {cfg.weapons.slice(0, 5).map((w, wi) => {
+                          const skillMap: Record<string, string> = {
+                            BEAM: '⚡ 毁灭光束',
+                            LASER: '🔴 激光射线',
+                            NOVA: '💥 新星爆破',
+                            PULSE: '🌊 脉冲波',
+                            SHOCK: '⚡ 高压电击',
+                            CANNON: '🎯 超级重炮',
+                            ROCKET: '🚀 追踪火箭',
+                            BLASTER: '💥 爆破强炮',
+                            BULLET: '🔫 密集子弹',
+                            GRENADE: '💣 高爆手雷',
+                            FIREBALL: '🔥 烈焰火球',
+                            ICE_SHARD: '🧊 冰霜尖刺',
+                            LIGHTNING: '⚡ 十万伏特',
+                            PLASMA: '🔮 等离子炮',
+                            WAVE: '🔊 震荡声波',
+                            INK: '🖋️ 墨喷',
+                            SHURIKEN: '🥷 手里剑',
+                            BOOMERANG: '🪃 回旋镖',
+                            SPIT: '💧 暗器',
+                            DUEL: '🗡️ 近身格斗',
+                            KICK: '🦶 飞踢',
+                            SLAM: '💥 抱摔',
+                            SUPLEX: '🤼 过肩摔',
+                            HEADBUTT: '💥 铁头锤',
+                            TORNADO: '🌀 旋风斩',
+                            PUSH: '✋ 推掌',
+                            PULL: '🪝 勾拉',
+                            GRAB: '✊ 抓取',
+                            THROW: '🤾 投掷'
+                          };
+                          const label = skillMap[w.toUpperCase()] || w;
+                          return (
+                            <span
+                              key={wi}
+                              className="text-[10px] px-1.5 py-0.5 bg-indigo-950/80 border border-indigo-700/50 text-indigo-300 rounded font-medium"
+                            >
+                              {label}
+                            </span>
+                          );
+                        })}
                       </div>
                     )}
                   </div>

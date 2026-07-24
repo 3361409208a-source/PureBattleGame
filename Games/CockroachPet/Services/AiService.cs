@@ -364,7 +364,7 @@ public class AiService
             try
             {
                 var systemMessage = "你是一个像素桌面宠物机器人的AI生成专家。" +
-                    "用户会给出自然语言文本指令（如加入赛罗、加入十个奥特曼成员、生成三个三国武将等）。" +
+                    "用户会给出自然语言文本指令（如加入赛罗、生成三个三国武将、召唤四个元素法师等）。" +
                     "请理解用户的指令，拆解出具体要生成的机器人列表，并严格按 JSON 数组格式返回。" +
                     "不要包含任何解释文本或 Markdown 标记。" +
                     "JSON 数组中每个对象包含以下属性：" +
@@ -372,10 +372,14 @@ public class AiService
                     "personality: 个性，必须在 友好 害羞 叛逆 幽默 严肃 好奇 懒惰 精力 中选一; " +
                     "guidelines: 角色口头禅或战吼（25字内）; " +
                     "color: 角色代表色Hex（如 #E63946）; " +
-                    "isWeaponMaster: true或false，是否为强力武器战士; " +
-                    "weapons: 字符串数组，为角色选最多5种最贴合其特征的专属技能，不能为空。" +
-                    "可选技能：LASER SHOCK BURST WAVE BEAM PULSE NOVA BLASTER BULLET ROCKET PLASMA CANNON LIGHTNING SPIT INK BOOMERANG SHURIKEN GRENADE FIREBALL ICE_SHARD PUSH PULL GRAB THROW DUEL SLAM KICK SUPLEX HEADBUTT TORNADO。" +
-                    "示例：赛罗奥特曼 weapons=[BEAM,LASER,KICK,NOVA,SLAM]，关羽 weapons=[DUEL,SLAM,WAVE,CANNON,KICK]，钢铁侠 weapons=[ROCKET,LASER,CANNON,BLAST,NOVA]。";
+                    "isWeaponMaster: true或false; " +
+                    "weapons: 字符串数组，根据角色的职业定位选最多5种符合逻辑的专属技能（必填，从同一职业池中选）：\n" +
+                    "  1. 近战肉搏流 (关羽/吕布/拳师): [DUEL, KICK, SLAM, SUPLEX, HEADBUTT, TORNADO, PUSH]\n" +
+                    "  2. 元素魔法流 (诸葛亮/法师/冰火): [FIREBALL, ICE_SHARD, LIGHTNING, NOVA, PLASMA, WAVE, INK]\n" +
+                    "  3. 远程重炮流 (黄忠/钢铁侠/枪手): [CANNON, ROCKET, BLASTER, BULLET, GRENADE, BOOMERANG]\n" +
+                    "  4. 超能光线流 (赛罗/迪迦/奥特曼): [BEAM, LASER, NOVA, PULSE, SHOCK, LIGHTNING, KICK]\n" +
+                    "  5. 敏捷刺客流 (赵云/蜘蛛侠/忍者): [SHURIKEN, BOOMERANG, SPIT, PULL, THROW, DUEL, KICK]\n" +
+                    "示例：赛罗→[\"BEAM\",\"LASER\",\"NOVA\",\"PULSE\",\"KICK\"]，关羽→[\"DUEL\",\"SLAM\",\"KICK\",\"SUPLEX\",\"HEADBUTT\"]，钢铁侠→[\"CANNON\",\"ROCKET\",\"BLASTER\",\"BULLET\",\"GRENADE\"]";
 
                 var requestBody = new
                 {
@@ -533,7 +537,7 @@ public class AiService
             return list;
         }
 
-        // 通用兜底拆解（随机分配5种技能）
+        // 通用兜底拆解：按角色职业流派分配符合逻辑的技能组合
         string baseName = prompt.Replace("加入", "").Replace("生成", "").Replace("创建", "").Replace("个", "").Trim();
         if (string.IsNullOrEmpty(baseName)) baseName = "像素战士";
         baseName = System.Text.RegularExpressions.Regex.Replace(baseName, @"\d+", "").Trim();
@@ -542,11 +546,33 @@ public class AiService
         string[] personalities = { "友好", "叛逆", "幽默", "严肃", "精力", "好奇" };
         string[] colors = { "#FF4D4D", "#4DABFF", "#6BFF6B", "#FFC84D", "#C86BFF", "#FF96C8" };
 
+        // 5 大职业流派池
+        var brawlerPool = new[] { "DUEL", "KICK", "SLAM", "SUPLEX", "HEADBUTT", "TORNADO", "PUSH" };
+        var magePool = new[] { "FIREBALL", "ICE_SHARD", "LIGHTNING", "NOVA", "PLASMA", "WAVE", "INK" };
+        var gunnerPool = new[] { "CANNON", "ROCKET", "BLASTER", "BULLET", "GRENADE", "BOOMERANG" };
+        var energyPool = new[] { "BEAM", "LASER", "NOVA", "PULSE", "SHOCK", "LIGHTNING", "KICK" };
+        var ninjaPool = new[] { "SHURIKEN", "BOOMERANG", "SPIT", "PULL", "THROW", "DUEL", "KICK" };
+
         for (int i = 0; i < count; i++)
         {
             string name = count == 1 ? baseName : $"{baseName}-{i + 1}";
-            // 随机从全池抽取5种不重复技能
-            var shuffled = allWeaponsPool.OrderBy(_ => rand.Next()).Take(5).ToList();
+            string tag = (name + input);
+
+            // 根据名称推断职业流派
+            string[] selectedPool;
+            if (tag.Contains("法师") || tag.Contains("魔") || tag.Contains("元素") || tag.Contains("火") || tag.Contains("冰"))
+                selectedPool = magePool;
+            else if (tag.Contains("炮") || tag.Contains("枪") || tag.Contains("弹") || tag.Contains("重装") || tag.Contains("射手"))
+                selectedPool = gunnerPool;
+            else if (tag.Contains("忍") || tag.Contains("刺客") || tag.Contains("影") || tag.Contains("蛛"))
+                selectedPool = ninjaPool;
+            else if (tag.Contains("光") || tag.Contains("奥特") || tag.Contains("圣") || tag.Contains("神"))
+                selectedPool = energyPool;
+            else
+                selectedPool = brawlerPool;
+
+            var weapons = selectedPool.OrderBy(_ => rand.Next()).Take(5).ToList();
+
             list.Add(new AiGeneratedRobotConfig
             {
                 Name = name,
@@ -554,7 +580,7 @@ public class AiService
                 Guidelines = $"来自指令生成：{prompt}",
                 Color = colors[i % colors.Length],
                 IsWeaponMaster = (i % 2 == 0),
-                Weapons = shuffled
+                Weapons = weapons
             });
         }
 
